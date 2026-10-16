@@ -82,6 +82,8 @@ function PricingSetPanel({
   statusTransaction,
   clientNickName,
   onStatusChanged,
+  onActionStart,
+  onActionFailed,
   statusChangedAlert,
   onActionsReady,
   onLoadingChange,
@@ -173,27 +175,36 @@ function PricingSetPanel({
   );
   const shouldDisableFinalize = loading || setsLoading || !hasChosenSet;
 
-  /* ── Action modal helpers ── */
-  const openActionModal = useCallback((type) => {
-    setActionType(type);
-    setActionModalOpen(true);
-  }, []);
+  const openActionModal = useCallback(
+    (type) => {
+      // Mark as a local action BEFORE the modal fires its request, so an early
+      // realtime echo doesn't start the 5-second countdown.
+      onActionStart?.();
+      setActionType(type);
+      setActionModalOpen(true);
+    },
+    [onActionStart],
+  );
 
+  // Closing without success (cancel / error) → re-enable realtime alerts
   const closeActionModal = useCallback(() => {
+    onActionFailed?.();
     setActionModalOpen(false);
     setActionType(null);
-  }, []);
+  }, [onActionFailed]);
 
+  // Success → leave the page immediately, whether or not a status code is passed
   const handleAfterAction = useCallback(
     (newStatusCode) => {
       localActionRef.current = true;
-      closeActionModal();
+      setActionModalOpen(false);
+      setActionType(null);
       if (newStatusCode) {
         sessionStorage.setItem("selectedStatusCode", newStatusCode);
-        onStatusChanged?.(newStatusCode);
       }
+      onStatusChanged?.(newStatusCode);
     },
-    [closeActionModal, onStatusChanged],
+    [onStatusChanged],
   );
 
   const fetchProcurementUsers = useCallback(async () => {
@@ -974,7 +985,8 @@ function PricingSetPanel({
                     : actionType === "approve"
                       ? "approved"
                       : "reverted",
-            onApproved: handleAfterAction,
+                     onApproved: handleAfterAction,
+            onForceFinalized: handleAfterAction,
             transaction: {
               ...transaction,
               latest_history: {

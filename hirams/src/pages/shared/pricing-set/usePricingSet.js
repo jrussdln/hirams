@@ -87,9 +87,12 @@ export default function usePricingSet() {
   useEffect(() => {
     if (!transaction?.nTransactionId) return;
 
-  const handleTxnUpdated = (e) => {
+    const handleTxnUpdated = (e) => {
       if (localActionRef.current) return;
-      if (String(e.detail?.transactionId) !== String(transaction.nTransactionId)) return;
+      if (
+        String(e.detail?.transactionId) !== String(transaction.nTransactionId)
+      )
+        return;
 
       const action = e.detail?.action;
       const statusChangingActions = [
@@ -105,7 +108,8 @@ export default function usePricingSet() {
     };
 
     window.addEventListener("txn_data_updated", handleTxnUpdated);
-    return () => window.removeEventListener("txn_data_updated", handleTxnUpdated);
+    return () =>
+      window.removeEventListener("txn_data_updated", handleTxnUpdated);
   }, [transaction?.nTransactionId, statusCode]);
 
   // ── Real-time: pricing set updates for this transaction (dynamic channel) ──
@@ -132,7 +136,9 @@ export default function usePricingSet() {
     };
   }, [transaction?.nTransactionId, refetchTransaction]);
 
-  // Countdown redirect
+  // Countdown redirect - triggers 5-second auto-exit when status changes via realtime
+  // (e.g., another user changes the transaction status). Does NOT fire when user
+  // performs local actions - those are handled by the immediate redirect below.
   useEffect(() => {
     if (!statusChangedAlert) return;
     setCountdown(5);
@@ -148,11 +154,32 @@ export default function usePricingSet() {
     return () => clearInterval(countdownRef.current);
   }, [statusChangedAlert, navigate]);
 
-  const handleStatusChanged = useCallback(() => {
+  // Call BEFORE the API request so an early realtime echo is ignored
+  const beginLocalAction = useCallback(() => {
     localActionRef.current = true;
-    navigate(-1);
-  }, [navigate]);
+  }, []);
 
+  // Call if the API request fails so realtime alerts work again
+  const cancelLocalAction = useCallback(() => {
+    localActionRef.current = false;
+  }, []);
+
+  // Call AFTER the action succeeds, leaves the page immediately
+  const handleStatusChanged = useCallback(
+    (newStatusCode) => {
+      localActionRef.current = true;
+
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+      setStatusChangedAlert(false);
+      setCountdown(null);
+
+      navigate(-1);
+    },
+    [navigate, isManagement],
+  );
   return {
     navigate,
     transaction,
@@ -180,6 +207,8 @@ export default function usePricingSet() {
     priceSettingKey,
     priceFinalizeVerificationKey,
     handleStatusChanged,
+    beginLocalAction,
+    cancelLocalAction,
     refetchTransaction,
   };
 }

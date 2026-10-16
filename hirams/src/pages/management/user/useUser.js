@@ -31,6 +31,33 @@ function formatUser(user, { userTypes, defaultUserType, sex, statuses }) {
   };
 }
 
+function timeAgoDisplay(dtLoggedIn) {
+  const lastSeen = dtLoggedIn ? new Date(dtLoggedIn) : null;
+
+  if (!lastSeen || isNaN(lastSeen)) {
+    return { text: "Offline", className: "bg-slate-100 text-slate-500" };
+  }
+
+  const mins = Math.floor((Date.now() - lastSeen.getTime()) / 60_000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+
+  if (hours < 1)
+    return {
+      text: `Active ${mins}m ago`,
+      className: "bg-sky-100 text-sky-600",
+    };
+  if (hours < 24)
+    return {
+      text: `Active ${hours}h ago`,
+      className: "bg-violet-100 text-violet-600",
+    };
+  return {
+    text: `Active ${days}d ago`,
+    className: "bg-orange-100 text-orange-600",
+  };
+}
+
 function deriveStatusDisplay(
   row,
   { activeStatusKey, forApprovalStatusKey, statuses },
@@ -45,38 +72,13 @@ function deriveStatusDisplay(
     };
   }
 
+  // bIsActive === 0 → currently online → no time
   if (Number(row.bIsActive) === 0) {
-    return { text: "Online", className: "bg-emerald-100 text-emerald-700" };
+    return { text: "Online", className: "bg-emerald-100 text-emerald-600" };
   }
 
-  if (!row.dtLoggedIn) {
-    return { text: "Offline", className: "bg-slate-100 text-slate-500" };
-  }
-
-  const lastSeen = new Date(row.dtLoggedIn);
-  if (isNaN(lastSeen)) {
-    return { text: "Offline", className: "bg-slate-100 text-slate-500" };
-  }
-
-  const diffMs = Date.now() - lastSeen.getTime();
-  const mins = Math.floor(diffMs / 60_000);
-  const hours = Math.floor(mins / 60);
-  const days = Math.floor(hours / 24);
-
-  if (hours < 1)
-    return {
-      text: `Offline ${mins}m ago`,
-      className: "bg-sky-100 text-sky-600",
-    };
-  if (hours < 24)
-    return {
-      text: `Offline ${hours}h ago`,
-      className: "bg-violet-100 text-violet-600",
-    };
-  return {
-    text: `Offline ${days}d ago`,
-    className: "bg-orange-100 text-orange-600",
-  };
+  // bIsActive === 1 → show last seen
+  return timeAgoDisplay(row.dtLoggedIn);
 }
 
 /* ── Hook ────────────────────────────────────────────────────────────── */
@@ -249,16 +251,16 @@ export default function useUser() {
     );
   }, []);
 
-const updateUserStatus = useCallback(
-  async (status, userType = null) => {
-    if (!selectedUser?.id) return;
-    const payload = { cStatus: status };
-    if (userType) payload.cUserType = userType;
-    await UserAPI.updateStatus(selectedUser.id, payload);
-    await fetchUsersRef.current(true, true);
-  },
-  [selectedUser],
-);
+  const updateUserStatus = useCallback(
+    async (status, userType = null) => {
+      if (!selectedUser?.id) return;
+      const payload = { cStatus: status };
+      if (userType) payload.cUserType = userType;
+      await UserAPI.updateStatus(selectedUser.id, payload);
+      await fetchUsersRef.current(true, true);
+    },
+    [selectedUser],
+  );
   // Modal handlers
   const handleAddClick = useCallback(() => {
     setSelectedUser(null);

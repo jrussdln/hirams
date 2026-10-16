@@ -1,0 +1,23 @@
+<?php
+
+namespace App\Http\Requests\Supplier;
+
+use App\Http\Requests\ApiRequest;
+
+class UpdateSupplierRequest extends ApiRequest
+{
+    protected string $entityName        = 'Supplier';
+    protected string $failedMessageKey  = 'update_failed';
+
+    public function rules(): array
+    {
+        return [
+            'strSupplierName'     => 'required|string|max:100',
+            'strSupplierNickName' => 'nullable|string|max:20',
+            'strAddress'          => 'nullable|string|max:200',
+            'strTIN'              => 'nullable|string|max:17',
+            'bVAT'                => 'required|boolean',
+            'bEWT'                => 'required|boolean',
+        ];
+    }
+}

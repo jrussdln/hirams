@@ -128,24 +128,23 @@ const syncLocalStorage = (updates = {}) => {
     console.warn("Failed to sync localStorage user:", err);
   }
 };
-
 /**
- * Returns a human-readable "active X ago" string.
+ * Returns a human-readable status string.
  *
- * NOTE: `bIsActive === 1` means the user is currently online (active now).
- *       The previous implementation tested for `=== 0`, which was inverted.
+ * bIsActive === 0 → currently online (no time shown)
+ * bIsActive === 1 → offline, show "Active X ago" from last login
  */
 const getActiveText = (user) => {
+  // Online → no time
+  if (Number(user?.bIsActive) === 0) return "Online";
+
+  // Offline → show last seen
   if (!user?.dtLoggedIn) return "Inactive";
 
   const lastSeen = new Date(user.dtLoggedIn);
   if (isNaN(lastSeen)) return "Inactive";
 
-  // bIsActive flag: 1 = currently online
-  if (Number(user.bIsActive) === 1) return "Active now";
-
-  const diffMs = Date.now() - lastSeen.getTime();
-  const mins = Math.floor(diffMs / 60_000);
+  const mins = Math.floor((Date.now() - lastSeen.getTime()) / 60_000);
   const hours = Math.floor(mins / 60);
   const days = Math.floor(hours / 24);
 
@@ -154,7 +153,6 @@ const getActiveText = (user) => {
   if (hours < 24) return `Active ${hours} hr${hours === 1 ? "" : "s"} ago`;
   return `Active ${days} day${days === 1 ? "" : "s"} ago`;
 };
-
 // ── Component ────────────────────────────────────────────────────────────────
 
 /**

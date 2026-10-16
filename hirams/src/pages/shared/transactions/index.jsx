@@ -5,4 +5,4 @@ import TransactionView from "./TransactionView";
 export default function Transaction() {
   const props = useTransaction();
   return <TransactionView {...props} />;
-}
+}/////

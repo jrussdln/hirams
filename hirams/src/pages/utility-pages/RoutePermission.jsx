@@ -295,10 +295,9 @@ export default function RoutePermission() {
 
         {/* Button */}
         <button
-          className="go-back-btn"
-         onClick={() => {
-  navigate(-1);
-}}
+          onClick={() => {
+            navigate("/login");
+          }}
           style={{
             width: "100%",
             padding: "14px",
@@ -315,7 +314,7 @@ export default function RoutePermission() {
             boxShadow: colors.btnShadow,
           }}
         >
-          ← Go Back
+          ← Go Back / Login
         </button>
 
         {/* Footer note */}

@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import PurchaseItemHistoriesAPI from "../../../../../api/endpoints/purchase-item-histories.api.js";
-import VoucherAPI from "../../../../../api/endpoints/voucher.api.js";
 import PurchaseOrderAPI from "../../../../../api/endpoints/purchase-order.api.js";
+import VoucherAPI from "../../../../../api/endpoints/voucher.api.js";
+
 import JevAPI from "../../../../../api/endpoints/jev.api.js";
 import JevEntriesAPI from "../../../../../api/endpoints/jev-entries.api.js";
 import VoucherSupplierAPI from "../../../../../api/endpoints/voucher-supplier.api.js";
@@ -355,7 +355,7 @@ export default function useVoucherUpdate() {
     if (!ids.length) return;
 
     setHistoriesLoading(true);
-    PurchaseItemHistoriesAPI.getLatest({ nPurchaseItemId: ids })
+    PurchaseOrderAPI.getLatestHistory({ nPurchaseItemId: ids })
       .then((res) => {
         const map = {};
         (res?.histories || []).forEach(

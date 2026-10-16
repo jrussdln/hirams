@@ -305,7 +305,7 @@ function TransactionAEModal({
         await withSpinner(entity, async () => {
           await TransactionAPI.updateTransaction(
             transaction.nTransactionId,
-            formData,
+            { ...formData, nUserId: currentUserId },
           );
         });
         onSaved?.();

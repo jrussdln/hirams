@@ -13,9 +13,9 @@ export const PurchaseOrderAPI = {
     api.patch("purchase-orders/update-cart-status", payload),
   proceedToPODetails: (payload) =>
     api.patch("purchase-orders/proceed-to-po-details", payload),
-  preview: (payload) =>
-    api.post("purchase-order/preview", payload, { responseType: "text" }),
-  export: (payload) => api.postBlob("purchase-order/export", payload),
+  // ── Purchase item histories (moved from purchase-item-histories.api.js) ──
+  getLatestHistory: (payload) => api.post("purchase-order/latest-history", payload),
+  getAllHistoryForOption: (optionId) => api.get(`purchase-order/option/${optionId}/all-history`),
 };
 
 export default PurchaseOrderAPI;

@@ -6,8 +6,19 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class VerifyCsrfToken
+class VerifyCsrfToken extends Middleware
 {
+    /**
+     * The URIs that should be excluded from CSRF token validation.
+     *
+     * @var array<int, string>
+     */
+    protected $except = [
+        // Add routes that don't need CSRF protection here
+        // e.g., 'api/*',
+        // e.g., 'healthcheck',
+    ];
+
     /**
      * Handle an incoming request.
      *
@@ -15,6 +26,6 @@ class VerifyCsrfToken
      */
     public function handle(Request $request, Closure $next): Response
     {
-        return $next($request);
+        return $this->validateCsrfToken($request, $next);
     }
 }

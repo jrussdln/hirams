@@ -44,6 +44,8 @@ export default function PricingSetView(props) {
     priceSettingKey,
     priceFinalizeVerificationKey,
     handleStatusChanged,
+    beginLocalAction,
+    cancelLocalAction,
   } = props;
 
   const theme = useTheme(),
@@ -142,6 +144,8 @@ export default function PricingSetView(props) {
         statusTransaction={statusTransaction}
         clientNickName={clientNickName}
         onStatusChanged={handleStatusChanged}
+        onActionStart={beginLocalAction}
+        onActionFailed={cancelLocalAction}
         statusChangedAlert={statusChangedAlert}
         onActionsReady={setFooterActions}
         onLoadingChange={setSetsLoading}

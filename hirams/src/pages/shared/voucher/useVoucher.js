@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import PurchaseItemHistoriesAPI from "../../../api/endpoints/purchase-item-histories.api.js";
+import PurchaseOrderAPI from "../../../api/endpoints/purchase-order.api.js";
 import VoucherAPI from "../../../api/endpoints/voucher.api.js";
 import { fmtDateTime } from "../../../utils/helpers/timeZone";
 import {
@@ -89,7 +89,7 @@ export default function useVoucher() {
 
     if (!ids.length) return;
     try {
-      const res = await PurchaseItemHistoriesAPI.getLatest({
+      const res = await PurchaseOrderAPI.getLatestHistory({
         nPurchaseItemId: ids,
       });
       const map = {};

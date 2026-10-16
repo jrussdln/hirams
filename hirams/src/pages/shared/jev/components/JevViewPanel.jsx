@@ -627,6 +627,7 @@ export default function JevViewPanel({
               </Box>
 
               <Typography
+                component="span"
                 sx={{
                   fontSize: "0.68rem",
                   color: colors.gray.textSecondary,
@@ -656,6 +657,7 @@ export default function JevViewPanel({
                       }}
                     >
                       <Typography
+                        component="span"
                         sx={{
                           fontSize: "0.55rem",
                           fontWeight: 700,

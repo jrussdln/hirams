@@ -91,7 +91,7 @@ const fieldConfig = [
   { label: "Nickname", key: "nickname", icon: Badge },
   { label: "Username", key: "username", icon: AccountCircle },
   { label: "Email", key: "email", icon: AlternateEmail },
-  { label: "Phone No.", key: "strPhoneNo", icon: Phone },
+  { label: "Phone No.", key: "phoneNumber", icon: Phone },
   { label: "User Type", key: "type", icon: WorkOutline },
   { label: "Sex", key: "sex", icon: Wc },
 ];
@@ -227,23 +227,29 @@ function InfoUserModal({
   );
 
   const profileImage = MediaRoute.resolveProfileImage(userData);
-  const showActiveDot =
-    userData?.statusCode === activeStatusKey &&
-    Number(userData?.bIsActive) === 0;
+  // bIsActive === 0 → currently online (matches useUser.js)
+  const isOnline = Number(userData?.bIsActive) === 0;
+
+  const showActiveDot = userData?.statusCode === activeStatusKey && isOnline;
 
   const getActiveText = (user) => {
+    // Online → no time
+    if (Number(user?.bIsActive) === 0) return "Online";
+
+    // Offline → show last seen
     if (!user?.dtLoggedIn) return "Offline";
-    const updated = new Date(user.dtLoggedIn);
-    if (isNaN(updated)) return "Offline";
-    const diffMs = Date.now() - updated.getTime();
-    const mins = Math.floor(diffMs / 60000);
+
+    const lastSeen = new Date(user.dtLoggedIn);
+    if (isNaN(lastSeen)) return "Offline";
+
+    const mins = Math.floor((Date.now() - lastSeen.getTime()) / 60000);
     const hours = Math.floor(mins / 60);
     const days = Math.floor(hours / 24);
-    if (Number(user.bIsActive) === 0) return "Online";
-    if (mins < 1) return "Online just now";
-    if (mins < 60) return `Online ${mins} min${mins === 1 ? "" : "s"} ago`;
-    if (hours < 24) return `Online ${hours} hr${hours === 1 ? "" : "s"} ago`;
-    return `Online ${days} day${days === 1 ? "" : "s"} ago`;
+
+    if (mins < 1) return "Active just now";
+    if (mins < 60) return `Active ${mins} min${mins === 1 ? "" : "s"} ago`;
+    if (hours < 24) return `Active ${hours} hr${hours === 1 ? "" : "s"} ago`;
+    return `Active ${days} day${days === 1 ? "" : "s"} ago`;
   };
 
   const statusCode = userData?.statusCode;
@@ -291,13 +297,13 @@ function InfoUserModal({
       showSave={false}
     >
       <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <Toast
+        {/* <Toast
           ref={errorAlertRef}
           open={!!confirmError}
           message={confirmError}
           severity="error"
           onClose={() => setConfirmError("")}
-        />
+        /> */}
 
         <Fade in timeout={400}>
           <Box>

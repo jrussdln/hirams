@@ -7,14 +7,7 @@ import SyncMenu from "../../../components/ui/form/SyncMenu";
 import UserAEModal from "./modal/UserAEModal";
 import InfoUserModal from "./modal/InfoUserModal";
 import DeleteVerificationModal from "../../shared/transactions/modal/DeleteVerificationModal";
-import {
-  Add,
-  Edit,
-  Delete,
-  HowToReg,
-  PersonOff,
-  PersonAdd,
-} from "@mui/icons-material";
+import { Add, Edit, Delete, HowToReg, PersonOff, PersonAdd } from "@mui/icons-material";
 import MediaRoute from "../../../routes/MediaRoute";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../utils/style/getThemeColors"; // ✅ FIXED PATH
@@ -27,46 +20,7 @@ const useColors = (c) => ({
   textPrimary: c.gray.textPrimary,
 });
 
-export default function UserView({
-  search,
-  setSearch,
-  page,
-  rowsPerPage,
-  openUserModal,
-  openInfoModal,
-  openDeleteModal,
-  selectedUser,
-  entityToDelete,
-  loading,
-  selectedStatusCode,
-  activeStatusKey,
-  inactiveStatusKey,
-  forApprovalStatusKey,
-  activeStatusLabel,
-  inactiveStatusLabel,
-  forApprovalStatusLabel,
-  maleKey,
-  femaleKey,
-  userTypes,
-  statuses,
-  filteredUsers,
-  getStatusDisplay,
-  fetchUsers,
-  handleAddClick,
-  handleEditClick,
-  handleInfoClick,
-  handleDeleteClick,
-  handleCloseUserModal,
-  handleCloseInfoModal,
-  handleCloseDeleteModal,
-  handlePageChange,
-  handleRowsPerPageChange,
-  handleRowClick,
-  handleApprove,
-  handleSetActive,
-  handleSetInactive,
-  handleRedirect,
-}) {
+export default function UserView({ search, setSearch, page, rowsPerPage, openUserModal, openInfoModal, openDeleteModal, selectedUser, entityToDelete, loading, selectedStatusCode, activeStatusKey, inactiveStatusKey, forApprovalStatusKey, activeStatusLabel, inactiveStatusLabel, forApprovalStatusLabel, maleKey, femaleKey, userTypes, statuses, filteredUsers, getStatusDisplay, fetchUsers, handleAddClick, handleEditClick, handleInfoClick, handleDeleteClick, handleCloseUserModal, handleCloseInfoModal, handleCloseDeleteModal, handlePageChange, handleRowsPerPageChange, handleRowClick, handleApprove, handleSetActive, handleSetInactive, handleRedirect }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
@@ -83,9 +37,7 @@ export default function UserView({
             <img
               src={MediaRoute.resolveProfileImage(row)}
               alt={row.fullName}
-              onError={(e) => {
-                e.target.src = MediaRoute.resolveProfileImage(null);
-              }}
+              onError={(e) => { e.target.src = MediaRoute.resolveProfileImage(null); }}
               className="w-7 h-7 rounded-full object-cover border flex-shrink-0"
               style={{ borderColor: colors.border }}
             />
@@ -100,6 +52,13 @@ export default function UserView({
       },
       { key: "nickname", label: "Nickname", align: "center" },
       { key: "type", label: "User Type", align: "center", xs: 2 },
+      { key: "phone", label: "Phone", align: "center", xs: 1, render: (_, row) => {
+        return (
+          <span className="px-2 py-1 text-[10px] font-medium rounded-full">
+            {row.phoneNumber || "—"}
+          </span>
+        );
+      } },
       {
         key: "status",
         label: "Status",
@@ -132,10 +91,7 @@ export default function UserView({
                   icon={<Edit fontSize="small" />}
                   tooltip="Edit User"
                   actionColor="edit"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleEditClick(row);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); handleEditClick(row); }}
                 />
               )}
               {isPending && (
@@ -143,10 +99,7 @@ export default function UserView({
                   icon={<HowToReg fontSize="small" />}
                   tooltip="Approve User"
                   actionColor="approve"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleInfoClick(row);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); handleInfoClick(row); }}
                 />
               )}
               {isActive && (
@@ -154,10 +107,7 @@ export default function UserView({
                   icon={<PersonOff fontSize="small" />}
                   tooltip="Deactivate User"
                   actionColor="deactivate"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleInfoClick(row);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); handleInfoClick(row); }}
                 />
               )}
               {isInactive && (
@@ -165,10 +115,7 @@ export default function UserView({
                   icon={<PersonAdd fontSize="small" />}
                   tooltip="Activate User"
                   actionColor="revert"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleInfoClick(row);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); handleInfoClick(row); }}
                 />
               )}
               {!isActive && (
@@ -176,10 +123,7 @@ export default function UserView({
                   icon={<Delete fontSize="small" />}
                   tooltip="Delete User"
                   actionColor="delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteClick(row);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); handleDeleteClick(row); }}
                 />
               )}
             </div>
@@ -202,11 +146,7 @@ export default function UserView({
   return (
     <PageLayout
       title="Users"
-      subtitle={
-        selectedStatusCode && statuses[selectedStatusCode]
-          ? `${statuses[selectedStatusCode]}`
-          : ""
-      }
+      subtitle={ selectedStatusCode && statuses[selectedStatusCode] ? `${statuses[selectedStatusCode]}` : "" }
     >
       <section className="flex items-center gap-2 mb-3">
         <div className="flex-grow">

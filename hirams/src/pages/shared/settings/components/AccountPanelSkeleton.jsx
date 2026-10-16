@@ -90,9 +90,12 @@ export default function AccountPanelSkeleton() {
             {/* Value */}
             <Skeleton
               variant="text"
-              width={{ xs: "100%", sm: row.valueW }}
+              width="100%"
               height={18}
-              sx={{ borderRadius: 1 }}
+              sx={{
+                borderRadius: 1,
+                maxWidth: { xs: "100%", sm: row.valueW },
+              }}
             />
           </Box>
 
