@@ -10,6 +10,7 @@ import {
 import BaseButton from "../../../components/ui/form/BaseButton";
 import AuthLayout from "../../../components/ui/auth/AuthLayout";
 import AuthTextField from "../../../components/ui/auth/AuthTextField";
+import AuthAlert from "../../../components/ui/auth/AuthAlert";
 import DotSpinner from "../../../components/ui/loader/DotSpinner";
 import getThemeColors from "../../../utils/style/getThemeColors";
 
@@ -19,7 +20,6 @@ const useColors = (c) => ({
   textDisabled: c.gray.textDisabled,
   iconMuted: c.gray.textDisabled,
   successText: c.green.text,
-  dangerText: c.red.text,
 });
 
 export default function ForgotPasswordView({
@@ -39,8 +39,10 @@ export default function ForgotPasswordView({
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = React.useMemo(() => useColors(base), [base]);
 
-  const submitOnEnter = (e) => {
-    if (e.key === "Enter" && !loading) handleReset();
+  // A real <form> submit — Enter works from either input.
+  const submit = (e) => {
+    e.preventDefault();
+    if (!loading) handleReset();
   };
 
   // ── Success screen ──────────────────────────────────────────────────
@@ -104,10 +106,10 @@ export default function ForgotPasswordView({
   // ── Main form ───────────────────────────────────────────────────────
   return (
     <AuthLayout title="FORGOT PASSWORD">
-      <Box sx={{ mb: statusMessage ? 2 : 3.5 }}>
+      <Box sx={{ mb: 2.5 }}>
         <Typography
           variant="subtitle1"
-          sx={{ fontWeight: 100, fontSize: { xs: "1rem", sm: "1.25rem" } }}
+          sx={{ fontWeight: 400, fontSize: { xs: "1rem", sm: "1.25rem" } }}
         >
           Reset your password
         </Typography>
@@ -124,81 +126,68 @@ export default function ForgotPasswordView({
         </Typography>
       </Box>
 
-      {/* Status message */}
-      {statusMessage && (
-        <Typography
+      <Box component="form" onSubmit={submit} noValidate>
+        <AuthAlert tone={statusTone} message={statusMessage} />
+
+        {/* Username */}
+        <AuthTextField
+          label="Username"
+          name="username"
+          value={formData.username}
+          onChange={handleChange}
+          autoFocus
+          autoComplete="username"
+          spellCheck={false}
+          autoCapitalize="none"
+          startIcon={<AccountCircle sx={{ color: colors.iconMuted }} />}
+          error={!!fieldErrors.username}
+          helperText={fieldErrors.username || ""}
+          sx={{ mb: 2 }}
+          inputProps={{ style: { fontSize: theme.typography.body2.fontSize } }}
+        />
+
+        {/* Email */}
+        <AuthTextField
+          label="Email Address"
+          name="email"
+          type="email"
+          value={formData.email}
+          onChange={handleChange}
+          autoComplete="email"
+          autoCapitalize="none"
+          startIcon={<Email sx={{ color: colors.iconMuted }} />}
+          error={!!fieldErrors.email}
+          helperText={fieldErrors.email || ""}
+          sx={{ mb: 3 }}
+          inputProps={{ style: { fontSize: theme.typography.body2.fontSize } }}
+        />
+
+        <Box
           sx={{
-            color:
-              statusTone === "success"
-                ? colors.successText
-                : colors.dangerText,
-            mb: 1,
-            fontSize: { xs: "0.75rem", sm: "0.875rem" },
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 1,
           }}
         >
-          {statusMessage}
-        </Typography>
-      )}
+          <BaseButton
+            label="Back"
+            type="button"
+            variant="outlined"
+            onClick={() => navigate("/")}
+            icon={<ArrowBack fontSize="small" />}
+            actionColor="back"
+            disabled={loading}
+          />
 
-      {/* Username */}
-      <AuthTextField
-        label="Username"
-        name="username"
-        value={formData.username}
-        onChange={handleChange}
-        onKeyDown={submitOnEnter}
-        autoFocus
-        autoComplete="username"
-        spellCheck={false}
-        autoCapitalize="none"
-        startIcon={<AccountCircle sx={{ color: colors.iconMuted }} />}
-        error={!!fieldErrors.username}
-        helperText={fieldErrors.username || ""}
-        sx={{ mb: 2 }}
-        inputProps={{ style: { fontSize: theme.typography.body2.fontSize } }}
-      />
-
-      {/* Email */}
-      <AuthTextField
-        label="Email Address"
-        name="email"
-        type="email"
-        value={formData.email}
-        onChange={handleChange}
-        onKeyDown={submitOnEnter}
-        autoComplete="email"
-        autoCapitalize="none"
-        startIcon={<Email sx={{ color: colors.iconMuted }} />}
-        error={!!fieldErrors.email}
-        helperText={fieldErrors.email || ""}
-        sx={{ mb: 3 }}
-        inputProps={{ style: { fontSize: theme.typography.body2.fontSize } }}
-      />
-
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 1,
-        }}
-      >
-        <BaseButton
-          label="Back"
-          variant="outlined"
-          onClick={() => navigate("/")}
-          icon={<ArrowBack fontSize="small" />}
-          actionColor="back"
-          disabled={loading}
-        />
-
-        <BaseButton
-          label={loading ? <DotSpinner size={8} /> : "Send Reset Link"}
-          onClick={handleReset}
-          disabled={loading}
-          icon={!loading && <LockReset fontSize="small" />}
-          actionColor="reset"
-        />
+          <BaseButton
+            label={loading ? <DotSpinner size={8} /> : "Send Reset Link"}
+            type="submit"
+            disabled={loading}
+            icon={!loading && <LockReset fontSize="small" />}
+            actionColor="reset"
+          />
+        </Box>
       </Box>
     </AuthLayout>
   );

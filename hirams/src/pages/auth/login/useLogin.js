@@ -1,13 +1,35 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import uiMessages from "../../../utils/helpers/uiMessages.js";
 import { saveMappings } from "../../../utils/storage/mappingCache.js";
-import { setItem } from "../../../utils/storage/localStorage.js";
+import { setItem, getItem } from "../../../utils/storage/localStorage.js";
 import AuthAPI from "../../../api/endpoints/auth.api.js";
 import MappingAPI from "../../../api/endpoints/mapping.api.js";
 
 export default function useLogin() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // The axios interceptor bounces an expired session to "/" with
+  // ?reason=expired. Read it once, then burn the URL flag so a refresh (or a
+  // second back/forward) doesn't replay the notice.
+  const [sessionExpired, setSessionExpired] = useState(
+    () => searchParams.get("reason") === "expired",
+  );
+  useEffect(() => {
+    if (searchParams.get("reason") !== "expired") return;
+    setSessionExpired(true);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  // Already signed in — a bookmark on "/", the back button, a second tab.
+  // Send them where they were headed instead of asking for a password again.
+  useEffect(() => {
+    if (getItem("token") && getItem("user")) {
+      navigate(location.state?.from || "/dashboard", { replace: true });
+    }
+  }, [navigate, location.state]);
 
   const [formData, setFormData] = useState({
     strUserName: "",
@@ -17,10 +39,12 @@ export default function useLogin() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
-  // "success" = processing/redirecting, "error" = something went wrong.
-  // Replaces guessing the colour by sniffing the message text.
+  // "success" = processing/redirecting, "error"/"info" = what went wrong.
   const [statusTone, setStatusTone] = useState("error");
   const [fieldErrors, setFieldErrors] = useState({});
+  // Which input the view should pull focus into. A fresh object each time, so
+  // failing the same field twice still focuses it twice.
+  const [focusRequest, setFocusRequest] = useState(null);
 
   const setStatus = (message, tone = "error") => {
     setStatusMessage(message);
@@ -29,32 +53,21 @@ export default function useLogin() {
 
   // Field errors take over the status line, so the stale "Processing…" must
   // be dropped the moment "Password is incorrect." shows up.
-  const showFieldErrors = (errors) => {
+  const showFieldErrors = (errors, focusField) => {
     setStatusMessage("");
     setStatusTone("error");
     setFieldErrors(errors);
+    if (focusField) setFocusRequest({ field: focusField });
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    // Errors stay on screen until the field they belong to is touched — they
+    // used to vanish after 5s, right while they were being read.
     setStatusMessage("");
     setFieldErrors({});
   };
-
-  useEffect(() => {
-    if (Object.keys(fieldErrors).length > 0) {
-      const timer = setTimeout(() => setFieldErrors({}), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [fieldErrors]);
-
-  useEffect(() => {
-    if (statusMessage) {
-      const timer = setTimeout(() => setStatusMessage(""), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [statusMessage]);
 
   const prefetchMappings = async () => {
     try {
@@ -78,22 +91,18 @@ export default function useLogin() {
       const errors = {};
       if (!strUserName.trim()) errors.username = "Username is required.";
       if (!strPassword) errors.password = "Password is required.";
-      showFieldErrors(errors);
+      showFieldErrors(errors, errors.username ? "username" : "password");
       return;
     }
 
     setLoading(true);
     setStatus(uiMessages.common.processingInput, "success");
 
-    let redirecting = false;
-
     try {
-      const payload = {
+      const response = await AuthAPI.login({
         strUserName: strUserName.trim(),
         strPassword,
-      };
-
-      const response = await AuthAPI.login(payload);
+      });
       const user = response?.user;
 
       if (response?.success && user) {
@@ -105,24 +114,23 @@ export default function useLogin() {
 
         setStatus(uiMessages.common.successInput, "success");
         await prefetchMappings();
-        // Hold `loading` through the redirect window so the Register /
-        // Forgot Password links stay locked while "Redirecting…" shows.
-        redirecting = true;
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        navigate("/dashboard");
+        // Straight back to the page that was wanted (deep link), else the
+        // dashboard. The old fixed 1s pause only held people on the form.
+        navigate(location.state?.from || "/dashboard", { replace: true });
       } else {
         setStatus(uiMessages.common.errorMessage, "error");
       }
     } catch (error) {
-      if (error?.status === 404) {
-        showFieldErrors({ username: uiMessages.common.failedAttempt });
-      } else if (error?.status === 401) {
-        showFieldErrors({ password: uiMessages.common.invalidPassword });
+      if (error?.status === 401 || error?.status === 404) {
+        // One wording for both. Naming which of the two fields was wrong
+        // would confirm that a username exists.
+        setStatus(uiMessages.common.invalidCredentials, "error");
+        setFocusRequest({ field: "username" });
       } else {
         setStatus(uiMessages.common.errorMessage, "error");
       }
     } finally {
-      if (!redirecting) setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -133,7 +141,9 @@ export default function useLogin() {
     setShowPassword,
     statusMessage,
     statusTone,
+    sessionExpired,
     fieldErrors,
+    focusRequest,
     handleChange,
     handleLogin,
   };

@@ -7,6 +7,12 @@ use App\Models\User;
 
 class TransactionPolicy
 {
+    // Only an active user (cStatus = A) is granted anything at all.
+    private function isActive(User $user): bool
+    {
+        return $user->cStatus === 'A';
+    }
+
     /**
      * Determine whether the user can view any transactions.
      */
@@ -14,7 +20,8 @@ class TransactionPolicy
     {
         // Role codes: M=Management (admin), G=General Manager, P=Procurement Officer,
         // Y=Procurement Officer TL, A=Account Officer, X=Account Officer TL, F=Finance Officer
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
     }
 
     /**
@@ -22,6 +29,9 @@ class TransactionPolicy
      */
     public function view(User $user, Transactions $transaction): bool
     {
+        if (!$this->isActive($user)) {
+            return false;
+        }
         // Users can view their own transactions or if they have appropriate role codes
         return in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']) ||
                $transaction->nCreatedBy === $user->nUserId;
@@ -32,7 +42,8 @@ class TransactionPolicy
      */
     public function create(User $user): bool
     {
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
     }
 
     /**
@@ -40,6 +51,10 @@ class TransactionPolicy
      */
     public function update(User $user, Transactions $transaction): bool
     {
+        if (!$this->isActive($user)) {
+            return false;
+        }
+
         // Only draft transactions can be updated
         // Role codes M, G, P, Y, A, X, F can update
         if ($transaction->status === 'finalized') {
@@ -55,7 +70,10 @@ class TransactionPolicy
      */
     public function delete(User $user, Transactions $transaction): bool
     {
-        return $user->cUserType === 'M' || 
+        if (!$this->isActive($user)) {
+            return false;
+        }
+        return $user->cUserType === 'M' ||
                ($transaction->nCreatedBy === $user->nUserId && $transaction->status !== 'archived');
     }
 
@@ -64,7 +82,8 @@ class TransactionPolicy
      */
     public function approvePricing(User $user, Transactions $transaction): bool
     {
-        return $user->cUserType === 'M' || in_array($user->cUserType, ['P', 'Y']);
+        return $this->isActive($user)
+            && ($user->cUserType === 'M' || in_array($user->cUserType, ['P', 'Y']));
     }
 
     /**
@@ -72,7 +91,8 @@ class TransactionPolicy
      */
     public function assignAO(User $user, Transactions $transaction): bool
     {
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
     }
 
     /**
@@ -80,7 +100,7 @@ class TransactionPolicy
      */
     public function complete(User $user, Transactions $transaction): bool
     {
-        return $user->cUserType === 'M';
+        return $this->isActive($user) && $user->cUserType === 'M';
     }
 
     /**
@@ -88,6 +108,6 @@ class TransactionPolicy
      */
     public function archive(User $user, Transactions $transaction): bool
     {
-        return $user->cUserType === 'M';
+        return $this->isActive($user) && $user->cUserType === 'M';
     }
 }

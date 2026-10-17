@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Box, TextField, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { CheckOutlined, EditOutlined } from "@mui/icons-material";
@@ -203,6 +204,7 @@ function JevEntriesViewModal({
   onInfoSaved = null,
 }) {
   const jevId = jev?.nJEVId ? String(jev.nJEVId) : "";
+  const navigate = useNavigate();
 
   // ── JEV type ─────────────────────────────────────────────────────────
   // Decides what the top block holds AND whether this JEV carries a title:
@@ -589,16 +591,58 @@ function JevEntriesViewModal({
   // tells the reader nothing about what this JEV covers.
   const showParticulars = Boolean(voucher) && particularsCount > 0;
 
-  // "Collection · Sep 15, 2026 · VOU-2026-0012" — the voucher number joins
-  // the line as soon as its record is in.
+  // "Disbursement Voucher · DV" — the caller's type label with the voucher
+  // number joined on as soon as its record is in.
   const headerLine = [subTitle, voucher?.strNumber].filter(Boolean).join(" · ");
+
+  // A voucher-backed JEV (V / C) shows that line as a LINK: clicking it
+  // closes this modal and opens the voucher itself — the same
+  // /voucher-update?id= route the voucher list's View uses. JEVs with no
+  // voucher behind them (R / D / N) keep the line as plain text.
+  const openVoucher = () => {
+    if (!voucher?.nVoucherId) return;
+    onClose?.();
+    navigate(`/voucher-update?id=${voucher.nVoucherId}`);
+  };
+
+  // Kept INLINE (a span, not a button) so the header's ellipsis still
+  // clips long subtitles the way it did as plain text.
+  const headerNode = voucher?.nVoucherId ? (
+    <Box
+      component="span"
+      role="button"
+      tabIndex={0}
+      onClick={openVoucher}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openVoucher();
+        }
+      }}
+      title={`Open voucher ${voucher.strNumber ?? ""}`.trim()}
+      sx={{
+        cursor: "pointer",
+        borderRadius: "2px",
+        "&:hover": { color: colors.blue.text, textDecoration: "underline" },
+        "&:focus-visible": {
+          outline: "none",
+          color: colors.blue.text,
+          textDecoration: "underline",
+        },
+      }}
+    >
+      {headerLine}
+    </Box>
+  ) : (
+    headerLine
+  );
 
   return (
     <ModalContainer
       open={open}
       handleClose={onClose}
       title={jev?.strJEVNumber || (isCreating ? "Add JEV" : "JEV")}
-      subTitle={isCreating ? "Creating…" : headerLine}
+      subTitle={isCreating ? "Creating…" : headerNode}
       width={{ xs: "95%", sm: 760, md: 980 }}
       contentPadding={{ xs: 1, sm: 1.5 }}
       // Viewer: a single Close — until an entry is being added or edited,

@@ -296,7 +296,9 @@ export default function RoutePermission() {
         {/* Button */}
         <button
           onClick={() => {
-            navigate("/login");
+            // "/" is the login route — there is no "/login" path, and the
+            // catch-all turns that into a 404.
+            navigate("/");
           }}
           style={{
             width: "100%",

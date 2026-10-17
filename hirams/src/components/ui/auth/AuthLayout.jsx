@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Paper, Divider, Typography, useTheme } from "@mui/material";
+import { Box, Paper, Typography, useTheme } from "@mui/material";
 import getThemeColors from "../../../utils/style/getThemeColors";
 
 
@@ -7,16 +7,17 @@ import getThemeColors from "../../../utils/style/getThemeColors";
 const useColors = (c) => ({
   pageBg: c.slate.outerBg,
   paperBg: c.slate.innerBg,
+  textPrimary: c.gray.textPrimary,
   textSecondary: c.gray.textSecondary,
-  bottomAccent: c.gray.textDisabled, // closest structural neutral
+  hairline: c.slate.divider,
   accent: c.navy.authAccent,
+  cardShadow: c.shadow.base,
 });
 
 
 const AuthLayout = ({
   title,
   children,
-  buttonColor,
   width = 400,
   maxWidth = "100%",
 }) => {
@@ -30,86 +31,90 @@ const AuthLayout = ({
   return (
     <Box
       sx={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         display: "flex",
         justifyContent: "center",
         alignItems: { xs: "flex-start", sm: "center" },
         bgcolor: colors.pageBg,
-        p: { xs: 0, sm: 2 },
+        p: { xs: 0, sm: 3 },
       }}
     >
       <Paper
-        elevation={6}
+        elevation={0}
         sx={{
           width: { xs: "100%", sm: width },
           maxWidth: { xs: "100%", sm: maxWidth },
           borderRadius: { xs: 0, sm: 3 },
-          textAlign: "center",
+          textAlign: "left",
           overflow: "hidden",
           position: "relative",
           bgcolor: colors.paperBg,
           minHeight: { xs: "100dvh", sm: "unset" },
+          // Hairline + soft lift on desktop; flat and full-bleed on phones.
+          border: { xs: "none", sm: `1px solid ${colors.hairline}` },
+          boxShadow: { xs: "none", sm: `0 20px 50px ${colors.cardShadow}` },
+          // iPhone home indicator / notch — the card is full-bleed on phones.
+          pb: { xs: "env(safe-area-inset-bottom)", sm: 0 },
           display: "flex",
           flexDirection: "column",
         }}
       >
-        {/* Top accent bar — keeps prop-driven brand color */}
-        <Box
-          sx={{ height: 6, width: "100%", bgcolor: buttonColor ?? colors.accent, flexShrink: 0 }}
-        />
-
         <Box
           sx={{
-            p: { xs: 3, sm: 5 },
-            pt: { xs: 2.5, sm: 3 },
+            p: { xs: 3, sm: 4 },
+            pt: { xs: 4, sm: 5 },
             flex: 1,
             display: "flex",
             flexDirection: "column",
           }}
         >
-          {/* Logo */}
-          <Box sx={{ mb: 2, display: "flex", justifyContent: "center" }}>
-            <img
-              src={`${import.meta.env.BASE_URL}images/hirams-icon-rectangle.png`}
-              alt="Company Logo"
-              style={{ width: 130, height: "auto" }}
+          {/* Page title + short accent rule — the form underneath is
+              left-aligned, so the heading is too */}
+          <Box sx={{ mb: 2.5 }}>
+            <Typography
+              variant="h5"
+              sx={{
+                fontWeight: 700,
+                color: colors.textPrimary,
+                fontSize: { xs: "1.15rem", sm: "1.35rem" },
+                lineHeight: 1.25,
+              }}
+            >
+              {title}
+            </Typography>
+            <Box
+              sx={{
+                mt: 0.9,
+                width: 36,
+                height: 3,
+                borderRadius: 2,
+                bgcolor: colors.accent,
+              }}
             />
           </Box>
 
-          {/* Tight gap — the old 48–72px spacer pushed the form far below
-              the logo, especially on phones */}
-          <Divider sx={{ mb: { xs: 3, sm: 4 } }} />
+          {/* Content */}
+          <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            {children}
+          </Box>
 
-          {/* Title — uses prop-driven brand color */}
-          <Typography
-            variant="h5"
+          {/* Footer */}
+          <Box
             sx={{
-              mb: 2,
-              fontWeight: 600,
-              color: buttonColor ?? colors.accent,
-              fontSize: { xs: "1.1rem", sm: "1.5rem" },
-              letterSpacing: { xs: 0.5, sm: 1 },
+              mt: 3,
+              pt: 1.5,
+              textAlign: "center",
+              borderTop: `1px solid ${colors.hairline}`,
             }}
           >
-            {title}
-          </Typography>
-
-          {/* Content */}
-          <Box sx={{ flex: 1 }}>{children}</Box>
-
-          {/* Footer — uses theme token */}
-          <Typography
-            variant="caption"
-            sx={{ mt: 2, display: "block", color: colors.textSecondary }}
-          >
-            &copy; {new Date().getFullYear()} HiRAMS. All rights reserved.
-          </Typography>
+            <Typography
+              variant="caption"
+              sx={{ display: "block", color: colors.textSecondary }}
+            >
+              &copy; {new Date().getFullYear()} HiRAMS Inc. All rights reserved.
+            </Typography>
+          </Box>
         </Box>
-
-        {/* Bottom accent bar — uses theme structural token */}
-        <Box
-          sx={{ height: 4, width: "100%", bgcolor: colors.bottomAccent, flexShrink: 0 }}
-        />
       </Paper>
     </Box>
   );

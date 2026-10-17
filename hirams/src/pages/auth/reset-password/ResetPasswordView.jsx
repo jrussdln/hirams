@@ -13,6 +13,7 @@ import {
 } from "@mui/icons-material";
 import AuthLayout from "../../../components/ui/auth/AuthLayout";
 import AuthTextField from "../../../components/ui/auth/AuthTextField";
+import AuthAlert from "../../../components/ui/auth/AuthAlert";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import DotSpinner from "../../../components/ui/loader/DotSpinner";
 import getThemeColors from "../../../utils/style/getThemeColors";
@@ -23,8 +24,6 @@ const useColors = (c) => ({
   textDisabled: c.gray.textDisabled,
   iconMuted: c.gray.textDisabled,
   textReadOnly: c.gray.textDisabled,
-  successText: c.green.text,
-  dangerText: c.red.text,
   errorIcon: c.red.text,
   successIcon: c.green.text,
   amber: {
@@ -181,12 +180,18 @@ export default function ResetPasswordView({
   }
 
   // ── Main reset form ────────────────────────────────────────────────
+  // A real <form> submit — Enter works from either password field.
+  const submit = (e) => {
+    e.preventDefault();
+    if (!loading) handleSubmit();
+  };
+
   return (
     <AuthLayout title="RESET PASSWORD">
-      <Box sx={{ mb: statusMessage ? 2 : 3.5 }}>
+      <Box sx={{ mb: 2.5 }}>
         <Typography
           variant="subtitle1"
-          sx={{ fontWeight: 100, fontSize: { xs: "1rem", sm: "1.25rem" } }}
+          sx={{ fontWeight: 400, fontSize: { xs: "1rem", sm: "1.25rem" } }}
         >
           Choose a new password
         </Typography>
@@ -238,100 +243,86 @@ export default function ResetPasswordView({
         </Typography>
       </Box>
 
-      {/* Status message */}
-      {statusMessage && (
-        <Typography
+      <Box component="form" onSubmit={submit} noValidate>
+        <AuthAlert tone={isError ? "error" : "info"} message={statusMessage} />
+
+        {/* Username read-only */}
+        <AuthTextField
+          label="Username"
+          name="username"
+          value={usernameFromLink}
+          autoComplete="username"
+          startIcon={<AccountCircle sx={{ color: colors.iconMuted }} />}
+          sx={{ mb: 2 }}
+          inputProps={{
+            readOnly: true,
+            style: {
+              fontSize: theme.typography.body2.fontSize,
+              color: colors.textReadOnly,
+              cursor: "not-allowed",
+            },
+          }}
+        />
+
+        {/* New password */}
+        <AuthTextField
+          label="New Password"
+          name="password"
+          type={showPassword ? "text" : "password"}
+          value={formData.password}
+          onChange={handleChange}
+          autoComplete="new-password"
+          startIcon={<Lock sx={{ color: colors.iconMuted }} />}
+          endIcon={showPassword ? <Visibility /> : <VisibilityOff />}
+          onEndIconClick={() => setShowPassword((p) => !p)}
+          error={!!fieldErrors.password}
+          helperText={fieldErrors.password || ""}
+          sx={{ mb: 2 }}
+          inputProps={{ style: { fontSize: theme.typography.body2.fontSize } }}
+        />
+
+        {/* Confirm password */}
+        <AuthTextField
+          label="Confirm Password"
+          name="confirmPassword"
+          type={showConfirm ? "text" : "password"}
+          value={formData.confirmPassword}
+          onChange={handleChange}
+          autoComplete="new-password"
+          startIcon={<Lock sx={{ color: colors.iconMuted }} />}
+          endIcon={showConfirm ? <Visibility /> : <VisibilityOff />}
+          onEndIconClick={() => setShowConfirm((p) => !p)}
+          error={!!fieldErrors.confirmPassword}
+          helperText={fieldErrors.confirmPassword || ""}
+          sx={{ mb: 3 }}
+          inputProps={{ style: { fontSize: theme.typography.body2.fontSize } }}
+        />
+
+        <Box
           sx={{
-            color: isError ? colors.dangerText : colors.successText,
-            mb: 1,
-            fontSize: { xs: "0.75rem", sm: "0.875rem" },
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 1,
           }}
         >
-          {statusMessage}
-        </Typography>
-      )}
-
-      {/* Username read-only */}
-      <AuthTextField
-        label="Username"
-        name="username"
-        value={usernameFromLink}
-        autoComplete="username"
-        startIcon={<AccountCircle sx={{ color: colors.iconMuted }} />}
-        sx={{ mb: 2 }}
-        inputProps={{
-          readOnly: true,
-          style: {
-            fontSize: theme.typography.body2.fontSize,
-            color: colors.textReadOnly,
-            cursor: "not-allowed",
-          },
-        }}
-      />
-
-      {/* New password */}
-      <AuthTextField
-        label="New Password"
-        name="password"
-        type={showPassword ? "text" : "password"}
-        value={formData.password}
-        onChange={handleChange}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !loading) handleSubmit();
-        }}
-        autoComplete="new-password"
-        startIcon={<Lock sx={{ color: colors.iconMuted }} />}
-        endIcon={showPassword ? <Visibility /> : <VisibilityOff />}
-        onEndIconClick={() => setShowPassword((p) => !p)}
-        error={!!fieldErrors.password}
-        helperText={fieldErrors.password || ""}
-        sx={{ mb: 2 }}
-        inputProps={{ style: { fontSize: theme.typography.body2.fontSize } }}
-      />
-
-      {/* Confirm password */}
-      <AuthTextField
-        label="Confirm Password"
-        name="confirmPassword"
-        type={showConfirm ? "text" : "password"}
-        value={formData.confirmPassword}
-        onChange={handleChange}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !loading) handleSubmit();
-        }}
-        autoComplete="confirm-new-password"
-        startIcon={<Lock sx={{ color: colors.iconMuted }} />}
-        endIcon={showConfirm ? <Visibility /> : <VisibilityOff />}
-        onEndIconClick={() => setShowConfirm((p) => !p)}
-        error={!!fieldErrors.confirmPassword}
-        helperText={fieldErrors.confirmPassword || ""}
-        sx={{ mb: 3 }}
-        inputProps={{ style: { fontSize: theme.typography.body2.fontSize } }}
-      />
-
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 1,
-        }}
-      >
-        <BaseButton
-          label="Login"
-          variant="outlined"
-          onClick={() => navigate("/")}
-          icon={<ArrowBack fontSize="small" />}
-          actionColor="back"
-          disabled={loading}
-        />
-        <BaseButton
-          label="Reset Password"
-          onClick={handleSubmit}
-          disabled={loading}
-          icon={!loading && <LockReset fontSize="small" />}
-          actionColor="reset"
-        />
+          <BaseButton
+            label="Login"
+            type="button"
+            variant="outlined"
+            onClick={() => navigate("/")}
+            icon={<ArrowBack fontSize="small" />}
+            actionColor="back"
+            disabled={loading}
+          />
+          <BaseButton
+            label="Reset Password"
+            type="submit"
+            disabled={loading}
+            icon={!loading && <LockReset fontSize="small" />}
+            actionColor="reset"
+          />
+        </Box>
       </Box>
     </AuthLayout>
   );

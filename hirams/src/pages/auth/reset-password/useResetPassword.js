@@ -44,14 +44,10 @@ export default function useResetPassword() {
     run();
   }, [token]);
 
-  // Only auto-clear field errors, never auto-clear status messages
-  useEffect(() => {
-    if (Object.keys(fieldErrors).length > 0) {
-      const t = setTimeout(() => setFieldErrors({}), 5000);
-      return () => clearTimeout(t);
-    }
-  }, [fieldErrors]);
-
+  // Errors are NOT auto-cleared on a timer — they stay under their input
+  // until the field is edited (handleChange clears them), so they don't
+  // vanish mid-sentence while they're being read. Status messages are
+  // deliberately kept: the success screen relies on them staying put.
   const setError = (msg) => {
     setIsError(true);
     setStatusMessage(msg);

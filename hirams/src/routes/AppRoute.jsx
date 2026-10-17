@@ -61,6 +61,8 @@ const PreviewCheque = lazyPage("/preview-cheque");
 const PreviewDR = lazyPage("/preview-dr");
 const PreviewSI = lazyPage("/preview-si");
 const Help = lazyPage("/help");
+// Public privacy/terms document — the login banner opens it in a new tab.
+const DataPrivacy = lazyPage("/data-privacy");
 export default function AppRoute() {
   const { userTypes, loading: mappingLoading } = useKeysLabels();
 
@@ -198,6 +200,7 @@ export default function AppRoute() {
               { path: "/register", element: <Register /> },
               { path: "/index", element: <IndexPage /> },
               { path: "/reset-password", element: <ResetPassword /> },
+              { path: "/data-privacy", element: <DataPrivacy /> },
 
               // ── All roles ────────────────────────────────────────────────────
               {

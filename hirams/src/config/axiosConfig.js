@@ -50,10 +50,12 @@ const createError = (data, status) => {
 
 /** Silently wipes state and redirects to login — no confirmation prompt,
  *  since this fires automatically on an expired/invalid session, not on
- *  a user-initiated sign-out (that's what useLogout is for). */
+ *  a user-initiated sign-out (that's what useLogout is for). The
+ *  `?reason=expired` flag is what lets the login form say WHY the user is
+ *  staring at it again instead of just showing a blank form. */
 const handleSessionExpired = async () => {
   await clearClientState();
-  window.location.href = BASE_PATH;
+  window.location.href = `${BASE_PATH}?reason=expired`;
 };
 
 // ── Response Interceptor → Handle Errors & Session ────

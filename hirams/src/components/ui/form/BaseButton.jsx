@@ -100,6 +100,9 @@ const BaseButton = ({
   actionColor = "default",
   variant = "contained",
   size = "medium",
+  // Native <button> type — pass "submit" when the button lives inside a form
+  // (the auth pages submit that way) and "button" to keep it inert.
+  type,
   sx = {},
 }) => {
   // ✅ Standard wiring — PROMPT 1 pattern
@@ -122,6 +125,7 @@ const BaseButton = ({
 
   const buttonContent = (
     <Button
+      type={type}
       onClick={onClick}
       disabled={disabled}
       variant={isIconOnly ? "text" : variant}

@@ -21,6 +21,11 @@ const uiMessages = {
     successInput: "Redirecting...",
     failedAttempt: "Login failed. Account does not exist or inactive.",
     invalidPassword: "Password is incorrect.",
+    // One message for a wrong username AND a wrong password. Saying which of
+    // the two was wrong tells an attacker that the username exists.
+    invalidCredentials: "Incorrect username or password.",
+    // Shown on the login form when the interceptor bounced an expired session.
+    sessionExpired: "Your session has expired. Please sign in again.",
     //change password
     requiredPassword: "Password is required.",
     failedVerification: "Current password is required.",

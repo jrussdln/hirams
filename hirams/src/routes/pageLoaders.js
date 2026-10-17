@@ -18,6 +18,8 @@ const pageLoaders = {
   "/register": () => import("../pages/auth/register"),
   "/reset-password": () => import("../pages/auth/reset-password"),
   "/help": () => import("../pages/utility-pages/Help.jsx"),
+  // Opened from the login consent banner in its own tab — public, no login.
+  "/data-privacy": () => import("../pages/utility-pages/DataPrivacy.jsx"),
 
   // ── All roles ─────────────────────────────────────────────────────────
   "/dashboard": () => import("../pages/shared/overview/Dashboard.jsx"),

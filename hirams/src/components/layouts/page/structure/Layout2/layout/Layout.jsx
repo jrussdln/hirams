@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
 import Sidebar from "./Sidebar";
 import PageChunkErrorBoundary from "../../../../../ui/error-boundary/PageChunkErrorBoundary";
+import CookieNotice from "../../../../../ui/auth/CookieNotice";
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
 
 const useColors = (c) => ({
@@ -51,6 +52,10 @@ function Layout() {
           </main>
         </div>
       </div>
+
+      {/* Post-login cookie bar — fixed to the viewport bottom, so it sits
+          outside the flex shell; unmounts itself once accepted. */}
+      <CookieNotice />
     </>
   );
 }

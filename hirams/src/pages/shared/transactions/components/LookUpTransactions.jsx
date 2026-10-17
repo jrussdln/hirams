@@ -24,12 +24,54 @@ const useColors = (c) => ({
   hoverBg: c.slate.hover,
   chipBg: c.slate.mutedBg,
   bandBg: c.slate.outerBgSolid,
+  amber: { bg: c.amber.bg, text: c.amber.text },
 });
 
 const includesQuery = (value, q) =>
   String(value ?? "")
     .toLowerCase()
     .includes(q);
+
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Wrap every case-insensitive occurrence of the lookup query in <mark> so the
+ * user can see which part of a row actually matched. The query is a plain
+ * substring (see includesQuery), so partial words highlight too. Fields that
+ * didn't match — a row qualifies on any one field, not all of them — are
+ * returned untouched.
+ */
+const Highlight = ({ text, query, colors }) => {
+  const value = String(text ?? "");
+  const q = String(query ?? "").trim();
+  if (!q) return value;
+
+  const parts = value.split(new RegExp(`(${escapeRegExp(q)})`, "ig"));
+  if (parts.length === 1) return value;
+
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.toLowerCase() === q.toLowerCase() ? (
+          <Box
+            key={i}
+            component="mark"
+            sx={{
+              bgcolor: colors.amber.bg,
+              color: colors.amber.text,
+              borderRadius: "2px",
+              px: "1px",
+            }}
+          >
+            {part}
+          </Box>
+        ) : (
+          <React.Fragment key={i}>{part}</React.Fragment>
+        ),
+      )}
+    </>
+  );
+};
 
 const LookUpTransactions = ({ query = "", searchBy = "Default", onSelect }) => {
   const theme = useTheme();
@@ -211,7 +253,11 @@ const LookUpTransactions = ({ query = "", searchBy = "Default", onSelect }) => {
               color: colors.textPrimary,
             }}
           >
-            {row.transactionName || "--"}
+            <Highlight
+              text={row.transactionName || "--"}
+              query={q}
+              colors={colors}
+            />
           </Typography>
           <Typography
             noWrap
@@ -221,9 +267,36 @@ const LookUpTransactions = ({ query = "", searchBy = "Default", onSelect }) => {
               component="span"
               sx={{ color: colors.blueText, fontWeight: 600 }}
             >
-              {row.transactionId || "--"}
+              <Highlight
+                text={row.transactionId || "--"}
+                query={q}
+                colors={colors}
+              />
             </Box>
-            {meta.length > 0 && ` · ${meta.join(" · ")}`}
+            {meta.length > 0 && (
+              <>
+                {" · "}
+                {meta.map((name, i) => (
+                  <React.Fragment key={i}>
+                    {i > 0 && " · "}
+                    <Highlight text={name} query={q} colors={colors} />
+                  </React.Fragment>
+                ))}
+              </>
+            )}
+          </Typography>
+          <Typography
+            noWrap
+            sx={{ fontSize: "11px", color: colors.textDisabled, mt: 0.25 }}
+          >
+            Created by:{" "}
+            <Highlight
+              text={row.createdBy || "--"}
+              query={q}
+              colors={colors}
+            />{" "}
+            - Assigned AO:{" "}
+            <Highlight text={row.aoName || "--"} query={q} colors={colors} />
           </Typography>
         </Box>
 
@@ -309,7 +382,7 @@ const LookUpTransactions = ({ query = "", searchBy = "Default", onSelect }) => {
                 whiteSpace: "nowrap",
               }}
             >
-              {row.status || "—"}
+              <Highlight text={row.status || "—"} query={q} colors={colors} />
             </Box>
           </Box>
         </Box>
@@ -382,6 +455,11 @@ const LookUpTransactions = ({ query = "", searchBy = "Default", onSelect }) => {
                 variant="text"
                 width={`${28 + ((i * 7) % 20)}%`}
                 height={16}
+              />
+              <Skeleton
+                variant="text"
+                width={`${34 + ((i * 11) % 22)}%`}
+                height={14}
               />
             </Box>
             <Box

@@ -8,8 +8,12 @@ use App\Models\ItemPricings;
 use App\Models\PricingSet;
 use App\Models\TransactionItems;
 use App\Services\CrudService;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
+// Support\Collection, not Eloquent's: the pricing_set_id branch of index()
+// maps rows into plain arrays, and Eloquent\Collection::map() downcasts the
+// result to a base collection whenever an item is not a Model — which the
+// declared return type then rejected with a TypeError.
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**

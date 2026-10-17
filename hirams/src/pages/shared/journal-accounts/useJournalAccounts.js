@@ -1,8 +1,12 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import JournalAccountAPI from "../../../api/endpoints/journal-account.api.js";
 import JevEntriesAPI from "../../../api/endpoints/jev-entries.api.js";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 import { withSpinner } from "../../../utils/helpers/swal.jsx";
+
+// The sidebar item's route — the re-click signal below only answers for it.
+const JOURNAL_ACCOUNT_ROUTE = "/journal-account";
+
 // ── Main Hook ─────────────────────────────────────────────────────────────
 export default function useJournalAccounts() {
   // Table / Search State
@@ -291,11 +295,28 @@ export default function useJournalAccounts() {
   };
 
   // Back / close → the next report starts from a clean, unfiltered window.
-  const closeReport = () => {
+  const closeReport = useCallback(() => {
     setReportOpen(false);
     setReportTarget(null);
     setReportDateRange({ from: null, to: null, quick: null });
-  };
+  }, []);
+
+  // ── Sidebar → "Journal Accounts" clicked while already on this page ────
+  // The report panel is sub-view state: the sidebar's Link points at the
+  // route we are already standing on, so the URL never changes and the
+  // panel would otherwise stay up. SidebarItem announces that re-click
+  // (window event "nav_item_reselect"), and we drop every sub-view back to
+  // the default list — the report and its date filter included. Leaving
+  // the page unmounts it anyway, so this only ever fires for the re-click.
+  useEffect(() => {
+    const onReselect = (e) => {
+      if (e?.detail?.to !== JOURNAL_ACCOUNT_ROUTE) return;
+      setReportFilterOpen(false);
+      closeReport();
+    };
+    window.addEventListener("nav_item_reselect", onReselect);
+    return () => window.removeEventListener("nav_item_reselect", onReselect);
+  }, [closeReport]);
 
   return {
     // State

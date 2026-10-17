@@ -121,15 +121,29 @@ function TransferAccountModal({ open, onClose, account = null, onMove }) {
     };
   }, [open, accountId, currentParentId]);
 
-  // "… under Cash on Hand" — where each destination sits right now.
-  // Its own parent can only be an account OUTSIDE this subtree (a parent
-  // of X is never a descendant of X), so every name is in this list.
-  const parentNameOf = useMemo(() => {
-    const map = {};
-    candidates.forEach((a) => {
-      map[String(rowId(a))] = rowName(a);
-    });
-    return map;
+  // Ancestor chain of each destination, JEV-entry style: "Fund / Cash /".
+  // The account's own name is left out — it is already the row's primary
+  // text — so the line reads as "sits under: …". The list is flat
+  // (nParentAccountId only), but a candidate's parent can never be a
+  // descendant of the account being moved, so every ancestor name is in
+  // this list — the walk always reaches the top.
+  const chainPathOf = useMemo(() => {
+    const byId = new Map(candidates.map((a) => [String(rowId(a)), a]));
+    const build = (account) => {
+      const parts = [];
+      let cur = account?.nParentAccountId
+        ? byId.get(String(account.nParentAccountId))
+        : null;
+      let guard = 0;
+      while (cur && guard < 15) {
+        parts.unshift(rowName(cur));
+        const pid = cur?.nParentAccountId;
+        cur = pid ? byId.get(String(pid)) : null;
+        guard++;
+      }
+      return parts.length ? `${parts.join(" / ")} /` : "";
+    };
+    return build;
   }, [candidates]);
 
   const filtered = useMemo(() => {
@@ -349,10 +363,9 @@ function TransferAccountModal({ open, onClose, account = null, onMove }) {
               </Typography>
             </Box>
           ) : (
-            <List dense disablePadding sx={{ maxHeight: 300, overflowY: "auto" }}>
+            <List dense disablePadding sx={{ maxHeight: "none", overflowY: "visible" }}>
               {filtered.map((a, idx) => {
                 const id = rowId(a);
-                const parentId = a?.nParentAccountId;
                 const checked = String(selectedId) === String(id);
                 return (
                   <React.Fragment key={id}>
@@ -361,7 +374,8 @@ function TransferAccountModal({ open, onClose, account = null, onMove }) {
                         onClick={() => setSelectedId(id)}
                         selected={checked}
                         sx={{
-                          px: 1.25,
+                          pl: 2.25,
+                          pr: 1.25,
                           py: 0.75,
                           "&.Mui-selected": { bgcolor: colors.blueBg },
                           "&:hover": { bgcolor: colors.hoverBg },
@@ -383,11 +397,7 @@ function TransferAccountModal({ open, onClose, account = null, onMove }) {
                         </ListItemIcon>
                         <ListItemText
                           primary={rowName(a)}
-                          secondary={
-                            parentId
-                              ? `Under ${parentNameOf[String(parentId)] ?? "another account"}`
-                              : "Top level"
-                          }
+                          secondary={chainPathOf(a)}
                           primaryTypographyProps={{
                             fontSize: "0.78rem",
                             fontWeight: 600,

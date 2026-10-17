@@ -58,7 +58,7 @@ function AccountReportiFilterModal({ open, onClose, value = null, onApply }) {
     <ModalContainer
       open={open}
       handleClose={onClose}
-      title="Account Report Filter"
+      title="Journal Entries Filter"
       subTitle="Choose the date range"
       onSave={handleApply}
       saveLabel="Apply"

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Box, Typography, useTheme } from "@mui/material";
 import {
   AccountBalanceOutlined,
+  DriveFileMoveOutlined,
   EventOutlined,
   ExpandLess,
   ExpandMore,
@@ -13,6 +14,7 @@ import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import { toCents } from "../../../../utils/helpers/money.js";
 import CustomTable from "../../../../components/ui/form/Table.jsx";
 import JevEntriesViewModal from "../../jev/modal/JevEntriesViewModal.jsx";
+import TransferEntryModal from "../modal/TransferEntryModal.jsx";
 
 const useColors = (c) => ({
   border: c.slate.border,
@@ -133,6 +135,9 @@ const EntryBranch = ({
   nameById,
   sx,
   onOpenJev,
+  // (row) => void — row carries nJournalAccountId; opens the transfer
+  // modal to re-home that entry's journal account.
+  onTransferEntry,
 }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -166,9 +171,17 @@ const EntryBranch = ({
 
       return {
         id: e.nJEVEntryId ?? `entry-${i}`,
+        // Kept under its own name too — TransferEntryModal reads
+        // entry.nJEVEntryId for the update call.
+        nJEVEntryId: e.nJEVEntryId ?? null,
         date: String(e?.jev?.dtOccur ?? ""),
         jevNo: e?.jev?.strJEVNumber ?? "",
         nJEVId: e.nJEVId ?? null,
+        // The journal account this entry posts to — what the row's Transfer
+        // button re-assigns. dAmount travels with it so the update call
+        // carries the exact same signed amount.
+        nJournalAccountId: e.nJournalAccountId ?? null,
+        dAmount: amt,
         // Raw JEV record (number / date / type / status) — what the JEV No.
         // click hands to the modal.
         jevRef: e?.jev ?? null,
@@ -381,8 +394,50 @@ const EntryBranch = ({
           </Box>
         ),
       },
+      // Action column — Transfer re-homes the entry's journal account.
+      {
+        key: "action",
+        label: "Action",
+        xs: 0.9,
+        align: "center",
+        render: (_, row) => (
+          <Box
+            component="button"
+            type="button"
+            onClick={() => onTransferEntry?.(row)}
+            title="Transfer this entry's journal account"
+            aria-label="Transfer this entry's journal account"
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 0.35,
+              px: 0.7,
+              py: 0.3,
+              borderRadius: "6px",
+              border: `1px solid ${colors.border}`,
+              background: "transparent",
+              color: colors.gray.sec,
+              fontFamily: "inherit",
+              fontSize: "0.62rem",
+              fontWeight: 600,
+              lineHeight: 1.2,
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+              "&:hover": {
+                background: colors.hoverBg,
+                borderColor: colors.blue.border,
+                color: colors.blue.text,
+              },
+            }}
+          >
+            <DriveFileMoveOutlined sx={{ fontSize: "0.8rem" }} />
+            Transfer
+          </Box>
+        ),
+      },
     ];
-  }, [colors, onOpenJev]);
+  }, [colors, onOpenJev, onTransferEntry]);
 
   // Keep the page valid when the entry list shrinks (date range / filters)
   const pageCount =
@@ -442,6 +497,17 @@ function AccountReportPanel({
   // is currently folded away.
   const [collapsedIds, setCollapsedIds] = useState(() => new Set());
 
+  // The JEV entry line waiting to be re-assigned by TransferEntryModal
+  // (null = closed). Set by an entry row's Transfer button; the modal picks
+  // the destination account and updates ONLY that entry.
+  const [transferEntry, setTransferEntry] = useState(null);
+
+  // Entry row's Transfer → open the modal for THAT entry line.
+  const handleTransferEntry = (row) => {
+    if (!row?.nJEVEntryId) return;
+    setTransferEntry(row);
+  };
+
   const toggleRow = (key) =>
     setCollapsedIds((prev) => {
       const next = new Set(prev);
@@ -476,15 +542,17 @@ function AccountReportPanel({
     setJevModalOpen(true);
   };
 
-  // "Collection · Sep 15, 2026" — the JEV's type from the mapping plus its day.
+  // "Disbursement Voucher" — the JEV's type label only. The modal appends
+  // the voucher number itself (headerLine in JevEntriesViewModal), so the
+  // header reads "Disbursement Voucher · DV". The day is left out of the
+  // header on purpose — every entry row carries its own Date column.
   const jevSubTitle = useMemo(() => {
     if (!jevModal) return "";
-    const typeLabel =
+    return (
       jevTypeOptions.find(
         (t) => String(t.key) === String(jevModal.cJEVLinkType),
-      )?.label ?? "";
-    const day = jevModal.dtOccur ? formatDay(jevModal.dtOccur) : "";
-    return [typeLabel, day].filter(Boolean).join(" · ");
+      )?.label ?? ""
+    );
   }, [jevModal, jevTypeOptions]);
 
   // ── Date filter — the inclusive window chosen in
@@ -558,6 +626,40 @@ function AccountReportPanel({
     });
     return groupEntries(sorted);
   }, [jevEntries, jevActiveKey, range]);
+
+  // ── Header total — unfiltered by date ──────────────────────────────────
+  // The violet banner's balance chip shows the account's ALL-TIME total:
+  // the date window only narrows the entry rows beneath it, never this
+  // number. Same active-status rule, same cents math, just no date filter.
+  const grandTotalsById = useMemo(() => {
+    const activeStatus = String(jevActiveKey ?? "").trim() || "A";
+    const byAccount = {};
+    (jevEntries || []).forEach((e) => {
+      if (String(e?.jev?.cStatus ?? "").trim() !== activeStatus) return;
+      (byAccount[e.nJournalAccountId] ||= []).push(e);
+    });
+    const cache = {};
+    const compute = (node) => {
+      if (cache[node.id]) return cache[node.id];
+      let from = 0;
+      let to = 0;
+      (byAccount[node.id] || []).forEach((e) => {
+        if (Number(e.dAmount) < 0) from += toCents(e.dAmount);
+        else to += toCents(e.dAmount);
+      });
+      (node.children || []).forEach((c) => {
+        const kid = compute(c);
+        from += kid.from;
+        to += kid.to;
+      });
+      const totals = { from, to, net: (to - from) / 100 };
+      cache[node.id] = totals;
+      return totals;
+    };
+    if (account) compute({ id: account.id, children });
+    flat.forEach((x) => compute(x.node));
+    return cache;
+  }, [account, children, flat, jevEntries, jevActiveKey]);
 
   // From / To / net per account = its own filtered entries + all descendants':
   // the same three numbers the entry table adds up (its From column, its To
@@ -779,7 +881,9 @@ function AccountReportPanel({
             </Box>
           </Box>
           {(() => {
-            const { from, to, net } = totalsById[account?.id] ?? {
+            // All-time total — the date window filters the entry rows below,
+            // never this chip.
+            const { from, to, net } = grandTotalsById[account?.id] ?? {
               from: 0,
               to: 0,
               net: 0,
@@ -792,17 +896,35 @@ function AccountReportPanel({
                 component="span"
                 title={`From ₱${fmtAmt(from / 100)} · To ₱${fmtAmt(to / 100)}`}
                 sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 0.5,
                   px: 0.8,
                   py: 0.3,
-           
-                  fontSize: "0.7rem",
-                  fontWeight: 700,
                   whiteSpace: "nowrap",
                   flexShrink: 0,
-                  color: net < 0 ? colors.red.text : colors.green.text,
                 }}
               >
-                {`${text}`}
+                <Typography
+                  sx={{
+                    fontSize: "0.58rem",
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.4px",
+                    color: colors.violet.text,
+                  }}
+                >
+                  Overall Balance:
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: "0.7rem",
+                    fontWeight: 700,
+                    color: net < 0 ? colors.red.text : colors.green.text,
+                  }}
+                >
+                  {text}
+                </Typography>
               </Box>
             );
           })()}
@@ -815,6 +937,7 @@ function AccountReportPanel({
             byJev={byJev}
             nameById={nameById}
             onOpenJev={openJevModal}
+            onTransferEntry={handleTransferEntry}
             sx={{ ml: "24px", mr: 1.25, mb: 0.5 }}
           />
         )}
@@ -1207,6 +1330,7 @@ function AccountReportPanel({
                           byJev={byJev}
                           nameById={nameById}
                           onOpenJev={openJevModal}
+                          onTransferEntry={handleTransferEntry}
                           sx={{
                             // left edge stays lined up with the account icon centre
                             ml: `${10 + depth * 16 + (depth === 0 ? 13 : 11)}px`,
@@ -1231,6 +1355,17 @@ function AccountReportPanel({
         onClose={() => setJevModalOpen(false)}
         jev={jevModal}
         subTitle={jevSubTitle}
+      />
+
+      {/* ── Entry row Transfer → re-assign that entry line to another
+          journal account. Only the entry moves — the accounts and the
+          JEV itself stay put. The modal dispatches
+          "jev_entry_data_updated" on success, which the hook already
+          listens to, so the report refetches on its own. */}
+      <TransferEntryModal
+        open={!!transferEntry}
+        onClose={() => setTransferEntry(null)}
+        entry={transferEntry}
       />
     </>
   );

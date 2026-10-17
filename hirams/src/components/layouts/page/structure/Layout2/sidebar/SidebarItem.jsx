@@ -130,6 +130,23 @@ const SidebarItem = ({
     }
   };
 
+  // Re-clicking the item you are ALREADY on leaves the URL untouched, so
+  // the mounted page never hears about it and keeps whatever sub-view it
+  // was showing (Journal Accounts' report panel, …). Announce the re-click
+  // so the page can drop back to its default view. Navigation itself is
+  // left exactly as it was — only plain left clicks count, so opening the
+  // item in a new tab stays a silent navigation.
+  const handleLinkClick = (e) => {
+    onClick?.(e);
+    const plainClick =
+      e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+    if (active && to && plainClick && !e.defaultPrevented) {
+      window.dispatchEvent(
+        new CustomEvent("nav_item_reselect", { detail: { to } }),
+      );
+    }
+  };
+
   if (hasChildren) {
     const handleClick = () =>
       isCollapsed
@@ -199,7 +216,7 @@ const SidebarItem = ({
   return (
     <Link
       to={to}
-      onClick={onClick}
+      onClick={handleLinkClick}
       className={rowBase}
       style={rowStyle}
       onMouseEnter={handleMouseEnter}

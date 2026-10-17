@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthAPI from "../../../api/endpoints/auth.api.js";
 import uiMessages from "../../../utils/helpers/uiMessages";
@@ -27,13 +27,9 @@ export default function useForgotPassword() {
     setFieldErrors(errors);
   };
 
-  // Auto-clear field errors after 5s
-  useEffect(() => {
-    if (Object.keys(fieldErrors).length > 0) {
-      const timer = setTimeout(() => setFieldErrors({}), 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [fieldErrors]);
+  // Errors are NOT auto-cleared on a timer — they stay under their input
+  // until the field is edited (handleChange clears them), so they don't
+  // vanish mid-sentence while they're being read.
 
   const handleChange = (e) => {
     const { name, value } = e.target;

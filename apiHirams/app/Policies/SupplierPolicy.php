@@ -7,6 +7,12 @@ use App\Models\User;
 
 class SupplierPolicy
 {
+    // Only an active user (cStatus = A) is granted anything at all.
+    private function isActive(User $user): bool
+    {
+        return $user->cStatus === 'A';
+    }
+
     /**
      * Determine whether the user can view any suppliers.
      */
@@ -14,7 +20,8 @@ class SupplierPolicy
     {
         // Role codes: M=Management, G=General Manager, P=Procurement Officer,
         // Y=Procurement Officer TL, A=Account Officer, X=Account Officer TL, F=Finance Officer
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
     }
 
     /**
@@ -23,7 +30,8 @@ class SupplierPolicy
     public function view(User $user, Supplier $supplier): bool
     {
         // Users can view suppliers if they have appropriate role codes
-        return in_array($user->cUserType, ['admin', 'M', 'G', 'P', 'Y', 'A', 'X', 'F']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['admin', 'M', 'G', 'P', 'Y', 'A', 'X', 'F']);
     }
 
     /**
@@ -31,7 +39,8 @@ class SupplierPolicy
      */
     public function create(User $user): bool
     {
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
     }
 
     /**
@@ -39,7 +48,8 @@ class SupplierPolicy
      */
     public function update(User $user, Supplier $supplier): bool
     {
-        return in_array($user->cUserType, ['admin', 'M', 'G', 'P', 'Y', 'A', 'X', 'F']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['admin', 'M', 'G', 'P', 'Y', 'A', 'X', 'F']);
     }
 
     /**
@@ -47,7 +57,7 @@ class SupplierPolicy
      */
     public function delete(User $user, Supplier $supplier): bool
     {
-        return $user->cUserType === 'M';
+        return $this->isActive($user) && $user->cUserType === 'M';
     }
 
     /**
@@ -55,7 +65,8 @@ class SupplierPolicy
      */
     public function updateStatus(User $user, Supplier $supplier): bool
     {
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y']);
     }
 
     /**
@@ -63,7 +74,8 @@ class SupplierPolicy
      */
     public function viewBanks(User $user, Supplier $supplier): bool
     {
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
     }
 
     /**
@@ -71,7 +83,8 @@ class SupplierPolicy
      */
     public function manageBanks(User $user, Supplier $supplier): bool
     {
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y']);
     }
 
     /**
@@ -79,7 +92,8 @@ class SupplierPolicy
      */
     public function viewContacts(User $user, Supplier $supplier): bool
     {
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y', 'A', 'X', 'F']);
     }
 
     /**
@@ -87,6 +101,7 @@ class SupplierPolicy
      */
     public function manageContacts(User $user, Supplier $supplier): bool
     {
-        return in_array($user->cUserType, ['M', 'G', 'P', 'Y']);
+        return $this->isActive($user)
+            && in_array($user->cUserType, ['M', 'G', 'P', 'Y']);
     }
 }

@@ -64,7 +64,7 @@ Route::prefix('users')->group(function () {
 // ══════════════════════════════════════════════════════════════
 //  PROTECTED (auth:sanctum)
 // ══════════════════════════════════════════════════════════════
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'active'])->group(function () {
 
     // ── AUTH ────────────────────────────────────────────────
     Route::post('auth/verify-password', [AuthController::class, 'verifyPassword']);

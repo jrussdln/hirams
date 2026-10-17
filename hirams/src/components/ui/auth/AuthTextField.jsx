@@ -19,6 +19,9 @@ const AuthTextField = ({
   startIcon,
   endIcon,
   onEndIconClick,
+  // Imperative handle on the <input> itself — used to move focus to the first
+  // field that failed validation.
+  inputRef,
   ...props
 }) => {
   // ✅ Standard wiring — exact pattern from your docs
@@ -47,6 +50,7 @@ const AuthTextField = ({
         },
       }}
       InputProps={{
+        inputRef,
         startAdornment: startIcon ? (
           <InputAdornment position="start">{startIcon}</InputAdornment>
         ) : null,

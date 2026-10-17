@@ -108,6 +108,10 @@ class UserService extends CrudService
             }
         }
 
+        // Revoke tokens first: the tokens() relation keys off the model's
+        // id, so clear them while the row still exists.
+        $user->tokens()->delete();
+
         $user->delete();
 
         $this->broadcast('deleted', $user->nUserId);
@@ -129,6 +133,14 @@ class UserService extends CrudService
 
         $user->update($updateData);
         $user->refresh();
+
+        // A Sanctum token stays valid on its own, so a deactivated user would
+        // otherwise keep browsing. Revoke every token so they are logged out
+        // immediately instead of on their next request.
+        if ($status !== 'A') {
+            $user->tokens()->delete();
+        }
+
         $this->broadcast('status_changed', $user);
 
         return $user;
