@@ -76,6 +76,7 @@ function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
   const jevNo = entry?.jevNo ?? "";
 
   const [accounts, setAccounts] = useState([]);
+  const [allAccounts, setAllAccounts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -87,6 +88,7 @@ function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
     setSearch("");
     if (!open || entryId == null) {
       setAccounts([]);
+      setAllAccounts([]);
       return;
     }
 
@@ -96,6 +98,9 @@ function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
       .then((res) => {
         if (cancelled) return;
         const list = Array.isArray(res) ? res : (res?.data ?? []);
+        // Keep the full list — the chain walk needs parents that are
+        // filtered out of the destinations below.
+        setAllAccounts(list);
         // Only leaf accounts can receive an entry — an account that already
         // has linked accounts under it is a grouping node, not a posting
         // target. The list is flat, so "has links" = someone's parent.
@@ -130,6 +135,30 @@ function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
     if (!q) return accounts;
     return accounts.filter((a) => rowName(a).toLowerCase().includes(q));
   }, [accounts, search]);
+
+  // Ancestor chain of each destination, JEV-entry style: "Fund / Cash /".
+  // The account's own name is left out — it is already the row's primary
+  // text — so the line reads as "sits under: …". The walk runs over the
+  // FULL account list (parents with children are filtered out of the
+  // destinations but still needed here), so it always reaches the top.
+  const chainPathOf = useMemo(() => {
+    const byId = new Map(allAccounts.map((a) => [String(rowId(a)), a]));
+    const build = (account) => {
+      const parts = [];
+      let cur = account?.nParentAccountId
+        ? byId.get(String(account.nParentAccountId))
+        : null;
+      let guard = 0;
+      while (cur && guard < 15) {
+        parts.unshift(rowName(cur));
+        const pid = cur?.nParentAccountId;
+        cur = pid ? byId.get(String(pid)) : null;
+        guard++;
+      }
+      return parts.length ? `${parts.join(" / ")} /` : "";
+    };
+    return build;
+  }, [allAccounts]);
 
   const selected = useMemo(
     () => accounts.find((a) => String(rowId(a)) === String(selectedId)) ?? null,
@@ -322,10 +351,15 @@ function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
                         </ListItemIcon>
                         <ListItemText
                           primary={rowName(a)}
+                          secondary={chainPathOf(a)}
                           primaryTypographyProps={{
                             fontSize: "0.78rem",
                             fontWeight: 600,
                             color: colors.textPrimary,
+                          }}
+                          secondaryTypographyProps={{
+                            fontSize: "0.66rem",
+                            color: colors.textMuted,
                           }}
                         />
                       </ListItemButton>
