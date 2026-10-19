@@ -15,6 +15,13 @@ import {
   PersonAdd,
   HowToReg,
 } from "@mui/icons-material";
+import {
+  NO_NAME,
+  NO_NICKNAME,
+  NO_ADDRESS,
+  NO_TIN,
+  NO_ADDRESS_TIN,
+} from "../../../constants/tableDataFallbacks";
 
 export default function AssigneeView({
   search,
@@ -53,10 +60,66 @@ export default function AssigneeView({
 }) {
   const columns = React.useMemo(
     () => [
-      { key: "name", label: "Name", xs: 3 },
-      { key: "nickname", label: "Nickname", xs: 2 },
-      { key: "address", label: "Address", xs: 2 },
-      { key: "tin", label: "TIN", align: "center" },
+      {
+        key: "name",
+        label: "Name",
+        xs: 3,
+        render: (_, row) => {
+          const hasName = Boolean(row.name?.trim());
+          const hasNickname = Boolean(row.nickname?.trim());
+
+          return (
+            <div className="min-w-0 text-left">
+              {hasName ? (
+                <span className="block text-xs font-medium leading-tight">
+                  {row.name}
+                </span>
+              ) : (
+                <span className="block text-xs font-light italic leading-tight">
+                  {NO_NAME}
+                </span>
+              )}
+              <span className="block text-xs font-light italic leading-tight -mt-0.5">
+                {hasNickname ? row.nickname : NO_NICKNAME}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        key: "address",
+        label: "Address/TIN",
+        xs: 2,
+        render: (_, row) => {
+          const hasAddress = Boolean(row.address?.trim());
+          const hasTin = Boolean(row.tin?.trim());
+
+          if (!hasAddress && !hasTin) {
+            return (
+              <span className="block text-xs font-light italic leading-tight">
+                {NO_ADDRESS_TIN}
+              </span>
+            );
+          }
+
+          return (
+            <div className="min-w-0 text-left">
+              {hasAddress ? (
+                <span className="block text-xs font-medium leading-tight">
+                  {row.address}
+                </span>
+              ) : (
+                <span className="block text-xs font-light italic leading-tight">
+                  {NO_ADDRESS}
+                </span>
+              )}
+              <span className="block text-xs font-light italic leading-tight -mt-0.5">
+                TIN: {hasTin ? row.tin : NO_TIN}
+              </span>
+            </div>
+          );
+        },
+      },
       {
         key: "actions",
         label: "Actions",

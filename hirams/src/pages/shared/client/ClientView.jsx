@@ -17,6 +17,15 @@ import ClientAEModal from "./modal/ClientAEModal";
 import InfoClientModal from "./modal/InfoClientModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
+import {
+  NO_NAME,
+  NO_NICKNAME,
+  NO_ADDRESS,
+  NO_TIN,
+  NO_ADDRESS_TIN,
+  NO_CONTACT_PERSON,
+  NO_CONTACT_NUMBER,
+} from "../../../constants/tableDataFallbacks";
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — pulls ONLY tokens THIS component actually uses
@@ -73,12 +82,100 @@ export default function ClientView({
 
   const columns = React.useMemo(() => {
     const baseCols = [
-      { key: "name", label: "Name", xs: 2 },
-      { key: "nickname", label: "Nickname" },
-      { key: "address", label: "Address", xs: 2 },
-      { key: "tin", label: "TIN", align: "center" },
-      { key: "contactPerson", label: "Contact Person", align: "center" },
-      { key: "contactNumber", label: "Contact No.", align: "center" },
+      {
+        key: "name",
+        label: "Name",
+        xs: 2,
+        render: (_, row) => {
+          const hasName = Boolean(row.name?.trim());
+          const hasNickname = Boolean(row.nickname?.trim());
+
+          return (
+            <div className="min-w-0 text-left">
+              {hasName ? (
+                <span className="block text-xs font-medium leading-tight">
+                  {row.name}
+                </span>
+              ) : (
+                <span className="block text-xs font-light italic leading-tight">
+                  {NO_NAME}
+                </span>
+              )}
+              <span className="block text-xs font-light italic leading-tight -mt-0.5">
+                {hasNickname ? row.nickname : NO_NICKNAME}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        key: "address",
+        label: "Address/TIN",
+        xs: 2,
+        render: (_, row) => {
+          const hasAddress = Boolean(row.address?.trim());
+          const hasTin = Boolean(row.tin?.trim());
+
+          if (!hasAddress && !hasTin) {
+            return (
+              <span className="block text-xs font-light italic leading-tight">
+                {NO_ADDRESS_TIN}
+              </span>
+            );
+          }
+
+          return (
+            <div className="min-w-0 text-left">
+              {hasAddress ? (
+                <span className="block text-xs font-medium leading-tight">
+                  {row.address}
+                </span>
+              ) : (
+                <span className="block text-xs font-light italic leading-tight">
+                  {NO_ADDRESS}
+                </span>
+              )}
+              <span className="block text-xs font-light italic leading-tight -mt-0.5">
+                TIN: {hasTin ? row.tin : NO_TIN}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        key: "contactPerson",
+        label: "Contact Person",
+        align: "left",
+        render: (_, row) => {
+          const hasContactPerson = Boolean(row.contactPerson?.trim());
+          const hasContactNumber = Boolean(row.contactNumber?.trim());
+
+          if (!hasContactPerson && !hasContactNumber) {
+            return (
+              <span className="block text-xs font-light italic leading-tight">
+                {NO_CONTACT_PERSON}
+              </span>
+            );
+          }
+
+          return (
+            <div className="min-w-0 text-left">
+              {hasContactPerson ? (
+                <span className="block text-xs font-medium leading-tight">
+                  {row.contactPerson}
+                </span>
+              ) : (
+                <span className="block text-xs font-light italic leading-tight">
+                  {NO_CONTACT_PERSON}
+                </span>
+              )}
+              <span className="block text-xs font-light italic leading-tight -mt-0.5">
+                {hasContactNumber ? row.contactNumber : NO_CONTACT_NUMBER}
+              </span>
+            </div>
+          );
+        },
+      },
     ];
 
     const actionsColumn = {

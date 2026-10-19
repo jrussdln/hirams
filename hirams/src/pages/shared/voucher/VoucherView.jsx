@@ -9,6 +9,13 @@ import FormControlFilter from "../../../components/ui/form/FormControlFilter";
 import CreateVoucherModal from "./modal/CreateVoucherModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import icons from "../../../utils/style/iconFormatStyles";
+import {
+  NO_NAME,
+  NO_ADDRESS,
+  NO_TIN,
+  NO_ADDRESS_TIN,
+  NO_VOUCHER_NO,
+} from "../../../constants/tableDataFallbacks";
 
 // ── Local Color Map — only tokens used in this component ──────────────
 const useColors = (c) => ({
@@ -84,40 +91,85 @@ export default function VoucherView({
   ];
 
   const columns = [
-    { key: "strNumber", label: "HDV No.", align: "center" },
-    ...(typeFilter === "all"
-      ? [
-          {
-            key: "voucherTypeLabel",
-            label: "Type",
-            align: "center",
-            render: (_, row) => {
-              const c = row.isAssigneeType
-                ? typeBadgeColors.assignee
-                : typeBadgeColors.supplier;
-              return (
+    {
+      key: "strNumber",
+      label: "Voucher",
+      xs: 2,
+      render: (_, row) => {
+        const hasNumber = Boolean(row.strNumber?.trim());
+        const hasName = Boolean(row.displayName?.trim());
+        // With a type filter active every row is the same type, so the
+        // badge only appears on the unfiltered list.
+        const showType = typeFilter === "all";
+        const typeColor = row.isAssigneeType
+          ? typeBadgeColors.assignee
+          : typeBadgeColors.supplier;
+
+        return (
+          <div className="min-w-0 text-left">
+            <div className="flex items-center gap-1.5">
+              <span className="truncate text-[0.625rem] font-medium uppercase tracking-wide leading-tight text-gray-500 dark:text-gray-400">
+                {hasNumber ? row.strNumber : NO_VOUCHER_NO}
+              </span>
+              {showType && (
                 <span
+                  className="shrink-0 px-1 py-px text-[0.5rem] font-medium uppercase leading-none rounded-full"
                   style={{
-                    padding: "4px 8px",
-                    fontSize: "10px",
-                    fontWeight: 500,
-                    borderRadius: "9999px",
-                    backgroundColor: c.bg,
-                    color: c.text,
+                    backgroundColor: typeColor.bg,
+                    color: typeColor.text,
                     border: `1px solid ${colors.border}`,
                   }}
                 >
                   {row.voucherTypeLabel}
                 </span>
-              );
-            },
-          },
-        ]
-      : []),
-    { key: "displayName", label: "Name", align: "center" },
-    { key: "displayTIN", label: "TIN", align: "center" },
-    { key: "displayAddress", label: "Address", xs: 2 },
-    { key: "dtCreated", label: "Created", align: "center" },
+              )}
+            </div>
+            <span
+              className={`block truncate uppercase tracking-wide leading-tight -mt-0.5 ${
+                hasName ? "text-[0.8125rem] font-medium" : "text-xs font-light italic"
+              }`}
+            >
+              {hasName ? row.displayName : NO_NAME}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      key: "displayAddress",
+      label: "Address/TIN",
+      xs: 2,
+      render: (_, row) => {
+        const hasAddress = Boolean(row.displayAddress?.trim());
+        const hasTin = Boolean(row.displayTIN?.trim());
+
+        if (!hasAddress && !hasTin) {
+          return (
+            <span className="block text-xs font-light italic leading-tight">
+              {NO_ADDRESS_TIN}
+            </span>
+          );
+        }
+
+        return (
+          <div className="min-w-0 text-left">
+            {hasAddress ? (
+              <span className="block text-xs font-medium leading-tight">
+                {row.displayAddress}
+              </span>
+            ) : (
+              <span className="block text-xs font-light italic leading-tight">
+                {NO_ADDRESS}
+              </span>
+            )}
+            <span className="block text-xs font-light italic leading-tight -mt-0.5">
+              TIN: {hasTin ? row.displayTIN : NO_TIN}
+            </span>
+          </div>
+        );
+      },
+    },
+    { key: "dtCreated", label: "Created", align: "right" },
     {
       key: "actions",
       label: "Actions",

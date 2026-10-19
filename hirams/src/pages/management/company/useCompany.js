@@ -46,7 +46,9 @@ export default function useCompany() {
           tin: item.strTIN,
           address: item.strAddress,
           vat: vat?.[item.bVAT],
+          vatActive: Number(item.bVAT) === 1,
           ewt: ewt?.[item.bEWT],
+          ewtActive: Number(item.bEWT) === 1,
           email: item.strEmail,
           phone: item.strPhoneNo, // ✅ add this
           strLogo: item.strLogo,

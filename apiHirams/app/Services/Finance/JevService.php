@@ -25,6 +25,12 @@ class JevService
             'vouchers.voucher_assignees.assignee',
             'vouchers.company',
             'vouchers.voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.transactionItem.transaction.company',
+            // Received / Delivered JEVs are built from inventory batches, not
+            // vouchers, so the list reads their names from here. supplier
+            // titles a Received row, transaction.client titles a Delivered
+            // one — both hang off the batch's purchase option.
+            'inventories.purchaseOption.supplier',
+            'inventories.purchaseOption.transactionItem.transaction.client',
         ];
     }
 
@@ -141,9 +147,65 @@ class JevService
         return true;
     }
 
+    /**
+     * The JEV list shows one name under each JEV number.
+     *
+     *   • N — the JEV's own strTitle.
+     *   • R — the supplier, read off the inventory batches booked on the JEV:
+     *          each batch knows its purchase option, and that option knows
+     *          the supplier.
+     *   • D — the client, from the same batch chain via the transaction item.
+     *   • V / C — whichever party stands behind the voucher: an assignee
+     *          when the voucher has assignee rows, otherwise its supplier.
+     */
+    private function resolveDisplayTitle(Jev $jev): ?string
+    {
+        $linkType = (string) $jev->cJEVLinkType;
+
+        if ($linkType === 'N') {
+            return $jev->strTitle;
+        }
+
+        if ($linkType === 'R') {
+            $supplier = $jev->inventories
+                ->map(fn($inv) => $inv->purchaseOption?->supplier)
+                ->first(fn($s) => $s);
+
+            return $supplier?->strSupplierNickName ?: $supplier?->strSupplierName;
+        }
+
+        if ($linkType === 'D') {
+            $client = $jev->inventories
+                ->map(fn($inv) => $inv->purchaseOption?->transactionItem?->transaction?->client)
+                ->first(fn($c) => $c);
+
+            return $client?->strClientNickName ?: $client?->strClientName;
+        }
+
+        // Disbursement Voucher / Collection — the voucher's own counterparty.
+        $voucher = $jev->vouchers->first();
+
+        if (!$voucher) {
+            return null;
+        }
+
+        $assignee = $voucher->voucher_assignees->first()?->assignee;
+        if ($assignee) {
+            return $assignee->strAssigneeNickName ?: $assignee->strAssigneeName;
+        }
+
+        return $voucher->supplier?->strSupplierNickName
+            ?: $voucher->supplier?->strSupplierName;
+    }
+
     private function attachCompanyMeta(Jev $jev): Jev
     {
         $voucher = $jev->vouchers->first(); // adjust if a Jev can ever have >1 voucher
+
+        // Not a column — strTitle only means something on a No Type JEV.
+        // The list reads this so R / D rows get a name without the API
+        // pretending the JEV itself was given one.
+        $jev->strDisplayTitle = $this->resolveDisplayTitle($jev);
 
         if (!$voucher) {
             $meta = [

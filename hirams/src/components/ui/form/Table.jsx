@@ -366,6 +366,7 @@ const CustomTable = ({
                         key={rowKey}
                         sx={{
                           px: 1.5,
+                          py: 0.25,
                           lineHeight: 3,
                           bgcolor: isEven ? colors.rowSolid : colors.rowStripe, // ✅ stripe = modal colors
                           borderLeft: "none", // ✅ REMOVED BLUE LEFT BORDER
@@ -417,8 +418,18 @@ const CustomTable = ({
                                   fontWeight: 500,
                                 }}
                                 title={
+                                  // A custom render owns its own tooltip: the
+                                  // cell may hold a badge, a button or several
+                                  // lines, none of which equal row[col.key]. So
+                                  // a rendered column opts in with col.title —
+                                  // either `true` for the raw value or a
+                                  // function receiving (value, row).
                                   col.render
-                                    ? undefined
+                                    ? typeof col.title === "function"
+                                      ? col.title(row[col.key], row)
+                                      : col.title
+                                      ? row[col.key]?.toString()
+                                      : undefined
                                     : row[col.key]?.toString()
                                 }
                                 onClick={(e) => {

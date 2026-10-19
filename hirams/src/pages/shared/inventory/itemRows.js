@@ -16,11 +16,13 @@ export const mapInventoryItems = (items = []) =>
     _raw: i,
     id: i.nInventoryId,
     nInventoryId: i.nInventoryId,
+    // "·" (U+00B7 middle dot) sits on the x-height, so it reads as a centred
+    // separator between brand and model where a "|" looked like a table edge.
     strBrandModel:
       [i.purchaseOption?.strBrand, i.purchaseOption?.strModel]
         .map((v) => v?.trim())
         .filter(Boolean)
-        .join(" | ") || "—",
+        .join(" · ") || "—",
     strUOM: i.purchaseOption?.strUOM ?? "—",
     dUnitPrice: Number(i.purchaseOption?.dUnitPrice ?? 0).toLocaleString(
       "en-PH",

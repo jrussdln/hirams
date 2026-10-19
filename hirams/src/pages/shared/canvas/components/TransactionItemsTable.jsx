@@ -16,7 +16,7 @@ import DotSpinner from "../../../../components/ui/loader/DotSpinner";
 import PurchaseOptionRow from "./PurchaseOptionsRow";
 import CompareView from "./CompareView";
 import { TransactionItemsTableSkeleton } from "./Skeleton";
-import CollectionPaymentDetails from "../../purchase/components/CollectionPaymentDetails";
+import CollectionPaymentDetails from "../../collection/components/CollectionPaymentDetails";
 import MiniBaseButton from "../../../../components/ui/form/MiniBaseButton";
 import useKeysLabels from "../../../../hooks/useKeysLabels";
 import {

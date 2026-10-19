@@ -7,10 +7,20 @@ import SyncMenu from "../../../components/ui/form/SyncMenu";
 import UserAEModal from "./modal/UserAEModal";
 import InfoUserModal from "./modal/InfoUserModal";
 import DeleteVerificationModal from "../../shared/transactions/modal/DeleteVerificationModal";
-import { Add, Edit, Delete, HowToReg, PersonOff, PersonAdd } from "@mui/icons-material";
+import { Add, Edit, Delete, HowToReg, PersonOff, PersonAdd, Phone, Email } from "@mui/icons-material";
 import MediaRoute from "../../../routes/MediaRoute";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../utils/style/getThemeColors"; // ✅ FIXED PATH
+import {
+  NO_NAME,
+  NO_NICKNAME,
+  NO_USERNAME,
+  NO_SEX,
+  NO_USER_TYPE,
+  NO_USER_STATUS,
+  NO_PHONE,
+  NO_EMAIL,
+} from "../../../constants/tableDataFallbacks";
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — only tokens this component actually uses
@@ -18,6 +28,7 @@ import getThemeColors from "../../../utils/style/getThemeColors"; // ✅ FIXED P
 const useColors = (c) => ({
   border: c.slate.border,
   textPrimary: c.gray.textPrimary,
+  textSecondary: c.gray.textSecondary,
 });
 
 export default function UserView({ search, setSearch, page, rowsPerPage, openUserModal, openInfoModal, openDeleteModal, selectedUser, entityToDelete, loading, selectedStatusCode, activeStatusKey, inactiveStatusKey, forApprovalStatusKey, activeStatusLabel, inactiveStatusLabel, forApprovalStatusLabel, maleKey, femaleKey, userTypes, statuses, filteredUsers, getStatusDisplay, fetchUsers, handleAddClick, handleEditClick, handleInfoClick, handleDeleteClick, handleCloseUserModal, handleCloseInfoModal, handleCloseDeleteModal, handlePageChange, handleRowsPerPageChange, handleRowClick, handleApprove, handleSetActive, handleSetInactive, handleRedirect }) {
@@ -30,50 +41,128 @@ export default function UserView({ search, setSearch, page, rowsPerPage, openUse
     () => [
       {
         key: "fullName",
-        label: "Name",
+        label: "User",
         xs: 3,
-        render: (_, row) => (
-          <div className="flex items-center gap-2">
-            <img
-              src={MediaRoute.resolveProfileImage(row)}
-              alt={row.fullName}
-              onError={(e) => { e.target.src = MediaRoute.resolveProfileImage(null); }}
-              className="w-7 h-7 rounded-full object-cover border flex-shrink-0"
-              style={{ borderColor: colors.border }}
-            />
-            <span
-              className="text-sm font-medium"
-              style={{ color: colors.textPrimary }}
-            >
-              {row.fullName}
-            </span>
-          </div>
-        ),
-      },
-      { key: "nickname", label: "Nickname", align: "center" },
-      { key: "type", label: "User Type", align: "center", xs: 2 },
-      { key: "phone", label: "Phone", align: "center", xs: 1, render: (_, row) => {
-        return (
-          <span className="px-2 py-1 text-[10px] font-medium rounded-full">
-            {row.phoneNumber || "—"}
-          </span>
-        );
-      } },
-      {
-        key: "status",
-        label: "Status",
-        align: "center",
-        xs: 1,
         render: (_, row) => {
-          const { text, className } = getStatusDisplay(row);
+          const hasName = Boolean(row.fullName?.trim());
+          const hasNickname = Boolean(row.nickname?.trim());
+          const hasUsername = Boolean(row.username?.trim());
+
+          let secondary = "";
+          if (hasNickname && hasUsername)
+            secondary = `${row.nickname} (@${row.username})`;
+          else if (hasNickname) secondary = row.nickname;
+          else if (hasUsername) secondary = `(@${row.username})`;
+          else secondary = `${NO_NICKNAME} · ${NO_USERNAME}`;
+
           return (
-            <span
-              className={`px-2 py-1 text-[10px] font-medium rounded-full ${className}`}
-            >
-              {text}
-            </span>
+            <div className="flex items-center gap-2">
+              <img
+                src={MediaRoute.resolveProfileImage(row)}
+                alt={row.fullName}
+                onError={(e) => { e.target.src = MediaRoute.resolveProfileImage(null); }}
+                className="w-7 h-7 rounded-full object-cover border flex-shrink-0"
+                style={{ borderColor: colors.border }}
+              />
+              <div className="min-w-0">
+                {hasName ? (
+                  <span
+                    className="block text-sm font-medium leading-tight"
+                    style={{ color: colors.textPrimary }}
+                  >
+                    {row.fullName}
+                  </span>
+                ) : (
+                  <span
+                    className="block text-xs font-light italic leading-tight"
+                    style={{ color: colors.textSecondary }}
+                  >
+                    {NO_NAME}
+                  </span>
+                )}
+                <span
+                  className="block text-xs font-light italic leading-tight -mt-0.5"
+                  style={{ color: colors.textSecondary }}
+                >
+                  {secondary}
+                </span>
+              </div>
+            </div>
           );
         },
+      },
+      {
+        key: "sex",
+        label: "Sex",
+        align: "center",
+        xs: 1,
+        render: (_, row) =>
+          row.sex?.trim() ? (
+            row.sex
+          ) : (
+            <span className="text-xs font-light italic">{NO_SEX}</span>
+          ),
+      },
+      {
+        key: "type",
+        label: "Type/Status",
+        align: "right",
+        xs: 2,
+        render: (_, row) => {
+          const { text } = getStatusDisplay(row);
+          return (
+            <div className="min-w-0 text-right">
+              {row.type?.trim() ? (
+                <span
+                  className="block text-xs font-medium leading-tight"
+                  style={{ color: colors.textPrimary }}
+                >
+                  {row.type}
+                </span>
+              ) : (
+                <span
+                  className="block text-xs font-light italic leading-tight"
+                  style={{ color: colors.textSecondary }}
+                >
+                  {NO_USER_TYPE}
+                </span>
+              )}
+              <span
+                className="block text-xs font-light italic leading-tight -mt-0.5"
+                style={{ color: colors.textSecondary }}
+              >
+                {text || NO_USER_STATUS}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        key: "phone",
+        label: "Contact",
+        xs: 2,
+        render: (_, row) => (
+          <div className="min-w-0 text-left">
+            <div className="flex items-center gap-1.5">
+              <Phone sx={{ fontSize: 12, color: colors.textPrimary }} />
+              <span
+                className="text-xs font-light italic leading-tight"
+                style={{ color: colors.textPrimary }}
+              >
+                {row.phoneNumber?.trim() ? row.phoneNumber : NO_PHONE}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 -mt-0.5">
+              <Email sx={{ fontSize: 12, color: colors.textSecondary }} />
+              <span
+                className="text-xs font-light italic leading-tight"
+                style={{ color: colors.textSecondary }}
+              >
+                {row.email?.trim() ? row.email : NO_EMAIL}
+              </span>
+            </div>
+          </div>
+        ),
       },
       {
         key: "actions",

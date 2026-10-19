@@ -19,6 +19,7 @@ function formatUser(user, { userTypes, defaultUserType, sex, statuses }) {
     email: user.strEmail,
     phoneNumber: user.strPhoneNo || "",
     username: user.strUserName,
+    password: user.strPassword,
     status: user.cStatus,
     statusText: statuses[user.cStatus] || user.cStatus,
     fullName: `${user.strFName} ${user.strMName || ""} ${user.strLName}`.trim(),

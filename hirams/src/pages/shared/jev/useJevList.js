@@ -178,6 +178,9 @@ export default function useJevList() {
       [
         j.strJEVNumber,
         j.strTitle,
+        // Derived for Received / Delivered, so their supplier or client
+        // nickname is searchable even though no strTitle is stored.
+        j.strDisplayTitle,
         j.strPayeeName,
         j.strCompanyName,
         j.strVoucherNumber,
@@ -208,9 +211,12 @@ export default function useJevList() {
         return {
           _raw: j,
           id: j.nJEVId,
-          strJEVNumber: j.strJEVNumber ?? "—",
-          // Only a No Type JEV has one; the table prints it on that list alone.
-          strTitle: j.strTitle ?? "",
+          // Empty string (not "—") so the table can detect a missing
+          // number and render the NO_JEV_NO fallback.
+          strJEVNumber: j.strJEVNumber ?? "",
+          // Only a No Type JEV owns a strTitle; the API also derives one for
+          // Received (supplier nickname) and Delivered (client) rows.
+          strTitle: j.strDisplayTitle ?? "",
           total,
           totalLabel: fmtPHP(total),
           statusLabel: jev_status?.[j.cStatus] ?? j.cStatus ?? "—",

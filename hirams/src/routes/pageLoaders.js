@@ -33,6 +33,7 @@ const pageLoaders = {
   "/add-bulk-item": () => import("../pages/shared/canvas/components/AddBulkItem"),
   "/transaction-archive": () => import("../pages/shared/archive"),
   "/transaction-for-purchase": () => import("../pages/shared/purchase"),
+  "/transaction-for-collection": () => import("../pages/shared/collection"),
   "/voucher": () => import("../pages/shared/voucher"),
   "/assignee": () => import("../pages/shared/assignee"),
   "/inventory": () => import("../pages/shared/inventory"),

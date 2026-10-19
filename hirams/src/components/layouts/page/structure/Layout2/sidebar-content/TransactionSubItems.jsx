@@ -10,6 +10,10 @@ import { getItem } from "../../../../../../utils/storage/localStorage.js";
 
 function getRelevantDate(t) {
   const code = Number(t.current_status ?? t.latest_history?.nStatus ?? 0);
+  // For Purchase/Delivery (340) the delivery date is what matters, not the
+  // AO due date. The sidebar's count color uses the same rule the table
+  // should follow, so keep the two in sync.
+  if (code === 340) return t.dtDelivery;
   return code >= 200 && code <= 245 ? t.dtAODueDate : t.dtDocSubmission;
 }
 
@@ -83,7 +87,8 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
     location.pathname === "/transaction-canvas" ||
     location.pathname === "/transaction-pricing-set" ||
     location.pathname === "/transaction-pricing" ||
-    location.pathname === "/transaction-for-purchase";
+    location.pathname === "/transaction-for-purchase" ||
+    location.pathname === "/transaction-for-collection";
 
   const archiveCodes = useMemo(
     () => Object.keys(archiveStatus || {}),

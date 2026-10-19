@@ -10,9 +10,9 @@ function formatAssignee(a) {
   return {
     id: a.nAssigneeId,
     name: a.strAssigneeName,
-    nickname: a.strAssigneeNickName || "—",
-    address: a.strAddress || "—",
-    tin: a.strTIN || "—",
+    nickname: a.strAssigneeNickName || "",
+    address: a.strAddress || "",
+    tin: a.strTIN || "",
     statusCode: a.cStatus,
     dtCreatedAt: a.dtCreatedAt,
     dtUpdatedAt: a.dtUpdatedAt,

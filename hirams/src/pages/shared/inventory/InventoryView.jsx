@@ -25,6 +25,8 @@ const useColors = (c) => ({
   stripe: c.slate.itemHeaderBgSolid,
   textPrimary: c.gray.textPrimary,
   textSecondary: c.gray.textSecondary,
+  // inline company badge on the Item column
+  blue: { bg: c.blue.bg, text: c.blue.text },
   // colour only — geometry stays at the usage site
   shadowColor: c.shadow.hairline,
   rounded: "0.5rem",
@@ -67,6 +69,7 @@ export default function InventoryView({
   handleGroupListPageChange,
   selectedStatusCode,
   inventoryStatus,
+  inventoryReceivedKey,
   inventoryDeliveredKey,
   inventoryPendingKey,
   inventoryCancelledKey,
@@ -99,6 +102,16 @@ export default function InventoryView({
     Boolean(inventoryPendingKey) &&
     String(selectedStatusCode) === String(inventoryPendingKey);
   const showGroupList = Boolean(groupView) && !showDetails;
+
+  // Stock awaiting pickup (For Delivery) is still the supplier's; once it has
+  // gone out (Delivered) the only party left on it is the client. Each tab
+  // shows just that one counterparty.
+  const isForDeliveryTab =
+    Boolean(inventoryReceivedKey) &&
+    String(selectedStatusCode) === String(inventoryReceivedKey);
+  const isDeliveredTab =
+    Boolean(inventoryDeliveredKey) &&
+    String(selectedStatusCode) === String(inventoryDeliveredKey);
 
   // Page-layout subtitle: the status tab while browsing the list,
   // "Status / Received / Supplier" inside a group's item list, and
@@ -178,7 +191,46 @@ export default function InventoryView({
 
   const columns = useMemo(
     () => [
-      { key: "strBrandModel", label: "Brand | Model" },
+      // The counterparty a batch belongs to is only ever one on these tabs —
+      // supplier on the way in, client on the way out — so it rides along with
+      // the item instead of taking a column of its own. The company badge
+      // only appears under "All Companies"; picking one filters the list down
+      // to that company and would just repeat the filter back at you.
+      ...(isPendingStatus
+        ? [{ key: "strBrandModel", label: "Brand / Model", xs: 2 }]
+        : [
+            {
+              key: "strBrandModel",
+              label: "Item",
+              xs: 3,
+              render: (val, row) => (
+                <div className="min-w-0 text-left">
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate uppercase tracking-wide text-[0.625rem] font-medium leading-tight text-gray-500 dark:text-gray-400">
+                      {isDeliveredTab
+                        ? row.strClientNickName
+                        : row.strSupplierNickName}
+                    </span>
+                    {companyFilter === "all" && (
+                      <span
+                        className="shrink-0 px-1 py-px text-[0.5rem] font-medium uppercase leading-none rounded-full"
+                        style={{
+                          backgroundColor: colors.blue.bg,
+                          color: colors.blue.text,
+                          border: `1px solid ${colors.border}`,
+                        }}
+                      >
+                        {row.strCompanyNickName}
+                      </span>
+                    )}
+                  </div>
+                  <span className="block truncate uppercase tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
+                    {val}
+                  </span>
+                </div>
+              ),
+            },
+          ]),
       {
         key: "nQuantity",
         label: "Quantity",
@@ -191,9 +243,24 @@ export default function InventoryView({
         align: "right",
         render: (val) => `₱${val}`,
       },
-      { key: "strSupplierNickName", label: "Supplier", align: "center" },
-      { key: "strClientNickName", label: "Client", align: "center" },
-      { key: "dtLog", label: "Date", align: "center", xs: 1.5 },
+      // Pending JEV groups batches by whichever counterparty owns them —
+      // received (positive qty) by supplier, delivered (negative) by client —
+      // so that tab gets one column showing the nickname it grouped on.
+      ...(isPendingStatus
+        ? [
+            {
+              key: "counterparty",
+              label: "Supplier / Client",
+              align: "center",
+              xs: 2,
+              render: (_, row) =>
+                Number(row.nQuantity) > 0
+                  ? row.strSupplierNickName
+                  : row.strClientNickName,
+            },
+          ]
+        : []),
+      { key: "dtLog", label: "Occurred", align: "right", xs: 1.5 },
       {
         key: "actions",
         label: "Actions",
@@ -214,7 +281,14 @@ export default function InventoryView({
         ),
       },
     ],
-    [handleRowClick],
+    [
+      handleRowClick,
+      colors,
+      companyFilter,
+      isPendingStatus,
+      isForDeliveryTab,
+      isDeliveredTab,
+    ],
   );
 
   const companyOptions = useMemo(

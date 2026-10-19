@@ -28,6 +28,17 @@ class Jev extends Model
     {
         return $this->hasMany(Voucher::class, 'nJEVId', 'nJEVId');
     }
+    /**
+     * The inventory batches booked on this JEV. Received / Delivered JEVs
+     * are built from these (InventoryMovementService stamps nJEVId onto the
+     * batches) rather than from a voucher, so this — not vouchers — is what
+     * leads back to the purchase option, and through it the supplier and
+     * the client the list names the row after.
+     */
+    public function inventories(): HasMany
+    {
+        return $this->hasMany(Inventory::class, 'nJEVId', 'nJEVId');
+    }
     public static function generateNumber(): string
     {
         // call inside DB::transaction so the lock works

@@ -49,6 +49,7 @@ const Inventory = lazyPage("/inventory"); // DONE - NV
 const Assignee = lazyPage("/assignee"); // DONE - NV
 const TransactionArchive = lazyPage("/transaction-archive"); //DONE - NV
 const TransactionForPurchase = lazyPage("/transaction-for-purchase"); //DONE - NV
+const TransactionForCollection = lazyPage("/transaction-for-collection"); //DONE - NV
 const TransactionVoucher = lazyPage("/voucher"); //DONE - NV
 const VoucherUpdateView = lazyPage("/voucher-update");
 const JournalAccount = lazyPage("/journal-account"); //DONE - NV
@@ -242,6 +243,10 @@ export default function AppRoute() {
                       {
                         path: "/transaction-for-purchase",
                         element: <TransactionForPurchase />,
+                      },
+                      {
+                        path: "/transaction-for-collection",
+                        element: <TransactionForCollection />,
                       },
                       { path: "/voucher", element: <TransactionVoucher /> },
                       { path: "/assignee", element: <Assignee /> },

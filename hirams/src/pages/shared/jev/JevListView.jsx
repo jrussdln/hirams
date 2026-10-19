@@ -14,6 +14,7 @@ import { NO_TYPE_CODE } from "./useJevList";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 import { JEV_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
 import icons from "../../../utils/style/iconFormatStyles";
+import { NO_JEV_NO } from "../../../constants/tableDataFallbacks";
 
 // Named `makeColors`, not `useColors`, so calling it inside useMemo
 // doesn't trip react-hooks/rules-of-hooks.
@@ -25,11 +26,14 @@ const makeColors = (c) => ({
   red: { bg: c.red.bg, text: c.red.text },
 });
 
-// Same pill shape VoucherView uses for its Type / paid badges.
-const badgeStyle = (c, colors) => ({
-  padding: "4px 8px",
-  fontSize: "10px",
+// Inline status pill — sits beside the JEV number, so it is scaled down to
+// fit. Same shape VoucherView uses for its inline Type badge.
+const inlineBadgeStyle = (c, colors) => ({
+  padding: "1px 4px",
+  fontSize: "8px",
   fontWeight: 500,
+  lineHeight: 1.3,
+  textTransform: "uppercase",
   borderRadius: "9999px",
   backgroundColor: c.bg,
   color: c.text,
@@ -117,40 +121,56 @@ export default function JevListView({
   const canManage = Boolean(isManagement || isFinanceOfficer);
   const isNoTypeList = String(selectedTypeCode) === NO_TYPE_CODE;
   const showAddJev = canManage && isNoTypeList;
+  const isAllStatus = statusFilter === "all";
 
   const columns = useMemo(
     () => [
-      { key: "strJEVNumber", label: "JEV No.", align: "center" },
-      // The title is a No Type JEV's only name — no voucher, purchase or
-      // inventory stands behind it — so it is printed on that list alone.
-      ...(isNoTypeList
-        ? [
-            {
-              key: "strTitle",
-              label: "Title",
-              render: (val) => val || "—",
-            },
-          ]
-        : []),
+      // The name under the number: a No Type JEV's own title, or the
+      // supplier / client the API names for Received and Delivered rows.
+      // DV and Collection have no single counterparty, so those rows print
+      // the number alone.
+      {
+        key: "strJEVNumber",
+        label: "JEV",
+        xs: 2,
+        render: (_, row) => {
+          const hasNumber = Boolean(row.strJEVNumber?.trim());
+          const hasTitle = Boolean(row.strTitle?.trim());
+          const statusColor = statusColors[row.cStatus] ?? colors.blue;
+
+          return (
+            <div className="min-w-0 text-left">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-[0.625rem] font-medium uppercase tracking-wide leading-tight text-gray-500 dark:text-gray-400">
+                  {hasNumber ? row.strJEVNumber : NO_JEV_NO}
+                </span>
+                {/* Every row shares one status once a status filter is
+                    active, so the badge only shows unfiltered. */}
+                {isAllStatus && (
+                  <span
+                    className="shrink-0"
+                    style={inlineBadgeStyle(statusColor, colors)}
+                  >
+                    {row.statusLabel}
+                  </span>
+                )}
+              </div>
+              {hasTitle && (
+                <span className="block truncate uppercase tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
+                  {row.strTitle}
+                </span>
+              )}
+            </div>
+          );
+        },
+      },
       {
         key: "totalLabel",
         label: "Amount",
         align: "right",
         render: (val) => `₱${val}`,
       },
-      {
-        key: "statusLabel",
-        label: "Status",
-        align: "center",
-        render: (val, row) => (
-          <span
-            style={badgeStyle(statusColors[row.cStatus] ?? colors.blue, colors)}
-          >
-            {val}
-          </span>
-        ),
-      },
-      { key: "dtOccur", label: "Occurred", align: "center" },
+      { key: "dtOccur", label: "Created", align: "right" },
       {
         key: "actions",
         label: "Actions",
@@ -204,6 +224,7 @@ export default function JevListView({
       colors,
       statusColors,
       isNoTypeList,
+      isAllStatus,
       handleRowClick,
       setStatusTarget,
       setStatusAnchorEl,

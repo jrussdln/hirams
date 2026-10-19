@@ -371,7 +371,12 @@ export default function ItemPurchasingUpdateView({
     );
     const statusLabelMap = isManagement ? transacstatus : ao_status;
     const currentStatusLabel = statusLabelMap?.[statusCode] ?? "";
-    navigate("/transaction-for-purchase", {
+    // Route to whichever workspace the transaction's status belongs to.
+    navigate(
+      String(statusCode) === String(forCollectionKey)
+        ? "/transaction-for-collection"
+        : "/transaction-for-purchase",
+      {
       state: {
         transaction: finalTransaction,
         transactionCode: finalTransaction.transactionId,

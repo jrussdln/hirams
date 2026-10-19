@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import TransactionAPI from "../../../api/endpoints/transaction.api.js";
+import PricingAPI from "../../../api/endpoints/pricing.api.js";
+import DirectCostOptionAPI from "../../../api/endpoints/direct-cost-option.api.js";
+import DirectCostAPI from "../../../api/endpoints/direct-cost.api.js";
 import { fmtDateTime, fmtDate } from "../../../utils/helpers/timeZone";
 import { getItem, setItem } from "../../../utils/storage/localStorage";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
@@ -208,6 +211,117 @@ export default function useTransaction() {
   // ── Progress helpers ──────────────────────────────────────────────────────
   const [txnProgressMap, setTxnProgressMap] = useState({});
   const [txnBalanceMap, setTxnBalanceMap] = useState({});
+  // For Collection only: the chosen pricing set's total selling price — the
+  // figure the collection page calls "Collectible Amount" (usePurchase reads
+  // the same `bChosen === 1` set).
+  const [txnCollectibleMap, setTxnCollectibleMap] = useState({});
+
+  /**
+   * For Collection rows: the chosen pricing set's total selling price — the
+   * figure the collection page calls "Collectible Amount" — plus the three
+   * deductions printed under it (EWT, TAX, Retention). Every figure and every
+   * derivation is copied from usePurchase.js / CollectionPaymentDetails.jsx
+   * so the list and the collection page can never disagree.
+   *
+   * Deliberately separate from fetchTxnProgress: that one returns early when
+   * no For Purchase rows are on screen, and For Collection is its own status,
+   * so folding this in there would never run.
+   */
+  const fetchTxnCollectible = useCallback(
+    async (txnList) => {
+      if (!txnList?.length) return;
+
+      const collectionTxns = txnList.filter(
+        (t) => String(t.status_code) === String(forCollectionKey),
+      );
+      if (!collectionTxns.length) return;
+
+      try {
+        // Direct-cost option names are shared by every row — fetched (and
+        // cached) once rather than per transaction.
+        let options;
+        const cached = sessionStorage.getItem("direct_cost_options_cache");
+        if (cached) {
+          options = JSON.parse(cached);
+        } else {
+          const r = await DirectCostOptionAPI.getDirectCostOptions();
+          options = r.data || r || [];
+          sessionStorage.setItem(
+            "direct_cost_options_cache",
+            JSON.stringify(options),
+          );
+        }
+
+        const nameOf = (id) => {
+          const f = options.find((o) => (o.nDirectCostOptionID || o.id) === id);
+          return (f?.strName || f?.name || "").toLowerCase();
+        };
+
+        const collectibleMap = {};
+        await Promise.all(
+          collectionTxns.map(async (t) => {
+            try {
+              const setsRes = await PricingAPI.getPricingSets(t.id);
+              const chosen = (setsRes.data ?? []).find(
+                (s) => s.bChosen === 1 || s.bChosen === true,
+              );
+              const collectible = Number(chosen?.totalSellingPrice ?? 0);
+
+              // TAX — sum of the chosen set's item pricings.
+              let tax = 0;
+              const pricingSetId = chosen?.nPricingSetId ?? chosen?.id;
+              if (pricingSetId) {
+                const pricingsRes = await PricingAPI.getItemPricings(
+                  pricingSetId,
+                );
+                (pricingsRes.itemPricings || []).forEach((p) => {
+                  tax += Number(p.tax || 0);
+                });
+              }
+
+              // EWT + Retention — from the transaction's direct costs.
+              let ewt = 0;
+              let ewtFound = false;
+              let retention = 0;
+              const costsRes = await DirectCostAPI.getDirectCosts({
+                nTransactionID: t.id,
+                withEWT: 1,
+              });
+              const costs =
+                costsRes.directCosts || costsRes.data || costsRes || [];
+              const totalEWT = Number(costsRes.totalEWT) || 0;
+              costs.forEach((c) => {
+                const name = nameOf(c.nDirectCostOptionID);
+                const amt = Number(c.dAmount || 0);
+                if (name === "ewt") {
+                  ewt += amt;
+                  ewtFound = true;
+                } else if (name.startsWith("ret")) retention += amt;
+              });
+
+              collectibleMap[t.id] = {
+                collectible,
+                ewt: ewtFound && ewt > 0 ? ewt : totalEWT,
+                tax,
+                retention,
+              };
+            } catch {
+              collectibleMap[t.id] = {
+                collectible: 0,
+                ewt: 0,
+                tax: 0,
+                retention: 0,
+              };
+            }
+          }),
+        );
+        setTxnCollectibleMap(collectibleMap);
+      } catch (err) {
+        console.error("fetchTxnCollectible error:", err);
+      }
+    },
+    [forCollectionKey],
+  );
 
   const fetchTxnProgress = useCallback(
     async (txnList) => {
@@ -372,6 +486,7 @@ export default function useTransaction() {
 
         setTransactions(formatted);
         fetchTxnProgress(formatted);
+        fetchTxnCollectible(formatted);
       } catch (err) {
         console.error("Error fetching transactions:", err);
       } finally {
@@ -389,6 +504,7 @@ export default function useTransaction() {
       isProcurementTL,
       statusMap,
       fetchTxnProgress,
+      fetchTxnCollectible,
     ],
   );
 
@@ -892,18 +1008,15 @@ export default function useTransaction() {
           priceVerificationKey,
           priceApprovalKey,
         ].includes(statusCode);
-        if ([forPurchaseKey, forCollectionKey].includes(statusCode)) {
-          return navigate("/transaction-for-purchase", {
+        if (forCollectionKey.includes(statusCode)) {
+          return navigate("/transaction-for-collection", {
             state: {
               transaction: row,
               transactionCode: row.transactionId,
               selectedStatusCode,
               currentStatusLabel: filterStatus,
-              forPurchaseKey,
-              currentUserId: userId,
-
-              removedFromCartKey,
               forCollectionKey,
+              currentUserId: userId,
 
               isManagement,
               isProcurementTL,
@@ -913,9 +1026,29 @@ export default function useTransaction() {
               procMode,
               procSource,
               statusTransaction,
-              // openCartKey,
-              // closeCartKey,
-              // cancelCartKey,
+              crTypeKey,
+              proc_status,
+            },
+          });
+        }
+        if (forPurchaseKey.includes(statusCode)) {
+          return navigate("/transaction-for-purchase", {
+            state: {
+              transaction: row,
+              transactionCode: row.transactionId,
+              selectedStatusCode,
+              currentStatusLabel: filterStatus,
+              forPurchaseKey,
+              currentUserId: userId,
+
+              isManagement,
+              isProcurementTL,
+              isProcurement,
+              isAOTL,
+              itemType,
+              procMode,
+              procSource,
+              statusTransaction,
               crTypeKey,
               proc_status,
             },
@@ -963,6 +1096,25 @@ export default function useTransaction() {
       }
 
       if (isProcurement) {
+        if (statusCode === forCollectionKey) {
+          return navigate("/transaction-for-collection", {
+            state: {
+              transaction: row,
+              selectedStatusCode,
+              currentStatusLabel: filterStatus,
+              transactionCode: row.transactionId,
+              forCollectionKey,
+              currentUserId: userId,
+
+              isManagement,
+              isAOTL,
+              isProcurement,
+              isProcurementTL,
+              crTypeKey,
+              proc_status,
+            },
+          });
+        }
         if (statusCode === forPurchaseKey) {
           return navigate("/transaction-for-purchase", {
             state: {
@@ -977,11 +1129,8 @@ export default function useTransaction() {
               isAOTL,
               isProcurement,
               isProcurementTL,
-              // openCartKey,
-              // closeCartKey,
-              // cancelCartKey,
               crTypeKey,
-              proc_status, // ← ADD THIS
+              proc_status,
             },
           });
         }
@@ -1034,6 +1183,29 @@ export default function useTransaction() {
         );
       }
 
+      if (statusCode === forCollectionKey) {
+        return navigate("/transaction-for-collection", {
+          state: {
+            transaction: row,
+            selectedStatusCode,
+            currentStatusLabel: filterStatus,
+            transactionCode: row.transactionId,
+            forCollectionKey,
+            currentUserId: userId,
+
+            isManagement,
+            isAOTL,
+            isProcurementTL,
+            isProcurement,
+            itemType,
+            procMode,
+            procSource,
+            statusTransaction,
+            crTypeKey,
+            proc_status,
+          },
+        });
+      }
       if (statusCode === forPurchaseKey) {
         return navigate("/transaction-for-purchase", {
           state: {
@@ -1052,9 +1224,6 @@ export default function useTransaction() {
             procMode,
             procSource,
             statusTransaction,
-            // openCartKey,
-            // closeCartKey,
-            // cancelCartKey,
             crTypeKey,
             proc_status,
           },
@@ -1225,6 +1394,7 @@ export default function useTransaction() {
     userId,
     draftKey,
     finalizeKey,
+    transactionVerificationKey,
     forAssignmentKey,
     itemsManagementKey,
     itemsFinalizeKey,
@@ -1251,6 +1421,7 @@ export default function useTransaction() {
     isFinalize,
     txnProgressMap,
     txnBalanceMap,
+    txnCollectibleMap,
     isAssignedToColumnVisible,
     isCreatedByColumnVisible,
     showAOActionColumn,

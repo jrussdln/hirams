@@ -228,17 +228,19 @@ export default function useVoucher() {
           String(v.cType) === String(voucherAssigneeTypeKey);
         const firstAssignee = v.voucher_assignees?.[0];
 
+        // ✅ Empty strings (not "—") so the table can detect missing values
+        //    and render the shared fallback placeholders
         const displayName = isAssigneeType
-          ? (firstAssignee?.assignee?.strAssigneeNickName ?? "—")
-          : (v.supplier?.strSupplierNickName ?? "—");
+          ? (firstAssignee?.assignee?.strAssigneeNickName ?? "")
+          : (v.supplier?.strSupplierNickName ?? "");
 
         const displayTIN = isAssigneeType
-          ? (firstAssignee?.assignee?.strTIN ?? "—")
-          : (v.supplier?.strTIN ?? "—");
+          ? (firstAssignee?.assignee?.strTIN ?? "")
+          : (v.supplier?.strTIN ?? "");
 
         const displayAddress = isAssigneeType
-          ? (firstAssignee?.assignee?.strAddress ?? "—")
-          : (v.supplier?.strAddress ?? "—");
+          ? (firstAssignee?.assignee?.strAddress ?? "")
+          : (v.supplier?.strAddress ?? "");
 
         const supplierLinks = v.voucher_suppliers ?? [];
         const voucherTypeLabel = isAssigneeType ? "Assignee" : "Supplier";
@@ -266,7 +268,7 @@ export default function useVoucher() {
         return {
           _raw: v,
           id: v.nVoucherId,
-          strNumber: v.strNumber ?? "—",
+          strNumber: v.strNumber ?? "",
           displayName,
           displayTIN,
           displayAddress,

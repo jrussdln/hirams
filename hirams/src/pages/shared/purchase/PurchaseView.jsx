@@ -14,8 +14,7 @@ import GetSuggestionsModal from "../canvas/modal/GetSuggestionsModal";
 import UpdateDeliveryInfoModal from "../pricing/modal/UpdateDeliveryInfoModal";
 import PrintDeliveryReceiptModal from "../purchase/modal/PrintDeliveryReceiptModal";
 import PrintSalesInvoiceModal from "../purchase/modal/PrintSalesInvoiceModal";
-import DirectCostModal from "../transactions/modal/DirectCostModal";
-import ArchiveModal from "../archive/modal/ArchiveModal";
+import DirectCostModal from "../transactions/modal/DirectCostModal";import ArchiveModal from "../archive/modal/ArchiveModal";
 import AlertStructure from "../../../components/ui/structure/AlertStructure";
 import TransactionItemsTable from "../canvas/components/TransactionItemsTable";
 import PricingPanel from "../pricing/components/PricingPanel";
@@ -27,7 +26,6 @@ import JevViewPanel from "../jev/components/JevViewPanel.jsx";
 import { MonetizationOnOutlined } from "@mui/icons-material";
 import ContentHeaderStructure from "../../../components/ui/structure/ContentHeaderStructure";
 import CardStructure from "../../../components/ui/structure/CardStructure";
-import JevViewSection from "./components/JevViewSection.jsx";
 const useColors = (c) => ({
   slateBorder: c.slate.border,
   slateBorderLight: c.slate.borderLight,
@@ -245,23 +243,11 @@ export default function PurchaseView(props) {
     isFinanceOfficer,
     handleToggleJevFinalize,
     jevToggling,
-    collectionTax,
     jevBalance,
-
-    collectionEwt,
-    collectionRetention,
   } = props;
 
   if (!transaction) return null;
   const isJevFinalized = !!jev && String(jev.cStatus) !== String(jevPendingKey);
-  const collectionAmount =
-    Math.round((Number(totalCollectibleValue || 0) + Number.EPSILON) * 100) /
-    100;
-  const collectionNet =
-    collectionAmount -
-    collectionEwt -
-    Number(collectionTax || 0) -
-    collectionRetention;
   const showingJev = !!jev && showJev && !isCompareActive;
   const txnDetailsProps = {
     details: transaction,
@@ -292,7 +278,7 @@ export default function PurchaseView(props) {
               ["info", "Details"],
               ["canvas", "Canvas"],
               ["pricing", "Pricing"],
-              ["purchase", forCollection ? "For Collection" : "For Purchase"],
+              ["purchase", "For Purchase"],
             ].map(([tab, label], i, arr) => (
               <button
                 key={tab}
@@ -337,28 +323,6 @@ export default function PurchaseView(props) {
       }
       footerRActions={
         <>
-          {forCollection && !isCompareActive && isAssignedToMe && (
-            <>
-              {!showJev && (
-                <BaseButton
-                  label="Direct Cost"
-                  icon={icons.quote}
-                  onClick={() => setDirectCostModalOpen(true)}
-                  actionColor="breakdown"
-                />
-              )}
-              {isJevFinalized && !showJev && (
-                <>
-                  <BaseButton
-                    label="Mark as Collected and Completed"
-                    icon={icons.check}
-                    onClick={() => setCompleteConfirmOpen(true)}
-                    actionColor="submit"
-                  />
-                </>
-              )}
-            </>
-          )}
           {forPurchaseKey.includes(statusCode) &&
             !isCompareActive &&
             isAssignedToMe && (
@@ -436,64 +400,6 @@ export default function PurchaseView(props) {
                     </>
                   )}
               </>
-            )}
-          {forCollection &&
-            !statusChangedAlert &&
-            !isCompareActive &&
-            (isManagement || isFinanceOfficer) &&
-            (jev ? (
-              !showJev && (
-                <BaseButton
-                  label="View JEV"
-                  icon={icons.view}
-                  onClick={() => setShowJev(true)}
-                  actionColor="info"
-                />
-              )
-            ) : (
-              <BaseButton
-                label={creatingJev ? "Creating..." : "Create JEV"}
-                icon={icons.submit}
-                onClick={handleCreateJev}
-                actionColor="approve"
-                disabled={creatingJev || jevLoading}
-              />
-            ))}
-          {!statusChangedAlert &&
-            !isCompareActive &&
-            jev &&
-            showJev &&
-            (isManagement || isFinanceOfficer) && (
-              <BaseButton
-                label={
-                  String(jev.cStatus) === String(jevPendingKey)
-                    ? "Finalize JEV"
-                    : "Undo Finalize"
-                }
-                icon={
-                  String(jev.cStatus) === String(jevPendingKey)
-                    ? icons.finalize
-                    : icons.revert
-                }
-                onClick={handleToggleJevFinalize}
-                actionColor={
-                  String(jev.cStatus) === String(jevPendingKey)
-                    ? "approve"
-                    : "delete"
-                }
-                disabled={
-                  jevToggling ||
-                  (String(jev.cStatus) === String(jevPendingKey) &&
-                    (jevBalance.loading || !jevBalance.balanced))
-                }
-                tooltip={
-                  String(jev.cStatus) === String(jevPendingKey) &&
-                  !jevBalance.balanced
-                    ? jevBalance.message ||
-                      "JEV totals must be equal before finalizing"
-                    : ""
-                }
-              />
             )}
           {!statusChangedAlert && showReassignAO && (
             <BaseButton
@@ -687,22 +593,6 @@ export default function PurchaseView(props) {
         </Box>
       )}
 
-      {showingJev && forCollection && (
-        <JevViewSection
-          jev={jev}
-          fmtPHP={fmtPHP}
-          amount={collectionAmount}
-          ewt={collectionEwt}
-          tax={Number(collectionTax || 0)}
-          retention={collectionRetention}
-          net={collectionNet}
-          particularsGrandTotal={collectionAmount}
-          jevPendingKey={jevPendingKey}
-          isFinanceOfficer={isFinanceOfficer}
-          isManagement={isManagement}
-          balance={jevBalance}
-        />
-      )}
       <DeleteVerificationModal
         open={entityToDelete !== null}
         entityToDelete={entityToDelete}
@@ -789,10 +679,10 @@ export default function PurchaseView(props) {
         onClose={() => setDirectCostModalOpen(false)}
         transaction={transaction}
         isManagement={isManagement || isAccountOfficer}
-        isPricingSetting={forCollection}
+        isPricingSetting={false}
       />
       <AlertStructure
-        open={completeConfirmOpen}
+        open={false}
         title="Mark as Collected and Completed"
         type="warning"
         headerTitle="Confirm Completion"

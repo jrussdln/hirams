@@ -266,14 +266,50 @@ export default function PendingInventory({
   const groupColumns = useMemo(() => {
     const nicknameLabel =
       directionFilter === "received"
-        ? "Supplier Nickname"
+        ? "Supplier"
         : directionFilter === "delivered"
-          ? "Client Nickname"
-          : "Supplier / Client Nickname";
+          ? "Client"
+          : "Supplier / Client";
 
     return [
-      { key: "name", label: nicknameLabel },
-      { key: "company", label: "Company" },
+      {
+        key: "name",
+        label: nicknameLabel,
+        xs: 2.5,
+        render: (val, row) => {
+          // "All" mixes supplier and client groups, so the badge is the only
+          // thing telling the two apart — it rides along with the company.
+          const isReceived = row.scope === "supplier";
+          const tint = isReceived ? colors.blue : colors.green;
+
+          return (
+            <div className="min-w-0 text-left">
+              <div className="flex items-center gap-1.5">
+                <span className="truncate uppercase tracking-wide text-[0.625rem] font-medium leading-tight text-gray-500 dark:text-gray-400">
+                  {row.company || "—"}
+                </span>
+                {directionFilter === "all" && (
+                  <span
+                    className="shrink-0 px-1 py-px text-[0.5rem] font-medium uppercase leading-none rounded-full"
+                    style={{
+                      backgroundColor: tint.bg,
+                      color: tint.text,
+                      border: `1px solid ${colors.border}`,
+                    }}
+                  >
+                    {isReceived
+                      ? inventoryReceivedLabel
+                      : inventoryDeliveredLabel}
+                  </span>
+                )}
+              </div>
+              <span className="block truncate uppercase tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
+                {val || "—"}
+              </span>
+            </div>
+          );
+        },
+      },
       {
         key: "total",
         label: "Total Unit Price",
@@ -283,30 +319,6 @@ export default function PendingInventory({
             minimumFractionDigits: 2,
           })}`,
       },
-      // "All" mixes supplier and client groups — spell out which one each is
-      ...(directionFilter === "all"
-        ? [
-            {
-              key: "scope",
-              label: "Type",
-              align: "center",
-              render: (val) => {
-                const isReceived = val === "supplier";
-                const tint = isReceived ? colors.blue : colors.green;
-                return (
-                  <TypeBadge
-                    tint={tint}
-                    label={
-                      isReceived
-                        ? inventoryReceivedLabel
-                        : inventoryDeliveredLabel
-                    }
-                  />
-                );
-              },
-            },
-          ]
-        : []),
       {
         key: "actions",
         label: "Actions",

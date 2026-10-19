@@ -21,6 +21,15 @@ import BankModal from "./modal/BankModal";
 import InfoSupplierModal from "./modal/InfoSupplierModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
+import {
+  NO_NAME,
+  NO_NICKNAME,
+  NO_ADDRESS,
+  NO_TIN,
+  NO_ADDRESS_TIN,
+  NO_TAX_VAT,
+  NO_TAX_EWT,
+} from "../../../constants/tableDataFallbacks";
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — pulls ONLY tokens THIS component actually uses
@@ -87,55 +96,108 @@ export default function SupplierView({
 
   const columns = React.useMemo(
     () => [
-      { key: "supplierName", label: "Name", xs: 3 },
-      { key: "supplierNickName", label: "Nickname", xs: 1 },
-      { key: "supplierTIN", label: "TIN", align: "center", xs: 1.5 },
-      { key: "address", label: "Address", xs: 2 },
       {
-        key: "vat",
-        label: "VAT",
-        align: "center",
-        xs: 1,
-        render: (value, row) => (
-          <span
-            style={{
-              padding: "0.25rem 0.5rem",
-              fontSize: "0.75rem",
-              fontWeight: 500,
-              borderRadius: "9999px",
-              background: row.vatActive ? colors.activeBg : colors.inactiveBg,
-              color: row.vatActive ? colors.activeText : colors.inactiveText,
-            }}
-          >
-            {value}
-          </span>
-        ),
+        key: "supplierName",
+        label: "Name",
+        xs: 3,
+        render: (_, row) => {
+          const hasName = Boolean(row.supplierName?.trim());
+          const hasNickname = Boolean(row.supplierNickName?.trim());
+
+          return (
+            <div className="min-w-0 text-left">
+              {hasName ? (
+                <span className="block text-xs font-medium leading-tight">
+                  {row.supplierName}
+                </span>
+              ) : (
+                <span className="block text-xs font-light italic leading-tight">
+                  {NO_NAME}
+                </span>
+              )}
+              <span className="block text-xs font-light italic leading-tight -mt-0.5">
+                {hasNickname ? row.supplierNickName : NO_NICKNAME}
+              </span>
+            </div>
+          );
+        },
       },
       {
-        key: "ewt",
-        label: "EWT",
+        key: "address",
+        label: "Address/TIN",
+        xs: 2,
+        render: (_, row) => {
+          const hasAddress = Boolean(row.address?.trim());
+          const hasTin = Boolean(row.supplierTIN?.trim());
+
+          if (!hasAddress && !hasTin) {
+            return (
+              <span className="block text-xs font-light italic leading-tight">
+                {NO_ADDRESS_TIN}
+              </span>
+            );
+          }
+
+          return (
+            <div className="min-w-0 text-left">
+              {hasAddress ? (
+                <span className="block text-xs font-medium leading-tight">
+                  {row.address}
+                </span>
+              ) : (
+                <span className="block text-xs font-light italic leading-tight">
+                  {NO_ADDRESS}
+                </span>
+              )}
+              <span className="block text-xs font-light italic leading-tight -mt-0.5">
+                TIN: {hasTin ? row.supplierTIN : NO_TIN}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        key: "tax",
+        label: "TAX",
         align: "center",
-        xs: 1,
-        render: (value, row) => (
-          <span
-            style={{
-              padding: "0.25rem 0.5rem",
-              fontSize: "0.75rem",
-              fontWeight: 500,
-              borderRadius: "9999px",
-              background: row.ewtActive ? colors.activeBg : colors.inactiveBg,
-              color: row.ewtActive ? colors.activeText : colors.inactiveText,
-            }}
-          >
-            {value}
-          </span>
+        xs: 2,
+        render: (_, row) => (
+          <div className="flex items-center justify-center gap-1.5">
+            <span
+              style={{
+                padding: "0.125rem 0.5rem",
+                fontSize: "0.75rem",
+                fontWeight: 500,
+                lineHeight: 1.25,
+                borderRadius: "9999px",
+                background: row.vatActive ? colors.activeBg : colors.inactiveBg,
+                color: row.vatActive ? colors.activeText : colors.inactiveText,
+              }}
+            >
+              {row.vat?.trim() ? row.vat : NO_TAX_VAT}
+            </span>
+            <span>-</span>
+            <span
+              style={{
+                padding: "0.125rem 0.5rem",
+                fontSize: "0.75rem",
+                fontWeight: 500,
+                lineHeight: 1.25,
+                borderRadius: "9999px",
+                background: row.ewtActive ? colors.activeBg : colors.inactiveBg,
+                color: row.ewtActive ? colors.activeText : colors.inactiveText,
+              }}
+            >
+              {row.ewt?.trim() ? row.ewt : NO_TAX_EWT}
+            </span>
+          </div>
         ),
       },
       {
         key: "actions",
         label: "Actions",
         align: "center",
-        xs: 1.5,
+        xs: 1,
         render: (_, row) => {
           const isActive = row.statusCode === activeStatusKey;
           const isPending = row.statusCode === forApprovalStatusKey;
