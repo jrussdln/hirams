@@ -53,7 +53,21 @@ export function computeJevBalance(list, grandTotal, opts = {}) {
   return { balanced: balanced && matches, loading: false, message };
 }
 
-function useJevBalance(jevId, grandTotal) {
+/**
+ * Live balance verdict for ONE JEV: re-fetches its entries whenever they
+ * are added, edited or deleted (JevViewPanel fires those events) so a
+ * banner bound to it clears itself the moment the JEV squares up.
+ *
+ * `requireTotalMatch` is forwarded to computeJevBalance — pass false to
+ * judge the JEV on its two sides alone (screens without a reliable figure
+ * to reconcile against: a delivered JEV is booked at selling price, and a
+ * voucher / No Type JEV carries no Items total at all).
+ *
+ * @param {string|number} jevId empty/falsy → no fetch, no verdict
+ * @param {number} grandTotal the figure the entries should add up to
+ * @param {boolean} [requireTotalMatch=true]
+ */
+function useJevBalance(jevId, grandTotal, requireTotalMatch = true) {
   const [state, setState] = useState({
     balanced: false,
     loading: false,
@@ -76,14 +90,19 @@ function useJevBalance(jevId, grandTotal) {
   }, [jevId]);
 
   useEffect(() => {
-    if (!jevId) return;
+    // Nothing to check (modal closed, or still creating the JEV) — drop
+    // the previous verdict so a stale banner can never greet the next one.
+    if (!jevId) {
+      setState({ balanced: false, loading: false, message: "" });
+      return;
+    }
     let active = true;
     setState((s) => ({ ...s, loading: true }));
     JevEntriesAPI.getByJevId(jevId)
       .then((res) => {
         if (!active) return;
         const list = Array.isArray(res) ? res : (res?.data ?? []);
-        setState(computeJevBalance(list, grandTotal));
+        setState(computeJevBalance(list, grandTotal, { requireTotalMatch }));
       })
       .catch((err) => {
         console.error("JEV balance check failed:", err);
@@ -97,7 +116,7 @@ function useJevBalance(jevId, grandTotal) {
     return () => {
       active = false;
     };
-  }, [jevId, grandTotal, tick]);
+  }, [jevId, grandTotal, requireTotalMatch, tick]);
 
   return state;
 }

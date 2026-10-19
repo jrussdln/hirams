@@ -39,7 +39,7 @@ export default function useInventory() {
   // { scope: "supplier" | "client", name } while a group's item list is open
   const [groupView, setGroupView] = useState(null);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
   // Paging is separate for a group's item list so the group table
   // keeps its own position while you drill in and back out.
   const [groupListPage, setGroupListPage] = useState(0);
@@ -155,9 +155,7 @@ export default function useInventory() {
 
     if (isPendingStatus && directionFilter !== "all") {
       const wantReceived = directionFilter === "received";
-      result = result.filter(
-        (i) => (Number(i.nQuantity) > 0) === wantReceived,
-      );
+      result = result.filter((i) => Number(i.nQuantity) > 0 === wantReceived);
     }
 
     return result;
@@ -186,8 +184,7 @@ export default function useInventory() {
     const company = groupView.company ?? "—";
     return filteredItems.filter((r) => {
       const qty = Number(r.nQuantity ?? 0);
-      const inDirection =
-        groupView.scope === "supplier" ? qty > 0 : qty < 0;
+      const inDirection = groupView.scope === "supplier" ? qty > 0 : qty < 0;
       return (
         inDirection &&
         (r[field] || "—") === groupView.name &&
@@ -199,9 +196,8 @@ export default function useInventory() {
   // Visible batches that still need a JEV (nJEVId is null on the row).
   const jevPendingCount = useMemo(
     () =>
-      jevScopeRows.filter(
-        (i) => i.nJEVId == null && Number(i.nQuantity) !== 0,
-      ).length,
+      jevScopeRows.filter((i) => i.nJEVId == null && Number(i.nQuantity) !== 0)
+        .length,
     [jevScopeRows],
   );
 
@@ -259,9 +255,10 @@ export default function useInventory() {
   }, [groupJevs, jevPendingKey]);
 
   // Expected total of each JEV = the group rows stamped with that nJEVId.
-  // bulkCreateJev makes ONE JEV per purchase item, so a group can hold
-  // several — every JEV is validated against ITS OWN rows, never against
-  // the whole group's grand total.
+  // bulkCreateJev books the WHOLE group on ONE JEV per direction, so this
+  // is normally a single entry — but it stays keyed by nJEVId so a group
+  // with rows in both directions (or legacy per-item JEVs) still validates
+  // each JEV against ITS OWN rows.
   const jevExpectedTotals = useMemo(() => {
     const totals = {};
     jevScopeRows.forEach((r) => {
@@ -382,7 +379,10 @@ export default function useInventory() {
    * Creates the JEV(s) for the visible pending batches and links them:
    *   For Delivery (received, qty > 0) → cJEVLinkType 'R'
    *   Delivered      (delivered, qty < 0) → cJEVLinkType 'D'
-   * The API creates them with cStatus 'P' and stamps nJEVId on each row.
+   * One JEV per DIRECTION, covering every batch of that direction in the
+   * group — the API books the whole group on a single JEV (cStatus 'P')
+   * and stamps nJEVId on each row. A group with rows in both directions
+   * therefore gets at most two JEVs (one R, one D).
    */
   const handleCreateJev = useCallback(async () => {
     if (creatingJev) return;

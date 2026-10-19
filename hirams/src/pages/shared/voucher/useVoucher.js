@@ -19,7 +19,7 @@ export default function useVoucher() {
 
   const [voucherModalOpen, setVoucherModalOpen] = useState(false);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
   const [optionStatuses, setOptionStatuses] = useState({});
 
   const user = useMemo(() => getItem("user", {}), []);

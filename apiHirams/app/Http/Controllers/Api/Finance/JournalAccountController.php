@@ -78,11 +78,12 @@ class JournalAccountController extends ApiController
             ], 422);
         }
 
-        // An account that already carries journal (JEV) entries is part of the
-        // books — deleting it would orphan those lines.
+        // An account that still carries LIVE journal (JEV) entries is part
+        // of the books — deleting it would orphan those lines. Lines of a
+        // CANCELLED JEV never block: destroy() deletes them WITH the account.
         if ($this->service->hasJournalEntries($id)) {
             return response()->json([
-                'message' => 'Cannot delete an account that has journal entries. Remove or reassign its entries first.',
+                'message' => 'Cannot delete an account that has journal entries. Remove or reassign its entries first, or cancel their JEVs.',
             ], 422);
         }
 

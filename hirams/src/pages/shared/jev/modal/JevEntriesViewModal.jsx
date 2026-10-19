@@ -2,14 +2,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, TextField, Typography } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { CheckOutlined, EditOutlined } from "@mui/icons-material";
+import { CheckOutlined, EditOutlined, WarningAmberOutlined, CloseOutlined } from "@mui/icons-material";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer.jsx";
 import JevViewPanel from "../components/JevViewPanel.jsx";
+import useJevBalance, { computeJevBalance } from "../hooks/useJevBalance.js";
 import POListPanel from "../../voucher/components/POListPanel.jsx";
 import AssigneeListPanel from "../../voucher/components/AssigneeListPanel.jsx";
 import { SectionLabel } from "../../voucher/sub-pages/voucher-update/VoucherUpdateView.jsx";
 import VoucherAPI from "../../../../api/endpoints/voucher.api.js";
 import JevAPI from "../../../../api/endpoints/jev.api.js";
+import JevEntriesAPI from "../../../../api/endpoints/jev-entries.api.js";
 import InventoryAPI from "../../../../api/endpoints/inventory.api.js";
 import ItemsTable from "../../inventory/component/ItemsTable.jsx";
 import {
@@ -28,6 +30,13 @@ const makeColors = (c) => ({
   textMuted: c.gray.textMuted,
   red: { text: c.red.text },
   blue: { bg: c.blue.bg, border: c.blue.border, text: c.blue.text },
+  // Amber warning tint for the unbalanced-JEV banner — the same trio
+  // JevViewSection paints its balance banner with.
+  amber: {
+    warnBg: c.amber.warnBg,
+    warnBorder: c.amber.warnBorder,
+    warnText: c.amber.warnText,
+  },
   neutral: {
     bg: c.slate.itemHeaderBg,
     border: c.slate.border,
@@ -56,6 +65,13 @@ const todayInput = () => {
   const d = new Date();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 };
+
+// jev_status codes straight from config/mappings.php — the same literals
+// JevStatusUpdateTooltip paints its radios with. Only these two matter here:
+// an ACTIVE JEV left unbalanced by its own entries is put back to PENDING
+// when this viewer closes (see handleClose / demoteIfUnbalanced).
+const STATUS_ACTIVE = "A";
+const STATUS_PENDING = "P";
 
 // Plain button, same 40px height as the date field / display box.
 const dateBtnSx = (tint) => ({
@@ -236,6 +252,16 @@ function JevEntriesViewModal({
   // waiting on the caller to refetch `jev`.
   const [savedDate, setSavedDate] = useState(null);
   const [savedTitle, setSavedTitle] = useState(null);
+  const [infoBanner, setInfoBanner] = useState(false);
+  // Dismissed text of the unbalanced-JEV banner — cleared whenever the
+  // modal reopens or switches JEV (effect below), and per-message so a
+  // NEW problem (e.g. "Entries not yet added" → "not balanced yet")
+  // resurfaces even if the earlier one was dismissed.
+  const [dismissedBalanceMsg, setDismissedBalanceMsg] = useState(null);
+  // One close of one JEV = one Active → Pending check (demoteIfUnbalanced,
+  // down by the balance block). Reset whenever the modal opens or switches
+  // JEV, in the same effect that clears the rest of the per-opening state.
+  const demotedRef = useRef(false);
 
   const currentDate = savedDate ?? jev?.dtOccur ?? "";
   const currentTitle = savedTitle ?? jev?.strTitle ?? "";
@@ -249,6 +275,11 @@ function JevEntriesViewModal({
     setInfoSaving(false);
     setSavedDate(null);
     setSavedTitle(null);
+    setInfoBanner(false);
+    setDismissedBalanceMsg(null);
+    // A fresh opening must be able to demote again — the guard above only
+    // guards ONE closing of ONE JEV (see demoteIfUnbalanced).
+    demotedRef.current = false;
   }, [open, jevId]);
 
   const startEditInfo = () => {
@@ -265,6 +296,7 @@ function JevEntriesViewModal({
     setTitleValue("");
     setDateError("");
     setTitleError("");
+    setInfoBanner(false);
   };
 
   const saveInfo = async () => {
@@ -297,6 +329,7 @@ function JevEntriesViewModal({
       setInfoEditing(false);
       setDateValue("");
       setTitleValue("");
+      setInfoBanner(false);
       // The caller owns the JEV record (and builds the modal's own header
       // line from it) — hand the saved values back so its subtitle can't
       // go stale while this modal stays open.
@@ -313,6 +346,22 @@ function JevEntriesViewModal({
     } finally {
       setInfoSaving(false);
     }
+  };
+
+  // Every close path funnels through here (Cancel / X / backdrop / Escape
+  // all reach ModalContainer's handleClose), so the Active → Pending check
+  // runs once per closing however it was triggered — and never waits on it:
+  // the modal drops straight away while the verdict resolves behind it.
+  //
+  // First Close while editing: raise the banner instead of closing. The
+  // second Close dismisses the modal without saving.
+  const handleClose = () => {
+    if (infoEditing && !infoBanner) {
+      setInfoBanner(true);
+      return;
+    }
+    demoteIfUnbalanced();
+    onClose?.();
   };
 
   // ── Create mode — the JEV is created the moment the modal opens ─────
@@ -474,9 +523,10 @@ function JevEntriesViewModal({
     // The WHOLE delivered group, never just this JEV's own rows — the
     // very table JevEntryAEModal shows for the same JEV (PendingInventory
     // builds that one from the open group: every delivered batch of the
-    // same client + company). bulkCreateJev stamps ONE JEV per purchase
-    // item, so scoping to `matched` alone listed only one item of a
-    // two-item group while the entry modal beside it listed both.
+    // same client + company). bulkCreateJev books a whole group on ONE
+    // JEV per direction, but a group can still hold more than one JEV
+    // (both directions, or legacy per-item ones), so scoping to `matched`
+    // alone could list only part of what the entry modal beside it lists.
     //
     // The group is keyed off the rows this JEV covers (same client, same
     // company); the rows this JEV itself carries are always kept, so a
@@ -591,6 +641,63 @@ function JevEntriesViewModal({
   // tells the reader nothing about what this JEV covers.
   const showParticulars = Boolean(voucher) && particularsCount > 0;
 
+  // ── Balance ────────────────────────────────────────────────────────
+  // From and To must square for this JEV to be balanced; the banner below
+  // says so while they don't. The hook re-checks on every entry added,
+  // edited or deleted (JevViewPanel publishes those events), so the
+  // warning clears itself the moment the JEV balances.
+  //
+  // Strictness is OFF on purpose: the figure this modal holds (itemsTotal)
+  // is the batches' PURCHASE value, while a delivered JEV is booked at the
+  // SELLING price and a voucher / No Type JEV has no Items total at all —
+  // insisting on a match would flag perfectly balanced JEVs as wrong.
+  const balance = useJevBalance(open ? jevId : "", itemsTotal, false);
+  const showBalanceBanner =
+    !balance.loading &&
+    !!balance.message &&
+    dismissedBalanceMsg !== balance.message;
+
+  // ── Active → Pending on an unbalanced close ───────────────────────────
+  // The one automatic status move this viewer makes: a JEV that was ACTIVE
+  // when it was opened (the record the caller handed in — `jev` never takes
+  // on a new status while the modal is up) and whose From / To sides no
+  // longer square is put back to PENDING as the modal closes, so a
+  // half-edited JEV can never sit in the list wearing an Active badge.
+  // Any other status the JEV was opened with is left exactly as it is.
+  //
+  // The verdict is fetched FRESH rather than read off `balance`: that state
+  // can still be mid-flight from the last entry save when Close is clicked,
+  // and "no verdict yet" must never pass for "balanced". Strictness stays
+  // OFF for the same reason it is off on the banner above.
+  //
+  // Silent by contract: no toast, no dialog. The list badge follows on its
+  // own — the dispatched jev_data_updated is the very event useJevList
+  // refetches off (and JevNav recounts its badge from).
+  // Whether THIS closing is the one that demotes the JEV — the banner
+  // prints its Pending note from the very same condition, so the promise
+  // shown to the reader can never drift from what handleClose actually
+  // does (see demoteIfUnbalanced).
+  const willDemoteOnClose =
+    !!jevId && String(jev?.cStatus ?? "") === STATUS_ACTIVE;
+
+  const demoteIfUnbalanced = async () => {
+    if (demotedRef.current) return; // one close, one check
+    if (!jevId || String(jev?.cStatus ?? "") !== STATUS_ACTIVE) return;
+    demotedRef.current = true;
+    try {
+      const res = await JevEntriesAPI.getByJevId(jevId);
+      const list = Array.isArray(res) ? res : (res?.data ?? []);
+      const verdict = computeJevBalance(list, itemsTotal, {
+        requireTotalMatch: false,
+      });
+      if (verdict.balanced) return;
+      await JevAPI.update(jevId, { cStatus: STATUS_PENDING });
+      window.dispatchEvent(new CustomEvent("jev_data_updated"));
+    } catch (err) {
+      console.error("Failed to set the unbalanced JEV back to Pending:", err);
+    }
+  };
+
   // "Disbursement Voucher · DV" — the caller's type label with the voucher
   // number joined on as soon as its record is in.
   const headerLine = [subTitle, voucher?.strNumber].filter(Boolean).join(" · ");
@@ -623,10 +730,12 @@ function JevEntriesViewModal({
       sx={{
         cursor: "pointer",
         borderRadius: "2px",
-        "&:hover": { color: colors.blue.text, textDecoration: "underline" },
+        // Always blue — it is a link, not plain text; hover only adds
+        // the underline.
+        color: colors.blue.text,
+        "&:hover": { textDecoration: "underline" },
         "&:focus-visible": {
           outline: "none",
-          color: colors.blue.text,
           textDecoration: "underline",
         },
       }}
@@ -640,7 +749,7 @@ function JevEntriesViewModal({
   return (
     <ModalContainer
       open={open}
-      handleClose={onClose}
+      handleClose={handleClose}
       title={jev?.strJEVNumber || (isCreating ? "Add JEV" : "JEV")}
       subTitle={isCreating ? "Creating…" : headerNode}
       width={{ xs: "95%", sm: 760, md: 980 }}
@@ -680,6 +789,78 @@ function JevEntriesViewModal({
 
       {jev && (
         <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          {/* ── Unbalanced JEV ──────────────────────────────────────
+              Flagged the moment this JEV's From and To sides don't
+              square, whichever way it was opened (inventory drill-down,
+              JEV list, Account Report). Sits above everything so it is
+              the first thing seen, and clears itself as soon as an entry
+              lands (the hook re-checks on every entry event). */}
+          {showBalanceBanner && (
+            <Box
+              sx={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                px: 4,
+                py: 0.75,
+                borderRadius: "8px",
+                bgcolor: colors.amber.warnBg,
+                border: `1px dashed ${colors.amber.warnBorder}`,
+              }}
+            >
+              <WarningAmberOutlined
+                sx={{
+                  fontSize: "1rem",
+                  color: colors.amber.warnText,
+                  flexShrink: 0,
+                }}
+              />
+              <Box
+                sx={{
+                  fontSize: "0.72rem",
+                  color: colors.amber.warnText,
+                  lineHeight: 1.4,
+                }}
+              >
+                <strong>{balance.message}</strong>
+                {/* The rule in the reader's face: only an ACTIVE JEV is
+                    ever demoted, so the note is printed for that status
+                    alone — the same `willDemoteOnClose` check the close
+                    itself runs. */}
+                {willDemoteOnClose && (
+                  <Box
+                    component="span"
+                    sx={{ display: "block", mt: 0.5, fontWeight: 500 }}
+                  >
+                    Closing this JEV while its entries stay unbalanced will
+                    automatically set its status to{" "}
+                    <strong>Pending</strong>.
+                  </Box>
+                )}
+              </Box>
+              <Box
+                component="button"
+                onClick={() => setDismissedBalanceMsg(balance.message)}
+                aria-label="Dismiss banner"
+                sx={{
+                  position: "absolute",
+                  right: 8,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  display: "flex",
+                  p: 0.4,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  color: colors.amber.warnText,
+                }}
+              >
+                <CloseOutlined sx={{ fontSize: "0.9rem" }} />
+              </Box>
+            </Box>
+          )}
+
           {/* ── Particulars — same block as VoucherUpdateView ─────── */}
           {showParticulars && (
             <Box>
@@ -716,6 +897,27 @@ function JevEntriesViewModal({
           <Box>
             {/* JEV Info — only where entry CRUD is enabled (the JEV list page) */}
             {entryCrud && (
+              <>
+              {infoBanner && (
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    px: 1.5,
+                    py: 1,
+                    mb: 1,
+                    borderRadius: "8px",
+                    border: `0.5px solid ${colors.blue.border}`,
+                    bgcolor: colors.blue.bg,
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    color: colors.blue.text,
+                  }}
+                >
+                  You are currently in edit mode — save your changes first, or click Close again to discard them.
+                </Box>
+              )}
               <InfoCard
                 title="JEV Info"
                 editing={infoEditing}
@@ -835,6 +1037,7 @@ function JevEntriesViewModal({
                   )}
                 </Box>
               </InfoCard>
+              </>
             )}
 
             {/* Hidden while the entry form stands in for the columns —

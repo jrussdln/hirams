@@ -198,6 +198,10 @@ const AccountTreeNode = ({
   const canToggle = hasChildren && !forceOpen;
   const isSynced = !!node.nRecordId; // was nClientId || nSupplierId
   const hasEntries = entryAccountIds?.has(node.id) ?? false;
+  // Delete only fits an account nobody depends on — anything with linked
+  // accounts or JEV lines keeps it withheld (mirrors the backend guard).
+  // Such a leaf is also the only row whose end slot has no chevron.
+  const showDelete = !hasChildren && !hasEntries;
   const isRoot = depth === 0;
   // ── Drag & drop ──
   const { activeId, invalidIds, locked } = useContext(DragCtx);
@@ -424,18 +428,6 @@ const AccountTreeNode = ({
             <Edit sx={{ fontSize: "0.8rem" }} />
           </ActionButton>
 
-          {/* Delete only fits an account nobody depends on — anything with
-              linked accounts or JEV lines keeps its Delete withheld. */}
-          {!hasChildren && !hasEntries && (
-            <ActionButton
-              label="Delete"
-              color={colors.red.text}
-              hoverBg={colors.red.bg}
-              onClick={() => onDelete(node.id, node.accountName)}
-            >
-              <Delete sx={{ fontSize: "0.8rem" }} />
-            </ActionButton>
-          )}
           <ActionButton
             label="Journal Entries"
             color={colors.violet.text}
@@ -444,26 +436,45 @@ const AccountTreeNode = ({
           >
             <AssessmentOutlined sx={{ fontSize: "0.8rem" }} />
           </ActionButton>
+          {/* Delete does NOT sit in this cluster — it takes the row's final
+              slot (below), so these three keep one x on every row. */}
         </Box>
 
+        {/* The row's final 26px slot: 22px circle + 4px margin. It holds the
+            chevron when the node has children, and DELETE when it is a leaf
+            nobody depends on — a 26px button taking the SAME total width.
+            That is what keeps Add / Edit / Journal Entries on one x,
+            aligned vertically down the whole tree. */}
         <Box
-          aria-hidden
+          aria-hidden={showDelete ? undefined : true}
           sx={{
-            width: 22,
+            width: showDelete ? 26 : 22,
             height: 22,
             flexShrink: 0,
-            ml: 0.5,
+            ml: showDelete ? 0 : 0.5,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             color: colors.gray.muted,
-            border: `1px solid ${colors.slate.border}`,
+            border: showDelete ? "none" : `1px solid ${colors.slate.border}`,
             borderRadius: "50%",
-            visibility: hasChildren ? "visible" : "hidden",
-            opacity: forceOpen ? 0.5 : 1,
+            // A leaf withholds the chevron but still reserves its slot; a
+            // Delete takes that same slot visibly instead.
+            visibility: hasChildren || showDelete ? "visible" : "hidden",
+            // forceOpen only ever dims the chevron — never a live action.
+            opacity: forceOpen && !showDelete ? 0.5 : 1,
           }}
         >
-          {isExpanded ? (
+          {showDelete ? (
+            <ActionButton
+              label="Delete"
+              color={colors.red.text}
+              hoverBg={colors.red.bg}
+              onClick={() => onDelete(node.id, node.accountName)}
+            >
+              <Delete sx={{ fontSize: "0.8rem" }} />
+            </ActionButton>
+          ) : isExpanded ? (
             <KeyboardArrowUp sx={{ fontSize: "0.85rem" }} />
           ) : (
             <KeyboardArrowDown sx={{ fontSize: "0.85rem" }} />
@@ -607,6 +618,9 @@ export default function JournalAccountPanel({
   // JEV status key treated as "active" (cStatus) when totalling balances —
   // kept in sync with the value AccountReportPanel receives
   jevActiveKey = "A",
+  // JEV status key meaning "Cancelled" — those lines never block Delete
+  // (the API deletes them with the account)
+  jevCancelledKey = "C",
   fetchJournalAccounts,
   isModalOpen,
   selectedAccount,
@@ -630,16 +644,20 @@ export default function JournalAccountPanel({
     [accountTree],
   );
   const anyExpanded = expandedAccountIds.size > 0;
-  // Accounts that already carry JEV lines — they're part of the books, so the
-  // Delete action is withheld from them (mirrors the backend guard).
+  // Accounts that carry LIVE JEV lines — they're part of the books, so the
+  // Delete action is withheld from them (mirrors the backend guard). Lines
+  // of a CANCELLED JEV don't block: the API deletes those WITH the account.
   const entryAccountIds = useMemo(
     () =>
       new Set(
         (jevEntries || [])
+          .filter(
+            (e) => String(e?.jev?.cStatus ?? "").trim() !== jevCancelledKey,
+          )
           .map((e) => e?.nJournalAccountId)
           .filter((id) => id != null),
       ),
-    [jevEntries],
+    [jevEntries, jevCancelledKey],
   );
 
   // ── Remaining balance per account (mirrors AccountReportPanel) ──────

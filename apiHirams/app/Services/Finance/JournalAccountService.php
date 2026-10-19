@@ -108,6 +108,12 @@ class JournalAccountService
     {
         $id = $journalAccount->nJournalAccountId;
 
+        // The controller's guard only ever let CANCELLED lines through —
+        // sweep those so no entry outlives the account it pointed at.
+        JevEntries::where('nJournalAccountId', $id)
+            ->whereHas('jev', fn ($q) => $q->where('cStatus', $this->cancelledJevKey()))
+            ->delete();
+
         $journalAccount->delete();
         broadcast(new JournalAccountUpdated('deleted', $id))->toOthers();
     }
@@ -123,10 +129,22 @@ class JournalAccountService
         return JournalAccount::where('nParentAccountId', $id)->exists();
     }
 
-    /** An account that already carries journal (JEV) entries is part of the books. */
+    /**
+     * An account that carries LIVE journal (JEV) entries is part of the
+     * books. Lines of a CANCELLED JEV don't count — destroy() sweeps those
+     * away with the account, so they must never keep it deletable.
+     */
     public function hasJournalEntries($id): bool
     {
-        return JevEntries::where('nJournalAccountId', $id)->exists();
+        return JevEntries::where('nJournalAccountId', $id)
+            ->whereDoesntHave('jev', fn ($q) => $q->where('cStatus', $this->cancelledJevKey()))
+            ->exists();
+    }
+
+    /** The jev_status code config/mappings.php names "Cancelled" (fallback C). */
+    private function cancelledJevKey(): string
+    {
+        return (string) (array_search('Cancelled', config('mappings.jev_status', []), true) ?: 'C');
     }
 
     /**

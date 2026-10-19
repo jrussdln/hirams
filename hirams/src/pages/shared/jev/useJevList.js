@@ -47,7 +47,7 @@ export default function useJevList() {
   const [itemsLoading, setItemsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
   const [selectedTypeCode, setSelectedTypeCode] = useState("");
   // "all" or a raw jev_status code (A / C / P) — page-local, unlike the type,
   // which the sidebar owns.
@@ -63,10 +63,13 @@ export default function useJevList() {
   const [entityToDelete, setEntityToDelete] = useState(null);
 
   // ── Status update ─────────────────────────────────────────────────────
-  // The JEV whose status the modal is editing — null while closed. The
-  // modal writes through JevAPI.update and raises jev_data_updated itself,
+  // The JEV whose status the tooltip is editing — null while closed. The
+  // tooltip writes through JevAPI.update and raises jev_data_updated itself,
   // which the listener above turns into a refetch, so no handler lives here.
+  // `statusAnchorEl` is the button the panel opens against (an anchored
+  // tooltip needs somewhere to sit), cleared together with the target.
   const [statusTarget, setStatusTarget] = useState(null);
+  const [statusAnchorEl, setStatusAnchorEl] = useState(null);
 
   // Confirmations
   // Same contract as inventory's / settings': the button only opens the
@@ -172,7 +175,13 @@ export default function useJevList() {
     if (!q) return sorted;
 
     return sorted.filter((j) =>
-      [j.strJEVNumber, j.strTitle, j.strPayeeName, j.strCompanyName, j.strVoucherNumber]
+      [
+        j.strJEVNumber,
+        j.strTitle,
+        j.strPayeeName,
+        j.strCompanyName,
+        j.strVoucherNumber,
+      ]
         .map((v) => String(v ?? "").toLowerCase())
         .some((v) => v.includes(q)),
     );
@@ -335,12 +344,17 @@ export default function useJevList() {
     window.dispatchEvent(new CustomEvent("jev_data_deleted"));
   }, [entityToDelete]);
 
-  // "No Type · Petty Cash · Sep 15, 2026" — the type from the mapping, the
-  // title a No Type JEV names itself with (no voucher stands behind one),
-  // then the day the JEV occurred.
+  // "Voucher · Petty Cash · Sep 15, 2026" — the type label from the mapping
+  // with "Disbursement" dropped, the title a No Type JEV names itself with
+  // (no voucher stands behind one), then the day the JEV occurred. Other
+  // types keep their full label ("Received Purchases", "Delivered Items",
+  // "Collection").
   const jevSubTitle = useMemo(() => {
     if (!jevModal) return "";
-    const typeLabel = jev_types?.[jevModal.cJEVLinkType] ?? "";
+    const typeLabel = (jev_types?.[jevModal.cJEVLinkType] ?? "").replace(
+      /^Disbursement\s+/i,
+      "",
+    );
     const day = jevModal.dtOccur ? fmtDate(jevModal.dtOccur) : "";
     const title =
       jevModal.cJEVLinkType === NO_TYPE_CODE ? jevModal.strTitle : "";
@@ -398,9 +412,11 @@ export default function useJevList() {
     handleDeleteClick,
     handleCloseDeleteModal,
     handleDeleteSuccess,
-    // Status — any of A / P / C (see JevStatusUpdateModal)
+    // Status — any of A / P / C (see JevStatusUpdateTooltip)
     statusTarget,
     setStatusTarget,
+    statusAnchorEl,
+    setStatusAnchorEl,
     // Add / Edit — No Type JEVs only (see NO_TYPE_CODE)
     jevAEModalOpen,
     jevAETarget,

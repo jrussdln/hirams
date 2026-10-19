@@ -12,7 +12,7 @@ export default function useJournalAccounts() {
   // Table / Search State
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
 
   // Data State
   const [journalAccounts, setJournalAccounts] = useState([]);
@@ -69,6 +69,8 @@ export default function useJournalAccounts() {
     jevPendingLabel,
     jev_types,
     loading: mappingLoading,
+    isManagement,
+    isFinanceOfficer,
   } = useKeysLabels();
 
   // ─── JEV key → label pairs (Account Report panel) ──────────────────────
@@ -231,11 +233,21 @@ export default function useJournalAccounts() {
     setIsModalOpen(true);
   };
 
-  // Accounts that already carry JEV entries are never deletable — the API
+  // Accounts that still carry LIVE JEV lines are never deletable — the API
   // rejects them too, this just stops the confirm dialog from opening.
+  // A CANCELLED JEV's lines don't count: the API deletes those WITH the
+  // account, so they must never keep the Delete button hidden.
   const entryAccountIds = useMemo(
-    () => new Set(jevEntries.map((e) => e?.nJournalAccountId)),
-    [jevEntries],
+    () =>
+      new Set(
+        jevEntries
+          .filter(
+            (e) => String(e?.jev?.cStatus ?? "").trim() !== jevCancelledKey,
+          )
+          .map((e) => e?.nJournalAccountId)
+          .filter((id) => id != null),
+      ),
+    [jevEntries, jevCancelledKey],
   );
 
   const handleDelete = (id, accountName) => {
@@ -347,6 +359,8 @@ export default function useJournalAccounts() {
     jevTypeOptions,
     jevStatusOptions,
     jevActiveKey,
+    jevCancelledKey,
+    jevReceivedPurchasesKey,
     mappingLoading,
 
     // Computed
@@ -378,5 +392,7 @@ export default function useJournalAccounts() {
     openReport,
     closeReport,
     handleMoveAccount,
+    isManagement,
+    isFinanceOfficer,
   };
 }

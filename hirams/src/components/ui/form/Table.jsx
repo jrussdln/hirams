@@ -173,7 +173,7 @@ const CustomTable = ({
   columns = [],
   rows = [],
   page = 0,
-  rowsPerPage = 10,
+  rowsPerPage = 15,
   loading = false,
   enableSorting = true,
   onRowClick,

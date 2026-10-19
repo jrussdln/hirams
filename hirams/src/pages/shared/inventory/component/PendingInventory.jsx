@@ -359,9 +359,10 @@ export default function PendingInventory({
   );
 
   // Expected total of ONE JEV = the group rows stamped with its nJEVId.
-  // bulkCreateJev makes one JEV per purchase item, so the panel's amount
-  // cap has to look at that JEV's own rows — never the whole group's
-  // grand total, or a second JEV in the group could be over-filled.
+  // bulkCreateJev books the whole group on ONE JEV per direction, so this
+  // is normally a single entry covering every row — but it stays keyed by
+  // nJEVId so a group with both directions (or legacy per-item JEVs) still
+  // caps each JEV against ITS OWN rows, never the whole grand total.
   const jevExpectedTotals = {};
   groupListRows.forEach((r) => {
     const id = r._raw?.nJEVId;
@@ -453,12 +454,12 @@ export default function PendingInventory({
                 // Key of THIS JEV. Its own rows' total is what the Amount
                 // field gets prefilled with (particularsGrandTotal below) —
                 // but the modal's Items table shows the WHOLE group, never
-                // just the rows stamped with this id: one JEV per purchase
-                // item means a group of two items would otherwise open a
-                // form whose table hides the item the drill-down above it
-                // just listed. R/D JEVs are not capped by that figure (see
-                // JevViewPanel's handleSaveEntry), so widening the table
-                // cannot over-fill anything.
+                // just the rows stamped with this id: a group can hold more
+                // than one JEV (one per direction, or legacy per-item ones),
+                // so a table scoped to this id could hide a batch the
+                // drill-down above it just listed. R/D JEVs are not capped
+                // by that figure (see JevViewPanel's handleSaveEntry), so
+                // widening the table cannot over-fill anything.
                 const jevKey = String(j.nJEVId);
 
                 return (

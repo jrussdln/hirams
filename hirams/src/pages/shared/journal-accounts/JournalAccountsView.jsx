@@ -27,6 +27,9 @@ export default function JournalAccountsView({
   jevEntries,
   jevTypeOptions,
   jevActiveKey,
+  jevReceivedPurchasesKey,
+  isManagement,
+  isFinanceOfficer,
   // ── owned by JournalAccountPanel ──
   ...panelProps
 }) {
@@ -76,8 +79,11 @@ export default function JournalAccountsView({
           jevEntries={jevEntries}
           jevTypeOptions={jevTypeOptions}
           jevActiveKey={jevActiveKey}
+          jevReceivedPurchasesKey={jevReceivedPurchasesKey}
           dateRange={reportDateRange}
           onEditRange={editRange}
+          isManagement={isManagement}
+          isFinanceOfficer={isFinanceOfficer}
         />
       ) : (
         <JournalAccountPanel

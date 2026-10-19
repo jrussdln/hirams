@@ -102,7 +102,7 @@ function PricingSetPanel({
   const [pricingSets, setPricingSets] = useState([]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState(null);
@@ -985,7 +985,7 @@ function PricingSetPanel({
                     : actionType === "approve"
                       ? "approved"
                       : "reverted",
-                     onApproved: handleAfterAction,
+            onApproved: handleAfterAction,
             onForceFinalized: handleAfterAction,
             transaction: {
               ...transaction,

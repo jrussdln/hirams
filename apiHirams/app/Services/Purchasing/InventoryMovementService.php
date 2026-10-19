@@ -215,54 +215,53 @@ class InventoryMovementService
     }
 
     /**
-     * Create one JEV per purchase item for all of its pending, unlinked rows
-     * (received or delivered, chosen by $v['type']).
+     * Create ONE JEV covering every pending, unlinked row of the group for
+     * this direction (received or delivered, chosen by $v['type']).
      *
-     * @return array<int, array{nPurchaseItemId: int|string, nJEVId: int|string, updatedIds: \Illuminate\Support\Collection}>
+     * All batches the request touches are booked on the same Journal Entry
+     * Voucher — the group is one movement, not one JEV per purchase item.
+     *
+     * @return array{nJEVId: int|string, nPurchaseItemIds: \Illuminate\Support\Collection, updatedIds: \Illuminate\Support\Collection}
      */
     public function bulkCreateJev(array $v): array
     {
         $isReceived = $v['type'] === 'received';
 
         $created = DB::transaction(function () use ($v, $isReceived) {
-            // One query for every pending, unlinked row across all items
+            // Every pending, unlinked row across all items of the group
             $rows = Inventory::whereIn('nPurchaseItemId', $v['nPurchaseItemIds'])
                 ->where('cStatus', 'P')
                 ->where('nQuantity', $isReceived ? '>' : '<', 0)
                 ->whereNull('nJEVId')
                 ->lockForUpdate()
-                ->get(['nInventoryId', 'nPurchaseItemId'])
-                ->groupBy('nPurchaseItemId');
+                ->get(['nInventoryId', 'nPurchaseItemId']);
 
             if ($rows->isEmpty()) {
                 throw new Exception('No pending batches to attach to a JEV.');
             }
 
-            $now = now();
-            $result = [];
+            // ONE JEV for the whole group (this direction) — every batch of
+            // it is stamped with the same nJEVId.
+            $jev = Jev::create([
+                'strJEVNumber' => Jev::generateNumber(),
+                'cJEVLinkType' => $isReceived ? 'R' : 'D',
+                'dtOccur'      => now(),
+                'cStatus'      => 'P',
+            ]);
 
-            foreach ($rows as $purchaseItemId => $group) {
-                $jev = Jev::create([
-                    'strJEVNumber' => Jev::generateNumber(),   // ← add
-                    'cJEVLinkType' => $isReceived ? 'R' : 'D',
-                    'dtOccur'      => $now,
-                    'cStatus'      => 'P',
-                ]);
+            Inventory::whereIn('nInventoryId', $rows->pluck('nInventoryId'))
+                ->update(['nJEVId' => $jev->nJEVId]);
 
-                Inventory::whereIn('nInventoryId', $group->pluck('nInventoryId'))
-                    ->update(['nJEVId' => $jev->nJEVId]);
-
-                $result[] = [
-                    'nPurchaseItemId' => $purchaseItemId,
-                    'nJEVId'          => $jev->nJEVId,
-                    'updatedIds'      => $group->pluck('nInventoryId')->values(),
-                ];
-            }
-
-            return $result;
+            return [
+                'nJEVId'           => $jev->nJEVId,
+                'nPurchaseItemIds' => $rows->pluck('nPurchaseItemId')->unique()->values(),
+                'updatedIds'       => $rows->pluck('nInventoryId')->values(),
+            ];
         });
 
-        broadcast(new InventoryUpdated('jev_created', $created[0]['nPurchaseItemId']))->toOthers();
+        broadcast(
+            new InventoryUpdated('jev_created', (int) $created['updatedIds']->first())
+        )->toOthers();
 
         return $created;
     }

@@ -21,6 +21,7 @@ import ContentCopyOutlined from "@mui/icons-material/ContentCopyOutlined";
 import CheckCircleOutlined from "@mui/icons-material/CheckCircleOutlined";
 import icons from "../../../utils/style/iconFormatStyles";
 import getThemeColors from "../../../utils/style/getThemeColors";
+import CalculatorWidget from "../widget/CalculatorWidget";
 
 import ReactQuill from "react-quill";
 import "react-quill/dist/quill.snow.css";
@@ -291,6 +292,10 @@ export default function FormGrid({
   const [showPassword, setShowPassword] = useState({});
   const [pesoDisplayValues, setPesoDisplayValues] = useState({});
   const [selectSearch, setSelectSearch] = useState({});
+  // Which peso field the floating calculator was opened from — null = closed.
+  // The widget itself is dragged / resized / dismissed; this only names the
+  // field its "Use in …" button writes back into.
+  const [calcField, setCalcField] = useState(null);
 
   const togglePasswordVisibility = (name) =>
     setShowPassword((prev) => ({ ...prev, [name]: !prev[name] }));
@@ -843,6 +848,32 @@ export default function FormGrid({
                       </Typography>
                     </InputAdornment>
                   ),
+                  // The 🧮 that opens the floating calculator, sitting inside
+                  // the field at its right end. Opt out per field with
+                  // `calculator: false`; a disabled field gets no button.
+                  endAdornment:
+                    field.disabled || field.calculator === false ? null : (
+                      <InputAdornment position="end">
+                        <IconButton
+                          edge="end"
+                          size="small"
+                          aria-label={`Open calculator for ${field.label}`}
+                          title="Open calculator"
+                          onClick={() =>
+                            setCalcField({ name: field.name, label: field.label })
+                          }
+                          sx={{
+                            color: clr.textMuted,
+                            p: 0.25,
+                            "&:hover": { color: clr.blueText },
+                          }}
+                        >
+                          {React.cloneElement(icons.calculator, {
+                            sx: { fontSize: "1.05rem" },
+                          })}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
                 }}
               />
             </Grid>
@@ -1153,6 +1184,31 @@ export default function FormGrid({
           />
         </Grid>
       ))}
+
+      {/* ── Calculator ────────────────────────────────────────────────
+          One floating instance per form, opened by the 🧮 in any peso
+          field above. The widget portals ITSELF to document.body (it has
+          to clear the MUI modal this form usually sits in), so when it is
+          closed it renders nothing — harmless here as the Grid's last
+          child. "Use in <field>" writes the shown number back through
+          handleChange, exactly as if it had been typed. */}
+      <CalculatorWidget
+        open={!!calcField}
+        target={calcField}
+        onClose={() => setCalcField(null)}
+        onApply={(value) => {
+          if (!calcField) return;
+          const num = Number(value);
+          if (!Number.isFinite(num)) return;
+          // Same 2-decimal shape the field's own blur writes.
+          handleChange({
+            target: { name: calcField.name, value: num.toFixed(2) },
+          });
+          // Focus back into the field so typing / Tab can carry straight on.
+          const idx = fields.findIndex((f) => f.name === calcField.name);
+          inputRefs.current[idx]?.focus?.();
+        }}
+      />
     </Grid>
   );
 }

@@ -39,6 +39,7 @@ import RequestQuoteOutlined from "@mui/icons-material/RequestQuoteOutlined"; // 
 import LocalShippingOutlined from "@mui/icons-material/LocalShippingOutlined"; // Delivery
 import PrintOutlined from "@mui/icons-material/PrintOutlined"; // Print
 import ManageAccountsOutlined from "@mui/icons-material/ManageAccountsOutlined"; // Manage
+import CalculateOutlined from "@mui/icons-material/CalculateOutlined"; // Calculator
 import AssessmentOutlined from "@mui/icons-material/AssessmentOutlined";
 // Keyed to match BaseButton's ACTION_COLORS, so actionColor="cancel"
 // and icon={icons.cancel} stay conceptually paired.
@@ -93,6 +94,8 @@ const icons = {
   check: <CheckCircleOutlined />,
   // ADD to the icons object
   report: <AssessmentOutlined />,
+  // Opens the floating CalculatorWidget from inside a peso field.
+  calculator: <CalculateOutlined />,
 };
 
 export default icons;

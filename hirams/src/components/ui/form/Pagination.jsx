@@ -29,11 +29,11 @@ const CustomPagination = ({
   const isXs = useMediaQuery(theme.breakpoints.down("sm"));
   const isMd = useMediaQuery(theme.breakpoints.between("sm", "md"));
 
-  const rowsPerPageOptions = [{ label: "All", value: -1 }, 10, 50, 100, 500];
-  const validValues = [-1, 10, 50, 100, 500];
+  const rowsPerPageOptions = [{ label: "All", value: -1 }, 15, 50, 100, 500];
+  const validValues = [-1, 15, 50, 100, 500];
   const rowsPerPage = validValues.includes(propRowsPerPage)
     ? propRowsPerPage
-    : 10;
+    : 15;
 
   const effectiveRowsPerPage = rowsPerPage === -1 ? count : rowsPerPage;
   const startRecord = count === 0 ? 0 : page * effectiveRowsPerPage + 1;

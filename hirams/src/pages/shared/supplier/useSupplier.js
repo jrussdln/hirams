@@ -30,7 +30,7 @@ export default function useSupplier() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
 
   const [openModal, setOpenModal] = useState(false);
   const [openContactModal, setOpenContactModal] = useState(false);

@@ -9,7 +9,7 @@ import BaseButton from "../../../components/ui/form/BaseButton";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import JevEntriesViewModal from "../jev/modal/JevEntriesViewModal";
 import JevConfirmationModal from "../jev/modal/JevConfirmationModal";
-import JevStatusUpdateModal from "../jev/modal/JevStatusUpdateModal";
+import JevStatusUpdateTooltip from "../jev/tooltip/JevStatusUpdateTooltip";
 import { NO_TYPE_CODE } from "./useJevList";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 import { JEV_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
@@ -80,6 +80,8 @@ export default function JevListView({
   // Status
   statusTarget,
   setStatusTarget,
+  statusAnchorEl,
+  setStatusAnchorEl,
   // Confirmation - create_jev
   confirmAction,
   setConfirmAction,
@@ -177,6 +179,9 @@ export default function JevListView({
                 onClick={(e) => {
                   e.stopPropagation();
                   setStatusTarget(row);
+                  // Anchors the status panel to this exact button — a
+                  // tooltip opens where you clicked, not mid-screen.
+                  setStatusAnchorEl(e.currentTarget);
                 }}
               />
               <BaseButton
@@ -201,6 +206,7 @@ export default function JevListView({
       isNoTypeList,
       handleRowClick,
       setStatusTarget,
+      setStatusAnchorEl,
       handleDeleteClick,
       jevPendingKey,
       jevCancelledKey,
@@ -289,12 +295,17 @@ export default function JevListView({
 
       {/* Status — any of A / P / C. Self-sufficient: it dispatches
           jev_data_updated on save, which the hook's listener turns into
-          a refetch, and closes itself through onClose. */}
-      <JevStatusUpdateModal
+          a refetch, and closes itself through onClose. Anchored to the
+          button that opened it (statusAnchorEl), not centered. */}
+      <JevStatusUpdateTooltip
         open={!!statusTarget}
+        anchorEl={statusAnchorEl}
         jev={statusTarget?._raw ?? statusTarget}
         jevStatus={jev_status}
-        onClose={() => setStatusTarget(null)}
+        onClose={() => {
+          setStatusTarget(null);
+          setStatusAnchorEl(null);
+        }}
       />
     </PageLayout>
   );

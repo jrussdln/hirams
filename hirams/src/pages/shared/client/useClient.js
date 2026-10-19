@@ -28,7 +28,7 @@ export default function useClient() {
   const [isFetched, setIsFetched] = useState(false); // ✅ Track if already loaded
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
 
   const [selectedClient, setSelectedClient] = useState(null);
   const [openAEModal, setOpenAEModal] = useState(false);
@@ -53,7 +53,7 @@ export default function useClient() {
     inactiveStatusLabel,
     forApprovalStatusLabel,
 
-    isManagement
+    isManagement,
   } = useKeysLabels();
 
   // Init default status
@@ -86,22 +86,25 @@ export default function useClient() {
     next.delete("add");
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
-  const fetchClients = useCallback(async (force = false, silent = false) => {
-    if (!force && isFetched) return; // ✅ Skip if already loaded
-    if (mappingLoading) return;
+  const fetchClients = useCallback(
+    async (force = false, silent = false) => {
+      if (!force && isFetched) return; // ✅ Skip if already loaded
+      if (mappingLoading) return;
 
-    if (!silent) setLoading(true); // ✅ Only show loading on FIRST load
+      if (!silent) setLoading(true); // ✅ Only show loading on FIRST load
 
-    try {
-      const result = await ClientAPI.getClients();
-      setAllClients((result.clients ?? []).map(formatClient));
-      setIsFetched(true); // ✅ Mark as loaded
-    } catch (err) {
-      console.error("Error fetching clients:", err);
-    } finally {
-      if (!silent) setLoading(false); // ✅ Keep table visible during sync
-    }
-  }, [mappingLoading, isFetched]);
+      try {
+        const result = await ClientAPI.getClients();
+        setAllClients((result.clients ?? []).map(formatClient));
+        setIsFetched(true); // ✅ Mark as loaded
+      } catch (err) {
+        console.error("Error fetching clients:", err);
+      } finally {
+        if (!silent) setLoading(false); // ✅ Keep table visible during sync
+      }
+    },
+    [mappingLoading, isFetched],
+  );
 
   // Keep stable reference for event listeners
   const fetchClientsRef = useRef(fetchClients);

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Box, Typography, useTheme } from "@mui/material";
 import {
   AccountBalanceOutlined,
@@ -15,6 +15,8 @@ import { toCents } from "../../../../utils/helpers/money.js";
 import CustomTable from "../../../../components/ui/form/Table.jsx";
 import JevEntriesViewModal from "../../jev/modal/JevEntriesViewModal.jsx";
 import TransferEntryModal from "../modal/TransferEntryModal.jsx";
+import VoucherAPI from "../../../../api/endpoints/voucher.api.js";
+import InventoryAPI from "../../../../api/endpoints/inventory.api.js";
 
 const useColors = (c) => ({
   border: c.slate.border,
@@ -118,6 +120,23 @@ const fmtAmt = (n) =>
     maximumFractionDigits: 2,
   });
 
+// Payee nickname of the voucher behind a JEV — the very fields the voucher
+// list (useVoucher) and the JEV viewer (JevEntriesViewModal) print:
+//   • assignee-type voucher → first assignee's nickname
+//   • supplier-type voucher → the supplier's nickname
+// Returns null when the record has no resolvable nickname so the caller can
+// fall back to the counterpart account name.
+const voucherPayeeName = (voucher) => {
+  if (!voucher) return null;
+  const isAssignee =
+    (voucher.voucher_assignees?.length ?? 0) > 0 &&
+    !(voucher.voucher_suppliers?.length > 0);
+  const name = isAssignee
+    ? voucher.voucher_assignees?.[0]?.assignee?.strAssigneeNickName
+    : voucher.supplier?.strSupplierNickName;
+  return name ? String(name) : null;
+};
+
 const NUM_FONT = {
   fontVariantNumeric: "tabular-nums",
   fontFeatureSettings: '"tnum"',
@@ -133,6 +152,17 @@ const EntryBranch = ({
   colors,
   byJev,
   nameById,
+  // nJEVId → payee nickname (supplier / assignee) for voucher-backed JEVs.
+  // When a JEV has one, its Particulars cell leads with the payee instead of
+  // the counterpart account name.
+  payeeByJevId = {},
+  // nJEVId → supplier nickname for "Received Purchases" (R) JEVs, taken from
+  // the received inventory rows behind them. Drives the
+  // "Received Purchases from {supplier}" Particulars text.
+  receivedSupplierByJevId = {},
+  // Raw key of the "Received Purchases" JEV type — matched against
+  // entry.jev.cJEVLinkType to know which rows take the received treatment.
+  jevReceivedPurchasesKey = "",
   sx,
   onOpenJev,
   // (row) => void — row carries nJournalAccountId; opens the transfer
@@ -140,7 +170,7 @@ const EntryBranch = ({
   onTransferEntry,
 }) => {
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [rowsPerPage, setRowsPerPage] = useState(15);
 
   // One row per entry. Entries arrive newest first, so the running balance
   // starts at the LAST row and accumulates upward (first row = grand total).
@@ -160,14 +190,22 @@ const EntryBranch = ({
         .filter((s) => s !== e && Number(s.dAmount) < 0 !== isOut)
         .map((s) => nameById[s.nJournalAccountId] ?? "—");
 
-      // Amount of the WHOLE JEV this line belongs to, not of the line itself
-      // (From/To already carry that). It is the JEV's "To" side — the same
-      // total JevViewPanel shows and the voucher is balanced against — added
-      // in whole cents so the sum cannot drift.
-      const amountCents = (byJev[e.nJEVId] || []).reduce(
-        (sum, s) => (Number(s.dAmount) >= 0 ? sum + toCents(s.dAmount) : sum),
-        0,
-      );
+      // Voucher-backed JEV → its payee's nickname (supplier / assignee).
+      // undefined = no voucher behind this JEV, so Particulars keeps the
+      // counterpart account name as before.
+      const payee =
+        e.nJEVId != null && payeeByJevId[String(e.nJEVId)] != null
+          ? payeeByJevId[String(e.nJEVId)]
+          : null;
+
+      // "Received Purchases" (R) JEV → the supplier the goods came in from,
+      // read off the received inventory rows stamped with this JEV.
+      const receivedSupplier =
+        String(e?.jev?.cJEVLinkType ?? "") === String(jevReceivedPurchasesKey)
+          ? e.nJEVId != null
+            ? (receivedSupplierByJevId[String(e.nJEVId)] ?? null)
+            : null
+          : null;
 
       return {
         id: e.nJEVEntryId ?? `entry-${i}`,
@@ -185,15 +223,32 @@ const EntryBranch = ({
         // Raw JEV record (number / date / type / status) — what the JEV No.
         // click hands to the modal.
         jevRef: e?.jev ?? null,
-        amount: e.nJEVId ? amountCents : 0,
-        particulars: counterparts[0] ?? "—",
+        payee,
+        receivedSupplier,
+        // A voucher-backed JEV leads with its payee's nickname, a Received
+        // Purchases JEV with "Received Purchases from {supplier}"; everything
+        // else falls back to the counterpart account name.
+        particulars:
+          payee ??
+          (receivedSupplier
+            ? `Received Purchases from ${receivedSupplier}`
+            : null) ??
+          counterparts[0] ??
+          "—",
         counterparts,
         from: isOut ? amt : 0, // money out
         to: !isOut ? amt : 0, // money in
         balance: balances[i],
       };
     });
-  }, [entries, byJev, nameById]);
+  }, [
+    entries,
+    byJev,
+    nameById,
+    payeeByJevId,
+    receivedSupplierByJevId,
+    jevReceivedPurchasesKey,
+  ]);
 
   const columns = useMemo(() => {
     const dash = (
@@ -293,47 +348,28 @@ const EntryBranch = ({
         ),
       },
       {
-        key: "amount",
-        label: "Amount",
-        xs: 1.3,
-        align: "right",
-        render: (v) =>
-          v > 0 ? (
-            <Box
-              component="span"
-              title={`JEV total: ₱${fmtAmt(v / 100)}`}
-              sx={{ ...num, color: colors.gray.pri }}
-            >
-              {fmtAmt(v / 100)}
-            </Box>
-          ) : (
-            dash
-          ),
-      },
-      {
         key: "particulars",
         label: "Particulars",
         xs: 2.2,
         render: (_, row) => (
-          <Box component="span" title={row.counterparts.join(", ")}>
+          <Box
+            component="span"
+            // Lead with the resolved particulars (payee nickname / "Received
+            // Purchases from {supplier}") when present, then the counterpart
+            // accounts. When particulars is just the first counterpart, this
+            // equals the full counterpart list.
+            title={
+              row.particulars && row.particulars !== "—"
+                ? [
+                    row.particulars,
+                    ...row.counterparts.filter((c) => c !== row.particulars),
+                  ]
+                    .filter(Boolean)
+                    .join(", ")
+                : row.counterparts.join(", ")
+            }
+          >
             {row.particulars}
-            {row.counterparts.length > 1 && (
-              <Box
-                component="span"
-                sx={{
-                  ml: 0.6,
-                  px: 0.6,
-                  borderRadius: "50px",
-                  fontSize: "0.55rem",
-                  fontWeight: 700,
-                  color: colors.gray.sec,
-                  background: colors.headerBg,
-                  border: `0.5px solid ${colors.border}`,
-                }}
-              >
-                +{row.counterparts.length - 1}
-              </Box>
-            )}
           </Box>
         ),
       },
@@ -479,12 +515,19 @@ function AccountReportPanel({
   jevEntries = [],
   jevTypeOptions = [],
   jevActiveKey = "A",
+  // Raw key of the "Received Purchases" JEV type — its Particulars cell is
+  // built from the inventory behind it ("Received Purchases from {supplier}").
+  jevReceivedPurchasesKey = "",
   // Inclusive { from, to } window chosen in AccountReportiFilterModal
   // before the panel opened (nulls = entire history).
   dateRange = EMPTY_RANGE,
   // Reopens AccountReportiFilterModal on the header's date chip so the
   // window can be changed while the report is already on screen.
   onEditRange = null,
+  // Role flags — handed to JevEntriesViewModal as `entryCrud` so its entry
+  // rows are editable here just like on the JEV list page.
+  isManagement = false,
+  isFinanceOfficer = false,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -492,6 +535,77 @@ function AccountReportPanel({
   const colors = useMemo(() => useColors(base), [base]);
 
   const [search, setSearch] = useState("");
+
+  // ── Vouchers behind voucher-backed JEVs ────────────────────────────────
+  // Particulars for a V/C JEV shows the payee's nickname (supplier or
+  // assignee). A JEV is linked to its voucher through voucher.nJEVId, so we
+  // fetch the voucher list ONCE and index it by that id. The value is either
+  // the nickname string or null (no voucher / no nickname) — null is cached
+  // too, so a lookup never re-fetches.
+  const [payeeByJevId, setPayeeByJevId] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await VoucherAPI.getVouchers();
+        const list = Array.isArray(res) ? res : res?.data || [];
+        if (cancelled) return;
+        const map = {};
+        list.forEach((v) => {
+          if (!v?.nJEVId) return;
+          map[String(v.nJEVId)] = voucherPayeeName(v);
+        });
+        setPayeeByJevId(map);
+      } catch (err) {
+        console.error("Failed to load vouchers for the report:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ── Suppliers behind "Received Purchases" (R) JEVs ────────────────────
+  // An R JEV has no voucher — it's stamped onto the received inventory
+  // rows, whose strSupplierNickName names the supplier. We fetch the
+  // inventory ONCE and index the supplier nickname by every JEV id a row
+  // carries (nJEVIds, else nJEVId — the same rule JevEntriesViewModal uses).
+  // Only RECEIVED rows (qty > 0) contribute; a delivered batch belongs to a
+  // D JEV and names a client, not a supplier.
+  const [receivedSupplierByJevId, setReceivedSupplierByJevId] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await InventoryAPI.getInventory();
+        const rows = Array.isArray(res) ? res : res?.inventories || [];
+        if (cancelled) return;
+        const map = {};
+        rows.forEach((i) => {
+          if (Number(i?.nQuantity ?? 0) <= 0) return; // received side only
+          const nick = i?.strSupplierNickName;
+          if (!nick || nick === "—") return;
+          const ids =
+            Array.isArray(i?.nJEVIds) && i.nJEVIds.length
+              ? i.nJEVIds
+              : [i?.nJEVId];
+          ids.forEach((id) => {
+            if (id == null) return;
+            const k = String(id);
+            if (map[k] == null) map[k] = String(nick);
+          });
+        });
+        setReceivedSupplierByJevId(map);
+      } catch (err) {
+        console.error("Failed to load inventory for the report:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Row keys whose subtree (its entry block + the linked accounts under it)
   // is currently folded away.
@@ -542,17 +656,17 @@ function AccountReportPanel({
     setJevModalOpen(true);
   };
 
-  // "Disbursement Voucher" — the JEV's type label only. The modal appends
-  // the voucher number itself (headerLine in JevEntriesViewModal), so the
-  // header reads "Disbursement Voucher · DV". The day is left out of the
-  // header on purpose — every entry row carries its own Date column.
+  // "Voucher · DV-2026-0012" — the JEV's type label with "Disbursement"
+  // dropped (the voucher behind it already says what kind it is). Every
+  // other type keeps its full label: "Received Purchases", "Delivered
+  // Items", "Collection". The modal appends the voucher number itself.
   const jevSubTitle = useMemo(() => {
     if (!jevModal) return "";
-    return (
+    const label =
       jevTypeOptions.find(
         (t) => String(t.key) === String(jevModal.cJEVLinkType),
-      )?.label ?? ""
-    );
+      )?.label ?? "";
+    return label.replace(/^Disbursement\s+/i, "");
   }, [jevModal, jevTypeOptions]);
 
   // ── Date filter — the inclusive window chosen in
@@ -881,8 +995,8 @@ function AccountReportPanel({
             </Box>
           </Box>
           {(() => {
-            // All-time total — the date window filters the entry rows below,
-            // never this chip.
+            // All-time totals — the date window filters the entry rows below,
+            // never these numbers.
             const { from, to, net } = grandTotalsById[account?.id] ?? {
               from: 0,
               to: 0,
@@ -890,41 +1004,64 @@ function AccountReportPanel({
             };
             // A zero total is not worth a chip — "Balance: 0.00" only adds noise.
             if (net === 0) return null;
-            const { text } = formatBalance(net);
+            const cols = [
+              { label: "From", value: from / 100, color: colors.red.text },
+              { label: "To", value: to / 100, color: colors.green.text },
+              {
+                label: "Total",
+                value: net,
+                color: net < 0 ? colors.red.text : colors.green.text,
+              },
+            ];
             return (
               <Box
                 component="span"
                 title={`From ₱${fmtAmt(from / 100)} · To ₱${fmtAmt(to / 100)}`}
                 sx={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 0.5,
+                  display: "flex",
+                  alignItems: "flex-end",
+                  gap: 2.5,
                   px: 0.8,
                   py: 0.3,
-                  whiteSpace: "nowrap",
                   flexShrink: 0,
                 }}
               >
-                <Typography
-                  sx={{
-                    fontSize: "0.58rem",
-                    fontWeight: 700,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.4px",
-                    color: colors.violet.text,
-                  }}
-                >
-                  Overall Balance:
-                </Typography>
-                <Typography
-                  sx={{
-                    fontSize: "0.7rem",
-                    fontWeight: 700,
-                    color: net < 0 ? colors.red.text : colors.green.text,
-                  }}
-                >
-                  {text}
-                </Typography>
+                {cols.map((c) => (
+                  <Box
+                    key={c.label}
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: 0.1,
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontSize: "0.55rem",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.4px",
+                        color: colors.violet.text,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.label}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        fontVariantNumeric: "tabular-nums",
+                        color: c.color,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {c.value < 0 ? "-" : ""}
+                      {fmtAmt(Math.abs(c.value))}
+                    </Typography>
+                  </Box>
+                ))}
               </Box>
             );
           })()}
@@ -936,6 +1073,9 @@ function AccountReportPanel({
             colors={colors}
             byJev={byJev}
             nameById={nameById}
+            payeeByJevId={payeeByJevId}
+            receivedSupplierByJevId={receivedSupplierByJevId}
+            jevReceivedPurchasesKey={jevReceivedPurchasesKey}
             onOpenJev={openJevModal}
             onTransferEntry={handleTransferEntry}
             sx={{ ml: "24px", mr: 1.25, mb: 0.5 }}
@@ -1074,7 +1214,8 @@ function AccountReportPanel({
                   lineHeight: 1.3,
                   whiteSpace: "nowrap",
                   ...(onEditRange && {
-                    transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+                    transition:
+                      "border-color 0.15s ease, box-shadow 0.15s ease",
                     "&:hover": {
                       borderColor: colors.blue.border,
                       boxShadow: `0 0 0 2px ${colors.blue.bg}`,
@@ -1329,6 +1470,9 @@ function AccountReportPanel({
                           colors={colors}
                           byJev={byJev}
                           nameById={nameById}
+                          payeeByJevId={payeeByJevId}
+                          receivedSupplierByJevId={receivedSupplierByJevId}
+                          jevReceivedPurchasesKey={jevReceivedPurchasesKey}
                           onOpenJev={openJevModal}
                           onTransferEntry={handleTransferEntry}
                           sx={{
@@ -1355,6 +1499,7 @@ function AccountReportPanel({
         onClose={() => setJevModalOpen(false)}
         jev={jevModal}
         subTitle={jevSubTitle}
+        entryCrud={{ isManagement, isFinanceOfficer }}
       />
 
       {/* ── Entry row Transfer → re-assign that entry line to another
