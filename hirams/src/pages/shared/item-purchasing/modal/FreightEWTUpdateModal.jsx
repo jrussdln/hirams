@@ -223,7 +223,7 @@ export default function FreightEWTUpdateModal({
         }
         onClose?.();
       }}
-      cancelLabel="Cancel"
+      cancelLabel={editingFreight || editingEwt ? "Back" : "Cancel"}
       loading={saving}
       disableBackdropClick
       width={620}
@@ -305,13 +305,14 @@ export default function FreightEWTUpdateModal({
                   >
                     <Typography
                       sx={{
-                        fontSize: "1.25rem",
-                        fontWeight: 800,
+                        fontSize: freightValue > 0 ? "1.25rem" : "0.9rem",
+                        fontWeight: freightValue > 0 ? 800 : 400,
+                        fontStyle: freightValue > 0 ? "normal" : "italic",
                         lineHeight: 1.05,
-                        color: c.primaryDark,
+                        color: freightValue > 0 ? c.primaryDark : c.textMuted,
                       }}
                     >
-                      {fmtPHP(freightValue)}
+                      {freightValue > 0 ? fmtPHP(freightValue) : "No Freight"}
                     </Typography>
                   </Box>
                 </Box>

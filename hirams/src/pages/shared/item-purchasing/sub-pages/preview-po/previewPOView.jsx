@@ -33,10 +33,15 @@ const headerCellSx = {
   textAlign: "center",
 };
 
+// 7 columns is NOT used — the table stays at 6. The "No." column only
+// holds a row number, so it is kept narrow (5%) and the space it frees
+// goes to the Description (50%). The header and footer tables reuse
+// this colgroup, so their merged cells (colSpan 2 / 4 / 6) still line
+// up: columns 1+2 keep the same combined width (55%).
 const COLGROUP = (
   <colgroup>
-    <col style={{ width: "11%" }} />
-    <col style={{ width: "44%" }} />
+    <col style={{ width: "5%" }} />
+    <col style={{ width: "50%" }} />
     <col style={{ width: "8%" }} />
     <col style={{ width: "10%" }} />
     <col style={{ width: "14%" }} />
@@ -506,7 +511,7 @@ function POFooterTable({
                   color: DOC.text,
                 }}
               >
-                1. We deserve the right to cancel the purchase order anytime
+                1. We reserve the right to cancel the purchase order anytime
                 before product shipment.
               </div>
               <div
@@ -597,7 +602,13 @@ function POFooterTable({
                 textAlign: "center",
               }}
             >
-              Amount in Words: {numberToWords(payable)}
+              Amount in Words:{" "}
+              {/* The words themselves are editable - the label stays put */}
+              <EditableCell.Inline
+                id="amountInWords"
+                initialValue={numberToWords(payable)}
+                placeholder="Amount in words"
+              />
             </td>
           </tr>
         </tbody>
