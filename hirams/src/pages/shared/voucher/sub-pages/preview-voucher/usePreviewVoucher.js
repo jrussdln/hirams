@@ -47,6 +47,13 @@ export default function usePreviewVoucher() {
     };
   });
 console.log(onlineLabel);
+  // The FREIGHT of the POs the voucher carries — the sum of their freight
+  // (a voucher without POs — an assignee voucher — has none).
+  const freight = (voucher?.voucher_suppliers ?? []).reduce(
+    (sum, vs) => sum + Number(vs?.purchase_order?.dFreight || 0),
+    0,
+  );
+
   const items = particulars.map((p) =>
     isAssigneeType
       ? {
@@ -78,6 +85,8 @@ console.log(onlineLabel);
     payeeAddress: supplierAddress ?? "",
 
     items,
+
+    freight,
 
     ewtDiscount: Number(ewtAmount ?? 0),
 

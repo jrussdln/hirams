@@ -91,7 +91,7 @@ export default function useTransactionWorkspace() {
     isProcurement,
     isProcurementTL,
     proc_status,
-    forCollectionKey = "",
+    forCollectionKey: stateForCollectionKey = "",
     priceSettingKey = "",
     finalizeVerificationKey = "",
     priceFinalizeVerificationKey = "",
@@ -118,7 +118,20 @@ export default function useTransactionWorkspace() {
     removedFromCartKey,
     jevPendingKey,
     isFinanceOfficer,
+    forCollectionKey: keysForCollectionKey,
   } = useKeysLabels();
+
+  /**
+   * "For Collection" target status.
+   *
+   * The route state only carries this key on the For Collection page — the
+   * For Purchase page never received it, so the "For Collection" button
+   * opened the action modal with an empty target and every attempt failed
+   * with "This transaction cannot proceed further.". Deriving it from the
+   * mapping (useKeysLabels) makes it available on every screen; the state
+   * value is kept as an override for callers that pass their own.
+   */
+  const forCollectionKey = stateForCollectionKey || keysForCollectionKey || "";
   const [items, setItems] = useState([]);
   const optionStatuses = useMemo(() => {
     const map = {};
@@ -256,7 +269,11 @@ export default function useTransactionWorkspace() {
     (currentUserId && transaction?.nAssignedAO
       ? String(currentUserId) === String(transaction.nAssignedAO)
       : false);
-  const showReassignAO = isAOTL;
+  // The AO can be (re)assigned by the AOTL — and by MANAGEMENT, which
+  // watches the whole board. The button itself says "Assign AO" or
+  // "Reassign AO" depending on whether one is already on the transaction
+  // (see hasAssignedAO).
+  const showReassignAO = isAOTL || isManagement;
   const showReassignProcurement =
     forPurchaseKey.includes(statusCode) && (isManagement || isProcurementTL);
   const transactionHasABC =

@@ -1227,10 +1227,19 @@ class TransactionController extends ApiController
 
             $isReassign = !is_null($transaction->nAssignedAO);
 
-            // Assign AND reassign both land on 210 (Transaction Items Management).
-            // A (re)assigned AO starts the items work from scratch, so the status
-            // is reset here regardless of what it was before.
-            $newStatus = '210';
+            // The status the transaction moves to:
+            //   • FIRST assignment (no AO on it yet) → Items Management: the
+            //     new officer starts the items work from scratch.
+            //   • REASSIGNMENT (an AO is already on it) → the status it is
+            //     ALREADY on: only the officer changes, the work does not
+            //     start over — so the history records the same status.
+            // The Items Management code comes from the one mapping every
+            // transaction status is keyed by (position 3 of the flow:
+            // 100 Draft · 110 Verification · 200 Assign · 210 Items Mgmt).
+            $statusCodes      = array_keys(config('mappings.status_transaction'));
+            $itemsMgmtStatus  = $statusCodes[3] ?? '210';
+            $currentStatus    = $transaction->latestHistory?->nStatus ?? $itemsMgmtStatus;
+            $newStatus        = $isReassign ? $currentStatus : $itemsMgmtStatus;
             $assignedUser     = User::find($validated['nAssignedAO']);
             $assignedFullName = $assignedUser
                 ? $assignedUser->strFName . ' ' . $assignedUser->strLName
@@ -1247,7 +1256,7 @@ class TransactionController extends ApiController
             TransactionHistory::create([
                 'nTransactionId' => $transaction->nTransactionId,
                 'dtOccur'        => now(),
-                'nStatus'        => $newStatus, // ✅ always 210 (Items Management)
+                'nStatus'        => $newStatus, // Items Management on a first assign; the status it was already on when the AO is only swapped
                 'nUserId'        => $validated['user_id'],
                 'strRemarks'     => $remarks,
             ]);

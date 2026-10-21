@@ -55,6 +55,8 @@ export const IconBox = ({
 
 export default function LineItems({
   options,
+  // The PO's freight charge — printed above the EWT line in the total row.
+  freight = 0,
   cartKey,
   forApprovalKey,
   forPaymentKey,
@@ -66,6 +68,8 @@ export default function LineItems({
   onRemoved,
   poStatus,
   anyOptionArrived,
+  onRowClick,
+  onBrandClick,
 }) {
   const navigate = useNavigate();
   const theme = useTheme();
@@ -159,6 +163,13 @@ export default function LineItems({
       ? options.filter((o) => getToDeliver(o.purchase_option) > 0)
       : options;
 
+  // The rows carry their own sticky header (the first row renders it), so
+  // these flags only decide what each row shows.
+  const showRemove = String(poStatus) === String(cartKey);
+  const showArrived = [pendingReceiptKey, forDeliveryKey, deliveredKey]
+    .map(String)
+    .includes(String(poStatus));
+
   return (
     <Box
       sx={{
@@ -178,10 +189,6 @@ export default function LineItems({
       {visibleOptions.map((optRow, idx) => {
         const p = optRow.purchase_option;
         const nPurchaseItemId = p?.nPurchaseItemId;
-        const showRemove = String(poStatus) === String(cartKey);
-        const showArrived = [pendingReceiptKey, forDeliveryKey, deliveredKey]
-          .map(String)
-          .includes(String(poStatus));
         const isAtPurchaseOrderStage =
           String(poStatus) === String(cartKey) ||
           String(poStatus) === String(forApprovalKey) ||
@@ -235,6 +242,9 @@ export default function LineItems({
             idx={idx}
             totalCount={visibleOptions.length}
             colors={base}
+            tableLayout
+            onRowClick={onRowClick}
+            onBrandClick={onBrandClick}
             showRemove={showRemove}
             isRemoving={removingOptionId === nPurchaseItemId}
             removingOptionId={removingOptionId}
@@ -257,6 +267,8 @@ export default function LineItems({
           itemCount={options.length}
           totalAmount={localTotal}
           ewtAmount={localEwtTotal}
+          // The PO's freight charge — printed above the EWT line.
+          freightAmount={Number(freight) || 0}
         />
       )}
     </Box>

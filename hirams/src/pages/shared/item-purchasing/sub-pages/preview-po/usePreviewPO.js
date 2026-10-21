@@ -9,7 +9,6 @@ export default function usePreviewPO() {
     checkByOtherAOName,
     generalManagerName,
     firstOption,
-    total,
     freightAmount,
     ewtAmount,
     cashKey,
@@ -59,9 +58,10 @@ export default function usePreviewPO() {
   const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
   const freight = Number(freightAmount ?? 0);
   const ewt = Number(ewtAmount ?? 0);
-  // matches Laravel: netTotal = total - ewtAmount (freight is added separately as a line, not into `total`)
-  const payable =
-    total != null ? Number(total) - ewt : subtotal + freight - ewt;
+  // The sheet's arithmetic: subtotal + freight = total, then total - ewt =
+  // TOTAL (the amount payable).
+  const total = subtotal + freight;
+  const payable = total - ewt;
 
   const shippingRaw = po?.strShippingDetails ?? "";
   // Quill stores rich HTML — keep it as-is so it can be rendered with
@@ -111,6 +111,7 @@ export default function usePreviewPO() {
     items,
     subtotal,
     freight,
+    total,
     ewt,
     payable,
 

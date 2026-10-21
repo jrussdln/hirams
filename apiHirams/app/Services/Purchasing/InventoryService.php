@@ -93,6 +93,9 @@ class InventoryService extends CrudService
                 'purchaseOption.supplier',
                 'purchaseOption.transactionItem.transaction.client',
                 'purchaseOption.transactionItem.transaction.company',
+                // The PO a batch was bought on — the items header card
+                // prints it.
+                'purchaseOption.purchaseOrderOption.purchaseOrder',
                 'serialNumbers',
             ])
             ->orderByDesc('dtLog')
@@ -123,6 +126,10 @@ class InventoryService extends CrudService
                             'strSupplierNickName' => $pendingRow->purchaseOption?->supplier?->strSupplierNickName ?? '—',
                             'strClientNickName'   => $pendingRow->purchaseOption?->transactionItem?->transaction?->client?->strClientNickName ?? '—',
                             'strCompanyNickName'  => $pendingRow->purchaseOption?->transactionItem?->transaction?->company?->strCompanyNickName ?? '—',
+                            'strPurchaseOrderNo'  => $pendingRow->purchaseOption?->purchaseOrderOption?->purchaseOrder?->strPurchaseOrderNo ?? '—',
+                            // The PO's id — the items table links the PO code
+                            // to the PO in Item Purchasing.
+                            'nPurchaseOrderId'    => $pendingRow->purchaseOption?->purchaseOrderOption?->purchaseOrder?->nPurchaseOrderId ?? null,
                             'serialNumbers'       => $pendingRow->serialNumbers->pluck('strSerialNumber')->filter()->values(),
                         ];
                     }
@@ -142,6 +149,8 @@ class InventoryService extends CrudService
                         'strSupplierNickName' => $cancelledRow->purchaseOption?->supplier?->strSupplierNickName ?? '—',
                         'strClientNickName'   => $cancelledRow->purchaseOption?->transactionItem?->transaction?->client?->strClientNickName ?? '—',
                         'strCompanyNickName'  => $cancelledRow->purchaseOption?->transactionItem?->transaction?->company?->strCompanyNickName ?? '—',
+                        'strPurchaseOrderNo'  => $cancelledRow->purchaseOption?->purchaseOrderOption?->purchaseOrder?->strPurchaseOrderNo ?? '—',
+                        'nPurchaseOrderId'    => $cancelledRow->purchaseOption?->purchaseOrderOption?->purchaseOrder?->nPurchaseOrderId ?? null,
                         'serialNumbers'       => $cancelledRow->serialNumbers->pluck('strSerialNumber')->filter()->values(),
                     ];
                 }
@@ -159,6 +168,8 @@ class InventoryService extends CrudService
                         'strSupplierNickName' => $first->purchaseOption?->supplier?->strSupplierNickName ?? '—',
                         'strClientNickName'   => $first->purchaseOption?->transactionItem?->transaction?->client?->strClientNickName ?? '—',
                         'strCompanyNickName'  => $first->purchaseOption?->transactionItem?->transaction?->company?->strCompanyNickName ?? '—',
+                        'strPurchaseOrderNo'  => $first->purchaseOption?->purchaseOrderOption?->purchaseOrder?->strPurchaseOrderNo ?? '—',
+                        'nPurchaseOrderId'    => $first->purchaseOption?->purchaseOrderOption?->purchaseOrder?->nPurchaseOrderId ?? null,
                     ];
 
                     // Stock (S) = positive balance

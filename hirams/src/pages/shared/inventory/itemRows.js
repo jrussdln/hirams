@@ -11,6 +11,15 @@ import { fmtDateTime } from "../../../utils/helpers/timeZone.js";
 //   Status 'A' rows arrive already aggregated by the API (one entry per
 //   purchase item per direction, carrying that group's nJEVId).
 // ─────────────────────────────────────────────────────────────────────
+// The TRANSACTION ITEM a batch was bought/sold as. Laravel serialises the
+// relation under its snake_case name ("transaction_item"), so both
+// spellings are read — the mapper and the helpers below share this one
+// lookup.
+const txnItemOf = (r) => {
+  const opt = (r?._raw ?? r)?.purchaseOption;
+  return opt?.transactionItem ?? opt?.transaction_item ?? null;
+};
+
 export const mapInventoryItems = (items = []) =>
   (items ?? []).map((i) => ({
     _raw: i,
@@ -34,6 +43,14 @@ export const mapInventoryItems = (items = []) =>
     strSupplierNickName: i.strSupplierNickName ?? "—",
     strClientNickName: i.strClientNickName ?? "—",
     strCompanyNickName: i.strCompanyNickName ?? "—",
+    // The PO the batch was bought on — the items header card prints it
+    // (received side) and every row prints it above its brand · model.
+    strPurchaseOrderNo: i.strPurchaseOrderNo ?? "—",
+    // …and its id — the PO code is a link to the PO in Item Purchasing.
+    nPurchaseOrderId: i.nPurchaseOrderId ?? null,
+    // The TRANSACTION the batch was sold on — what the items header card
+    // prints on the delivered (client) side.
+    strTransactionCode: txnItemOf(i)?.transaction?.strCode ?? "—",
   }));
 
 // Worth of ONE row = |qty| × unit price. Shared by the group total, the
@@ -68,11 +85,6 @@ export const hasDeliveredRows = (rows = []) =>
 // useSellingPrices.js, which mirrors how item-purchasing's ArrivePanel
 // reads it).
 // ─────────────────────────────────────────────────────────────────────
-const txnItemOf = (r) => {
-  const opt = (r?._raw ?? r)?.purchaseOption;
-  return opt?.transactionItem ?? opt?.transaction_item ?? null;
-};
-
 export const rowTransactionId = (r) => {
   const opt = (r?._raw ?? r)?.purchaseOption;
   const ti = txnItemOf(r);

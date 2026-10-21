@@ -1,6 +1,5 @@
 import { Box, Typography, Tooltip, useTheme } from "@mui/material";
 import {
-  StoreOutlined,
   ReceiptLongOutlined,
   RemoveCircleOutline,
   AddOutlined,
@@ -12,14 +11,13 @@ import { useMemo, useState } from "react";
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
 import JevViewPanel from "../../../jev/components/JevViewPanel.jsx";
 import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
-import ContentHeaderStructure from "../../../../../components/ui/structure/ContentHeaderStructure.jsx";
-import CardStructure from "../../../../../components/ui/structure/CardStructure.jsx";
 import { VoucherUpdateSkeleton } from "../../components/Skeleton.jsx";
 import ParticularsAEModal from "../../modal/ParticularsAEModal.jsx";
 import VoucherUpdateModal from "../../modal/VoucherUpdateModal.jsx";
 import POListPanel from "../../components/POListPanel.jsx";
 import AssigneeListPanel from "../../components/AssigneeListPanel.jsx";
-import { fmtDate, fmtPHP } from "../../../../../utils/formatters/formatter";
+import PickableValue from "../../../jev/components/AmountPick.jsx";
+import { fmtPHP } from "../../../../../utils/formatters/formatter";
 import useVoucherUpdate from "./useVoucherUpdate";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
 import icons from "../../../../../utils/style/iconFormatStyles.jsx";
@@ -50,6 +48,7 @@ const useColors = (c) => ({
     warnText: c.amber.warnText,
   },
   red: { text: c.red.text, bg: c.red.bg, border: c.red.border },
+  orange: { text: c.orange.text },
   slate: { border: c.slate.border, borderLight: c.slate.borderLight },
   gray: {
     textPrimary: c.gray.textPrimary,
@@ -59,121 +58,6 @@ const useColors = (c) => ({
   },
 });
 
-// ── JEV identity strip ────────────────────────────────────────────────
-// Receipt icon · JEV number · type label · status chip — same look as the
-// JEV section on the Pending inventory group view.
-// Chip tint follows the JEV's own status: Pending → purple (still being
-// worked on), Cancelled → red (it went down with the voucher), anything
-// else → green (finalized).
-const JevStrip = ({
-  jev,
-  jev_types,
-  jev_status,
-  jevPendingKey,
-  jevCancelledKey,
-  colors,
-}) => {
-  const status = String(jev?.cStatus ?? "");
-  const isPending = status === String(jevPendingKey ?? "");
-  const isCancelled = status === String(jevCancelledKey ?? "");
-  const tint = isPending
-    ? {
-        bg: colors.purple.bg,
-        border: colors.purple.border,
-        text: colors.purple.text,
-      }
-    : isCancelled
-      ? {
-          bg: colors.red.bg,
-          border: colors.red.border,
-          text: colors.red.text,
-        }
-      : {
-          bg: colors.green.bg,
-          border: colors.green.border,
-          text: colors.green.text,
-        };
-
-  return (
-    <Box
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        gap: 1,
-        px: 1.5,
-        py: 1,
-        mb: 0.75,
-        borderRadius: "10px",
-        border: `0.5px solid ${colors.border}`,
-        background: colors.surface,
-      }}
-    >
-      <Box
-        sx={{
-          width: 30,
-          height: 30,
-          borderRadius: "7px",
-          background: colors.purple.bg,
-          border: `0.5px solid ${colors.purple.border}`,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        <ReceiptLongOutlined
-          sx={{ fontSize: "0.85rem", color: colors.purple.text }}
-        />
-      </Box>
-
-      <Box sx={{ flex: 1, minWidth: 0 }}>
-        <Typography
-          sx={{
-            fontSize: "0.7rem",
-            fontWeight: 700,
-            color: colors.gray.textPrimary,
-          }}
-        >
-          {jev?.strJEVNumber || "—"}
-        </Typography>
-        <Typography
-          sx={{
-            fontSize: "0.56rem",
-            color: colors.gray.textMuted,
-            mt: 0.1,
-          }}
-        >
-          {jev_types?.[jev?.cJEVLinkType] ?? jev?.cJEVLinkType ?? "—"}
-        </Typography>
-      </Box>
-
-      <Box
-        sx={{
-          display: "inline-flex",
-          alignItems: "center",
-          px: 0.75,
-          py: 0.35,
-          borderRadius: "99px",
-          background: tint.bg,
-          border: `1px solid ${tint.border}`,
-        }}
-      >
-        <Typography
-          sx={{
-            fontSize: "0.55rem",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-            color: tint.text,
-            lineHeight: 1,
-          }}
-        >
-          {jev_status?.[jev?.cStatus] ?? jev?.cStatus ?? "—"}
-        </Typography>
-      </Box>
-    </Box>
-  );
-};
 
 export function SectionLabel({
   children,
@@ -247,6 +131,8 @@ export default function VoucherUpdateView() {
   const c = useMemo(() => useColors(base), [base]);
   // Dismiss is remembered per message: a new balance figure re-shows it.
   const [dismissedBalanceMsg, setDismissedBalanceMsg] = useState(null);
+  // The paid banner can be dismissed for good.
+  const [dismissedPaidBanner, setDismissedPaidBanner] = useState(false);
 
   const { voucher, loading, handleBack, confirmLoading, saving } = vu;
   const goBack = handleBack;
@@ -278,6 +164,7 @@ export default function VoucherUpdateView() {
   const {
     voucherActiveKey,
     voucherClosedKey,
+    forPaymentKey,
     voucherPaidKey,
     voucherCancelledKey,
     isManagement,
@@ -289,15 +176,15 @@ export default function VoucherUpdateView() {
     supplierLinks,
     hasJev,
     hasActiveJev,
-    particularsCount,
     payeeNickName,
     supplierTIN,
     supplierAddress,
     cPaymentTerms,
     isEligibleForPaid,
     isEligibleForUnpaid,
+    hasArrivedItems,
+    openTransactionForPurchase,
     isMarkedPaid,
-    ewtAmount,
     ewtLoading,
     showAddItem,
     setShowAddItem,
@@ -367,6 +254,8 @@ export default function VoucherUpdateView() {
   const canEditParticulars =
     String(voucher.cStatus) === String(voucherActiveKey) ||
     String(voucher.cStatus) === String(voucherClosedKey);
+  // Adding a particular is an ACTIVE-only action.
+  const canAddItem = String(voucher.cStatus) === String(voucherActiveKey);
   const showNoJev = showJevSection && !hasJev;
   // ── JEV balance banner — sits under the "Particulars (n)" label ───────
   // Same look as the banner in the print/preview voucher: amber wash, dashed
@@ -578,7 +467,12 @@ export default function VoucherUpdateView() {
               icon={<RemoveCircleOutline sx={{ fontSize: "1rem" }} />}
               onClick={() => setConfirmAction("unpaid")}
               actionColor="cancel"
-              disabled={confirmLoading || saving}
+              disabled={confirmLoading || saving || hasArrivedItems}
+              tooltip={
+                hasArrivedItems
+                  ? "These Items already arrived and received."
+                  : ""
+              }
             />
           )}
           {showMarkPaid && (
@@ -602,130 +496,64 @@ export default function VoucherUpdateView() {
     </Box>
   );
 
-  const VoucherHeader = (
-    <Box sx={{ position: "relative", overflow: "hidden", mb: 0 }}>
-      <ContentHeaderStructure textAlign="left">
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: { xs: "column", sm: "row" },
-            gap: { xs: 0.75, sm: 1 },
-            alignItems: "stretch",
-          }}
-        >
-          {/* ── Supplier / Assignee card ─────────────────────────── */}
-          <CardStructure
-            icon={<StoreOutlined />}
-            label={isAssigneeType ? "Assignee" : "Supplier"}
-            variant="info"
-            flex={1}
-            dense
-          >
-            <Typography
-              sx={{
-                fontSize: { xs: "0.65rem", sm: "0.7rem" },
-                fontWeight: 700,
-                color: c.gray.textPrimary,
-                mb: 0.2,
-              }}
-            >
-              {payeeNickName}
-            </Typography>
-            {supplierAddress && (
-              <Typography
-                sx={{
-                  fontSize: { xs: "0.5rem", sm: "0.55rem" },
-                  color: c.gray.textSecondary,
-                }}
-              >
-                {supplierAddress}
-              </Typography>
-            )}
-            {supplierTIN && (
-              <Typography
-                sx={{
-                  fontSize: { xs: "0.5rem", sm: "0.55rem" },
-                  color: c.gray.textMuted,
-                  mt: 0.2,
-                }}
-              >
-                TIN: {supplierTIN}
-              </Typography>
-            )}
-          </CardStructure>
-
-          {/* ── No. HDV card ─────────────────────────────────────── */}
-          <Box sx={{ position: "relative", flex: 1 }}>
-            <CardStructure
-              icon={<ReceiptLongOutlined />}
-              label="DV No."
-              variant="info"
-              flex={1}
-              dense
-            >
-              <Typography
-                sx={{
-                  fontSize: { xs: "0.65rem", sm: "0.7rem" },
-                  fontWeight: 700,
-                  color: c.gray.textPrimary,
-                  mb: 0.2,
-                }}
-              >
-                {voucher.strNumber ?? "—"}
-              </Typography>
-              <Typography
-                sx={{
-                  fontSize: { xs: "0.5rem", sm: "0.55rem" },
-                  color: c.gray.textSecondary,
-                }}
-              >
-                Created {fmtDate(voucher.dtCreated)}
-              </Typography>
-            </CardStructure>
-
-            {(String(voucher.cStatus) === String(voucherClosedKey) ||
-              String(voucher.cStatus) === String(voucherPaidKey)) &&
-              isMarkedPaid && (
-                <Box
-                  sx={{
-                    position: "absolute",
-                    top: { xs: 6, sm: "50%" },
-                    right: 8,
-                    transform: { xs: "none", sm: "translateY(-50%)" },
-                    width: { xs: 24, sm: 28 },
-                    height: { xs: 24, sm: 28 },
-                    borderRadius: "50%",
-                    border: `2px solid ${c.green.border}`,
-                    outline: `1px solid ${c.green.border}`,
-                    outlineOffset: "2px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontSize: { xs: "0.35rem", sm: "0.42rem" },
-                      fontWeight: 900,
-                      color: c.green.text,
-                      border: `1px solid ${c.green.text}`,
-                      borderRadius: "4px",
-                      px: 0.4,
-                      py: 0.2,
-                      transform: "rotate(-15deg)",
-                      textTransform: "uppercase",
-                      userSelect: "none",
-                    }}
-                  >
-                    PAID
-                  </Typography>
-                </Box>
-              )}
-          </Box>
-        </Box>
-      </ContentHeaderStructure>
+  // The supplier and the DV number now ride in each PO row (see
+  // PORowPanel), so the card header is gone. What is left is the green
+  // banner that says the voucher was paid — the JEV balance banner's
+  // shape, in green.
+  const showPaidBanner =
+    String(voucher.cStatus) === String(voucherPaidKey) &&
+    isMarkedPaid &&
+    !dismissedPaidBanner;
+  const VoucherHeader = showPaidBanner ? (
+    <Box
+      sx={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: 1,
+        mt: 0,
+        mb: 1,
+        px: 2,
+        py: 0.75,
+        borderRadius: "8px",
+        bgcolor: c.green.bg,
+        border: `1px dashed ${c.green.border}`,
+      }}
+    >
+      <CheckCircleOutline
+        sx={{ fontSize: "1rem", color: c.green.text, flexShrink: 0 }}
+      />
+      <Box
+        sx={{
+          fontSize: "0.72rem",
+          color: c.green.text,
+          lineHeight: 1.4,
+          pr: 3,
+        }}
+      >
+        <strong>This voucher is paid successfully.</strong>
+      </Box>
+      <Box
+        component="button"
+        onClick={() => setDismissedPaidBanner(true)}
+        aria-label="Dismiss banner"
+        sx={{
+          position: "absolute",
+          right: 8,
+          top: "50%",
+          transform: "translateY(-50%)",
+          display: "flex",
+          p: 0.4,
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          color: c.green.text,
+        }}
+      >
+        <CloseOutlined sx={{ fontSize: "0.9rem" }} />
+      </Box>
     </Box>
-  );
+  ) : null;
 
   return (
     <PageLayout
@@ -738,15 +566,6 @@ export default function VoucherUpdateView() {
       {VoucherHeader}
       {isAssigneeType ? (
         <>
-          <SectionLabel
-            onAddItem={
-              String(voucher.cStatus) === String(voucherActiveKey)
-                ? () => setShowAddItem(true)
-                : undefined
-            }
-          >
-            Particulars ({particularsCount})
-          </SectionLabel>
           {jevBalanceBanner}
           <AssigneeListPanel
             assigneeLinks={assigneeLinks}
@@ -758,19 +577,11 @@ export default function VoucherUpdateView() {
             }
             voucherActiveKey={voucherActiveKey}
             voucher={voucher}
+            onAddItem={canAddItem ? () => setShowAddItem(true) : undefined}
           />
         </>
       ) : (
         <>
-          <SectionLabel
-            onAddItem={
-              String(voucher.cStatus) === String(voucherActiveKey)
-                ? () => setShowAddItem(true)
-                : undefined
-            }
-          >
-            Particulars ({particularsCount})
-          </SectionLabel>
           {jevBalanceBanner}
           <POListPanel
             supplierLinks={supplierLinks}
@@ -779,12 +590,17 @@ export default function VoucherUpdateView() {
                 ? handleRemovePO
                 : undefined
             }
+            onBrandClick={openTransactionForPurchase}
+            supplierNickName={payeeNickName}
+            supplierAddress={supplierAddress}
+            supplierTIN={supplierTIN}
+            voucherNumber={voucher.strNumber}
+            onAddItem={canAddItem ? () => setShowAddItem(true) : undefined}
           />
         </>
       )}
       {showNoJev && (
         <Box>
-          <SectionLabel>Journal Entry Voucher</SectionLabel>
           <Box
             sx={{
               py: 3,
@@ -802,20 +618,6 @@ export default function VoucherUpdateView() {
       )}
       {showJevSection && hasJev && (
         <Box>
-          <SectionLabel>Journal Entry Voucher</SectionLabel>
-          <JevStrip
-            jev={
-              voucher.jev || {
-                nJEVId: voucher.nJEVId,
-                cJEVLinkType: jevDisbursementVoucherKey,
-              }
-            }
-            jev_types={jev_types}
-            jev_status={jev_status}
-            jevPendingKey={jevPendingKey}
-            jevCancelledKey={jevCancelledKey}
-            colors={c}
-          />
           <JevViewPanel
             jev={
               voucher.jev || {
@@ -829,6 +631,7 @@ export default function VoucherUpdateView() {
             jev_types={jev_types}
             jev_status={jev_status}
             jevPendingKey={jevPendingKey}
+            jevCancelledKey={jevCancelledKey}
             // A cancelled voucher is a view of the past: its journal may be
             // read, never written. Normally moot (the JEV itself is cancelled
             // too, so the pending gate already closes), but a JEV shared with
@@ -879,6 +682,7 @@ export default function VoucherUpdateView() {
         onSuccess={fetchVoucher}
         voucherActiveKey={voucherActiveKey}
         voucherClosedKey={voucherClosedKey}
+        forPaymentKey={forPaymentKey}
       />
       <VoucherUpdateModal
         open={!!activeConfirm}

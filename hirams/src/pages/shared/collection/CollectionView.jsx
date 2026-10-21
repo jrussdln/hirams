@@ -207,6 +207,7 @@ export default function CollectionView(props) {
     setAssignMode,
     accountOfficers,
     isAssignedToMe,
+    hasAssignedAO,
     showReassignAO,
 
     jev,
@@ -390,10 +391,14 @@ export default function CollectionView(props) {
             )}
           {!statusChangedAlert && showReassignAO && (
             <BaseButton
-              label="Reassign AO"
+              // An AO that is not on the transaction yet is ASSIGNED; one
+              // that is already there is REASSIGNED.
+              label={hasAssignedAO ? "Reassign AO" : "Assign AO"}
               icon={icons.assign}
-              onClick={() => setAssignMode("reassign")}
-              actionColor="reassign"
+              onClick={() =>
+                setAssignMode(hasAssignedAO ? "reassign" : "assign")
+              }
+              actionColor={hasAssignedAO ? "reassign" : "assign"}
             />
           )}
         </>

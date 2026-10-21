@@ -19,6 +19,7 @@ import {
   getDelivered,
 } from "../../../../../utils/helpers/purchaseProgress.js";
 import { splitDeliveryAcrossItems } from "../../../../../utils/helpers/deliverySplit.js";
+import { poLatestStatus } from "../../../../../utils/helpers/poLatestStatus.js";
 import { DEFAULT_SHIPPING_DETAILS } from "../../modal/PODetailsUpdateModal.jsx";
 
 const num = (v) => Number(v) || 0;
@@ -244,10 +245,24 @@ export default function useItemPurchasingUpdateView() {
   const [poVoucherStatus, setPoVoucherStatus] = useState(null);
   // ?status= carries the tab the card was opened from — a partially received
   // PO is listed under For Delivery while its own status is still Pending
-  // Receipt. Falls back to the PO's real status.
+  // Receipt.
+  //
+  // Without it (a PO opened from elsewhere — the inventory's PO code, the
+  // voucher's PO list) the PO opens on the tab it has LATEST reached: the
+  // stage the Item Purchasing list files it under, not the tab the link
+  // happened to be clicked from.
   const requestedStatus = searchParams.get("status");
   const selectedStatusCode =
-    po?.nStatus != null ? String(requestedStatus || po.nStatus) : "";
+    po?.nStatus != null
+      ? String(
+          requestedStatus ||
+            poLatestStatus(po, {
+              pendingReceiptKey,
+              forDeliveryKey,
+              deliveredKey,
+            }),
+        )
+      : "";
   const fetchPO = useCallback(async () => {
     if (!poId) {
       setLoading(false);
@@ -466,6 +481,7 @@ export default function useItemPurchasingUpdateView() {
   const [paymentForm, setPaymentForm] = useState({
     strShippingDetails: "",
     cPaymentTerms: "",
+    dFreight: "",
   });
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentErrors, setPaymentErrors] = useState({});
@@ -486,7 +502,7 @@ export default function useItemPurchasingUpdateView() {
     setConfirmAction(null);
     setActionLoading(false);
     setShowPaymentForm(false);
-    setPaymentForm({ strShippingDetails: "", cPaymentTerms: "" });
+    setPaymentForm({ strShippingDetails: "", cPaymentTerms: "", dFreight: "" });
     setPaymentLoading(false);
     setPaymentErrors({});
     setIsArrivedView(false);
@@ -751,9 +767,13 @@ export default function useItemPurchasingUpdateView() {
   const allOptionsAtPayment =
     !!po && String(po.nStatus) === String(forPaymentKey);
 
+  // The goods are on their way once they have been RECEIVED (or gone out) —
+  // the Order Total row hides from then on, because the amounts live on the
+  // JEV / voucher side. While the PO is only being PAID FOR the goods are
+  // still on the supplier's side, so the total stays on screen.
   const anyOptionArrived =
     !!po &&
-    [forPaymentKey, pendingReceiptKey, forDeliveryKey, deliveredKey]
+    [pendingReceiptKey, forDeliveryKey, deliveredKey]
       .map(String)
       .includes(String(po.nStatus));
 
@@ -1117,11 +1137,9 @@ export default function useItemPurchasingUpdateView() {
         return false;
       }
       if (delta === 0 && !toAdd.length && !toRemove.length) {
-        await showSwal(
-          "ERROR",
-          { text: `Nothing to save — this line already reads ${received}.` },
-          { entity: "Receipt" },
-        );
+        // Nothing to save — the line already reads the same number and no
+        // serial changed. Stop here without a popup, but still skip the
+        // save so no empty history/receipt row is written.
         return false;
       }
 
@@ -1275,11 +1293,9 @@ export default function useItemPurchasingUpdateView() {
         return false;
       }
       if (delta === 0 && !toAdd.length && !toRemove.length) {
-        await showSwal(
-          "ERROR",
-          { text: `Nothing to save — this line already reads ${deliveredNow}.` },
-          { entity: "Delivery" },
-        );
+        // Nothing to save — the line already reads the same number and no
+        // serial changed. Stop here without a popup, but still skip the
+        // save so no empty history/receipt row is written.
         return false;
       }
       // Only a delivery that adds units needs its receipt number — correcting
@@ -1389,6 +1405,10 @@ export default function useItemPurchasingUpdateView() {
         // otherwise usePreviewPO falls back to 0 and the payable is wrong.
         ewtAmount,
 
+        // The freight on the PO — the sheet prints it under the subtotal
+        // and adds it into the total.
+        freightAmount: po?.dFreight ?? 0,
+
         cashKey,
         creditCardKey,
         chequeKey,
@@ -1428,6 +1448,11 @@ export default function useItemPurchasingUpdateView() {
           nPurchaseOrderId: po?.nPurchaseOrderId,
           strShippingDetails: paymentForm.strShippingDetails,
           cPaymentTerms: paymentForm.cPaymentTerms,
+          // The freight charge — an empty field means "none on this PO".
+          dFreight:
+            paymentForm.dFreight === "" || paymentForm.dFreight == null
+              ? null
+              : Number(paymentForm.dFreight),
         });
       });
       bustPOCache();
@@ -1459,6 +1484,11 @@ export default function useItemPurchasingUpdateView() {
         ? savedShipping
         : DEFAULT_SHIPPING_DETAILS,
       cPaymentTerms: po?.cPaymentTerms ?? "",
+      // The freight charge — the PO's own, empty when it has none.
+      dFreight:
+        po?.dFreight != null && po?.dFreight !== ""
+          ? String(po.dFreight)
+          : "",
     });
     // Drop any stale error left over from a previous failed submit.
     setPaymentErrors({});

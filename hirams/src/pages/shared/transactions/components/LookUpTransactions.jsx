@@ -289,13 +289,13 @@ const LookUpTransactions = ({ query = "", searchBy = "Default", onSelect }) => {
             noWrap
             sx={{ fontSize: "11px", color: colors.textDisabled, mt: 0.25 }}
           >
-            Created by:{" "}
+            Procurement:{" "}
             <Highlight
               text={row.createdBy || "--"}
               query={q}
               colors={colors}
             />{" "}
-            - Assigned AO:{" "}
+            - AO:{" "}
             <Highlight text={row.aoName || "--"} query={q} colors={colors} />
           </Typography>
         </Box>

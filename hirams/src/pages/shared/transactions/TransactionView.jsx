@@ -18,7 +18,7 @@ import {
   NOT_YET_ASSIGNED,
   OPEN_DATE,
 } from "../../../constants/tableDataFallbacks";
-import { Box, Typography, useTheme } from "@mui/material";
+import { Box, Typography, useTheme, Tooltip } from "@mui/material";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import {
   Add,
@@ -41,6 +41,11 @@ import {
   ShoppingCart,
   Security,
   EmojiEvents,
+  PersonOutline,
+  LocalShipping,
+  Event,
+  Storefront,
+  CalendarToday,
 } from "@mui/icons-material";
 
 // ── Theme map — only tokens this component actually uses ───────────────
@@ -60,10 +65,35 @@ const useColors = (c) => ({
     warnText: c.amber.warnText,
   },
 });
-// Fixed label/value columns: every row's group is the same width, so labels
-// line up down the column and the whole group is centered in the cell.
+// Label/value columns: the label column is sized by its own content (auto),
+// so the value always starts right next to the label instead of after a
+// fixed 5rem gutter. Both rows share ONE grid, so the two values in a cell
+// still start on the same x-position, and the labels still line up down the
+// column because every row carries the same pair of labels.
+//
+// The value track is minmax(0, 9.5rem): it takes what it needs up to 9.5rem
+// and gives the rest back when the column is narrow, so the name truncates
+// with an ellipsis instead of spilling out of the cell.
 const OFFICER_GRID_CLASS =
-  "grid w-fit max-w-full min-w-0 grid-cols-[5rem_9.5rem] items-baseline gap-x-1";
+  "grid w-fit max-w-full min-w-0 grid-cols-[auto_minmax(0,9.5rem)] items-baseline gap-x-1";
+
+// The row labels are short but not THAT short ("SUB.DATE:"), and they push
+// the value out of the cell. They are drawn as small icons instead — the
+// full name waits in the tooltip, so the column stays narrow and the value
+// sits right next to its icon.
+const LabelIcon = (props) => {
+  const { icon: Icon, title, className = "" } = props;
+  return (
+    <Tooltip title={title} arrow placement="top">
+      <span
+        className={`inline-flex items-center justify-center text-gray-500 dark:text-gray-400 ${className}`}
+        style={{ lineHeight: 0 }}
+      >
+        <Icon sx={{ fontSize: "0.7rem" }} />
+      </span>
+    </Tooltip>
+  );
+};
 // ── Pure action renderer ───────────────────────────────────────────────────
 function buildActions(row, opts) {
   const {
@@ -435,6 +465,7 @@ function buildActions(row, opts) {
             currentStatusLabel: filterStatus,
             transactionCode: row.transactionId,
             forPurchaseKey,
+            forCollectionKey,
             currentUserId: userId,
 
             isManagement,
@@ -659,6 +690,7 @@ function buildActions(row, opts) {
                   currentStatusLabel: filterStatus,
                   transactionCode: row.transactionId,
                   forPurchaseKey,
+                  forCollectionKey,
                   currentUserId: userId,
 
                   isManagement,
@@ -1009,7 +1041,10 @@ function TransactionView(props) {
                         </span>
                       )}
                     </div>
-                    <span className="block truncate text-[0.8125rem] font-medium leading-tight -mt-0.5">
+                    {/* It may take a second line — but never a third. line-clamp-2
+                        caps it there with an ellipsis; whitespace-normal is
+                        needed because the table cell inherits white-space: nowrap. */}
+                    <span className="line-clamp-2 whitespace-normal text-[0.75rem] font-normal leading-[1.1] mt-px">
                       {val}
                     </span>
                   </div>
@@ -1116,8 +1151,8 @@ function TransactionView(props) {
             {
               key: "aoName",
               label: "Account Officer",
-              align: "center",
-              xs: 2,
+              align: "left",
+              xs: 1.5,
               render: (_, row) => {
                 // For Purchase/Delivery the AO is waiting on the goods to
                 // ship, not on a due date — so the second line reads the
@@ -1147,31 +1182,40 @@ function TransactionView(props) {
                 const secondDate = isForPurchaseStage
                   ? row.dtDelivery
                   : row.dtAODueDate;
-                const secondColor = isForPurchaseStage
-                  ? getDueDateColor(secondDate)
-                  : getDueDateColor(secondDate);
+                // red / orange when the date is overdue or close, null when
+                // there is no date (or the date is comfortably in the future).
+                const secondColor = getDueDateColor(secondDate);
                 // ONE grid holding both rows, not a grid per row: a shared
                 // grid resolves the label column to the width of the widest
-                // label, so text-right has something to align against and
-                // both labels end on the same edge.
-                const labelClass =
-                  "text-right text-gray-500 dark:text-gray-400 whitespace-nowrap";
+                // label, so both labels start on the same edge and the
+                // values line up with each other.
                 const valueClass = "text-left truncate";
 
                 return (
-                  <div className="flex min-w-0 justify-center">
+                  <div className="flex min-w-0 justify-start">
                   <div className={`${OFFICER_GRID_CLASS} ${lineClass}`}>
-                      <span className={labelClass}>AO:</span>
+                      <LabelIcon icon={PersonOutline} title="AO" />
                       <span className={valueClass}>
                         {hasAo ? row.aoName : "—"}
                       </span>
-                      <span className={`${labelClass} -mt-0.5`}>
-                        {isForPurchaseStage ? "DELIVERY:" : "DUE:"}
-                      </span>
+                      {isForPurchaseStage ? (
+                        <LabelIcon
+                          icon={LocalShipping}
+                          title="Delivery"
+                          className="-mt-0.5"
+                        />
+                      ) : (
+                        <LabelIcon icon={Event} title="Due" className="-mt-0.5" />
+                      )}
                       <span
                         className={`${valueClass} -mt-0.5`}
                         style={{
-                          color: secondColor ?? "inherit",
+                          // No date ⇒ the muted placeholder colour, exactly
+                          // like the Procurement Officer's "Open date". Only a
+                          // real date can turn red/orange.
+                          color: hasSecond
+                            ? (secondColor ?? "inherit")
+                            : colors.textMuted,
                           fontWeight: secondColor ? 600 : 500,
                         }}
                       >
@@ -1197,8 +1241,8 @@ function TransactionView(props) {
             {
               key: "createdBy",
               label: "Procurement Officer",
-              align: "center",
-              xs: 2,
+              align: "left",
+              xs: 1.5,
               render: (_, row) => {
                 const hasPo = Boolean(row.createdBy?.trim());
                 const hasDate = Boolean(row.dtDocSubmission);
@@ -1216,21 +1260,21 @@ function TransactionView(props) {
                   );
                 }
 
-                // ONE grid for both rows, so the labels share a right edge.
-                const labelClass =
-                  "text-right text-gray-500 dark:text-gray-400 whitespace-nowrap";
+                // ONE grid for both rows, so the labels share a left edge.
                 const valueClass = "text-left truncate";
 
                 return (
-                  <div className="flex min-w-0 justify-center">
+                  <div className="flex min-w-0 justify-start">
             <div className={`${OFFICER_GRID_CLASS} ${lineClass}`}>
-                      <span className={labelClass}>PO:</span>
+                      <LabelIcon icon={Storefront} title="PO" />
                       <span className={valueClass}>
                         {hasPo ? row.createdBy : "—"}
                       </span>
-                      <span className={`${labelClass} -mt-0.5`}>
-                        SUB. DATE:
-                      </span>
+                      <LabelIcon
+                        icon={CalendarToday}
+                        title="Submission Date"
+                        className="-mt-0.5"
+                      />
                       <span
                         className={`${valueClass} -mt-0.5`}
                         style={{

@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useTheme } from "@mui/material/styles";
-import { Box, Typography, IconButton } from "@mui/material";
+import { Box, Typography, IconButton, Tooltip } from "@mui/material";
 import {
-  StoreOutlined,
-  AltRouteOutlined,
   KeyboardArrowDown,
   KeyboardArrowUp,
   AccessTimeOutlined,
@@ -13,7 +11,11 @@ import {
 
 import InventoryAPI from "../../../../api/endpoints/inventory.api.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
-import { fmtDate, fmtPHP } from "../../../../utils/formatters/formatter.js";
+import {
+  fmtDate,
+  fmtPHP,
+  fmtQty,
+} from "../../../../utils/formatters/formatter.js";
 import { CART_STATUS_STYLES } from "../../../../utils/style/sharedConfirmStyles.jsx";
 import CartRowPanel from "./shared/CartRowPanel.jsx";
 import { BadgeCycler } from "./shared/Stamp.jsx";
@@ -113,6 +115,7 @@ export default function CartCardForDelivery({
   // ── Group shape ──────────────────────────────────────────────────────
   const listStatus = String(viewStatus ?? "");
   const isDeliveredTab = listStatus === String(deliveredKey);
+  const isForDeliveryTab = listStatus === String(forDeliveryKey);
 
   // unique POs behind this card
   const pos = React.useMemo(() => {
@@ -277,6 +280,16 @@ export default function CartCardForDelivery({
     (s, o) => s + (Number(o.purchase_option?.dEWT) || 0),
     0,
   );
+  // Card totals for the tab being viewed — the same figures the rows carry
+  // (each row is the item's options merged, so nothing is counted twice).
+  const toDeliverTotal = itemRows.reduce(
+    (s, row) => s + getToDeliver(row.opt.purchase_option),
+    0,
+  );
+  const deliveredTotal = itemRows.reduce(
+    (s, row) => s + getDelivered(row.opt.purchase_option),
+    0,
+  );
   const firstPO = pos[0] ?? {};
   const statusLabel = cartStatus?.[firstPO.cStatus] ?? firstPO.cStatus;
 
@@ -343,36 +356,91 @@ export default function CartCardForDelivery({
       />
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
+        {/* TRANSACTION CODE — the code line sits on top, like the PO number
+            on the Cart card. */}
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: sm ? 0.5 : 0.4,
+            mb: sm ? 0.05 : 0,
+            ml: 0.3,
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: sm ? "0.55rem" : "0.5rem",
+              fontWeight: 600,
+              color: c.textSecondary,
+              textTransform: "uppercase",
+              textAlign: "left",
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {transactionCode}
+          </Typography>
+          {/* AO BADGE — a soft blue chip, same as the Cart card. */}
+          <Box
+            sx={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: sm ? 0.25 : 0.2,
+              px: sm ? 0.6 : 0.5,
+              py: sm ? 0.15 : 0.1,
+              borderRadius: "50px",
+              background: c.blueBg,
+              border: `0.5px solid ${c.blueBorder}`,
+              flexShrink: 1,
+              minWidth: 0,
+              overflow: "hidden",
+            }}
+          >
+            <Tooltip title="AO" arrow placement="top">
+              <Typography
+                sx={{
+                  fontSize: sm ? "0.55rem" : "0.5rem",
+                  fontWeight: 600,
+                  color: c.blueText,
+                  textTransform: "uppercase",
+                  lineHeight: 1,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {assignedAOName}
+              </Typography>
+            </Tooltip>
+          </Box>
+        </Box>
+
+        {/* CLIENT — the card's headline, so it is the biggest thing in the
+            header. */}
         <Box
           sx={{
             display: "flex",
             alignItems: "center",
             gap: 0.5,
-            mb: sm ? 0.35 : 0.25,
             ml: 0.3,
           }}
         >
-          <AltRouteOutlined
-            sx={{
-              fontSize: sm ? "0.9rem" : "0.75rem",
-              color: c.textSecondary,
-              flexShrink: 0,
-            }}
-          />
           <Typography
             sx={{
-              fontSize: sm ? "0.65rem" : "0.55rem",
+              fontSize: sm ? "0.8rem" : "0.68rem",
               fontWeight: 600,
               color: c.textPrimary,
+              textTransform: "uppercase",
+              textAlign: "left",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
               lineHeight: 1,
-              flex: 1,
-              minWidth: 0,
             }}
           >
-            {clientLabel} - {transactionCode}
+            {clientLabel}
           </Typography>
         </Box>
 
@@ -381,6 +449,9 @@ export default function CartCardForDelivery({
             display: "flex",
             alignItems: "center",
             gap: sm ? 0.5 : 0.4,
+            // Same left margin as the code and client lines above, so all
+            // three read down the same edge.
+            ml: 0.3,
           }}
         >
           <Box
@@ -388,40 +459,68 @@ export default function CartCardForDelivery({
               display: "inline-flex",
               alignItems: "center",
               gap: sm ? 0.3 : 0.25,
-              px: sm ? 0.6 : 0.5,
-              py: sm ? 0.15 : 0.1,
-              borderRadius: "50px",
-              background: c.mutedBg,
-              border: `0.5px solid ${c.mutedBorder}`,
               minWidth: 0,
               overflow: "hidden",
             }}
           >
-            <StoreOutlined
-              sx={{
-                fontSize: sm ? "0.8rem" : "0.6rem",
-                color: c.textSecondary,
-                flexShrink: 0,
-              }}
-            />
             <Typography
               sx={{
                 fontSize: sm ? "0.55rem" : "0.5rem",
                 fontWeight: 600,
                 color: c.textSecondary,
+                textTransform: "uppercase",
                 lineHeight: 1,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
               }}
             >
-              {companyName} - AO: {assignedAOName}
+              {companyName}
             </Typography>
           </Box>
         </Box>
       </Box>
 
-      {!poIsPaidRcvdDvrd && (
+      {/* FOR DELIVERY / DELIVERED — the card's total for the tab being
+          viewed. It takes the right side on those tabs, where the amount
+          block is already hidden (the PO is paid and received by then). */}
+      {isForDeliveryTab || isDeliveredTab ? (
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            mr: sm ? 1 : 0.5,
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: "0.48rem",
+              fontWeight: 700,
+              color: c.textSecondary,
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+              lineHeight: 1,
+            }}
+          >
+            {isDeliveredTab ? "Delivered" : "For Delivery"}
+          </Typography>
+          <Typography
+            sx={{
+              fontSize: "0.8rem",
+              fontWeight: 800,
+              lineHeight: 1,
+              textAlign: "right",
+              color:
+                (isDeliveredTab ? deliveredTotal : toDeliverTotal) > 0
+                  ? c.blueTextStrong
+                  : c.textSecondary,
+            }}
+          >
+            {fmtQty(isDeliveredTab ? deliveredTotal : toDeliverTotal)}
+          </Typography>
+        </Box>
+      ) : !poIsPaidRcvdDvrd ? (
         <Box
           sx={{
             display: "flex",
@@ -454,7 +553,7 @@ export default function CartCardForDelivery({
             {poEwtTotal > 0 ? `EWT: ${fmtPHP(poEwtTotal)}` : "No EWT"}
           </Typography>
         </Box>
-      )}
+      ) : null}
 
       <Box sx={{ position: "relative", flexShrink: 0 }}>
         {!open && (
@@ -562,6 +661,8 @@ export default function CartCardForDelivery({
                 idx={idx}
                 totalCount={visibleRows.length}
                 colors={base}
+                tableLayout
+                onRowClick={() => openPO(firstPO)}
                 showRemove={false}
                 hasAnyEWT={hasAnyEWT}
                 poIsPaidRcvdDvrd={poIsPaidRcvdDvrd}

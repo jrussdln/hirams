@@ -5,6 +5,7 @@ import { Box, Typography } from "@mui/material";
 import {
   ReceiptLongOutlined,
   AccountCircleOutlined,
+  LocalShippingOutlined,
 } from "@mui/icons-material";
 
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
@@ -17,8 +18,10 @@ import ForDeliveryPanel from "../../components/ForDeliveryPanel.jsx";
 import DeliveredPanel from "../../components/DeliveredPanel.jsx";
 import PurchaseCartUpdateModal from "../../modal/PurchaseCartUpdateModal.jsx";
 import PODetailsUpdateModal from "../../modal/PODetailsUpdateModal.jsx";
+import FreightEWTUpdateModal from "../../modal/FreightEWTUpdateModal.jsx";
 import ManagePOVoucherModal from "../../modal/ManagePOVoucherModal.jsx";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
+import { openForPurchase } from "../../../../../utils/helpers/openForPurchase.js";
 import {
   getToDeliver,
   getDelivered,
@@ -192,6 +195,8 @@ export default function ItemPurchasingUpdateView({
   paymentTerms,
   options,
   liveOptions,
+  // Refetches the PO — the Freight / EWT editor saves straight onto it.
+  fetchPO,
   txnItemTotals,
   txnItemOptions,
   total,
@@ -232,7 +237,6 @@ export default function ItemPurchasingUpdateView({
   handleProceedToPODetails,
   openPaymentForm,
   onPatchOption,
-  fetchTransactionForPurchase,
   isManagement,
   isAccountOfficer,
   isAOTL,
@@ -266,6 +270,10 @@ export default function ItemPurchasingUpdateView({
   const c = React.useMemo(() => useColors(base), [base]);
   const currentStatus = po?.nStatus;
   const activeStatus = String(selectedStatusCode ?? currentStatus);
+  // A cancelled PO has nothing left to cancel — the button is hidden.
+  const poIsCancelled =
+    activeStatus === String(cancelledPOKey) ||
+    String(currentStatus) === String(cancelledPOKey);
   // Pending receipt swaps the line-item list for the Receive panel
   const isPendingReceipt = activeStatus === String(pendingReceiptKey);
   // For Delivery / Delivered both swap the line-item list for a deliver panel
@@ -342,48 +350,36 @@ export default function ItemPurchasingUpdateView({
     clientInfo?.strClientNickName || clientInfo?.strClientName || "—";
   const transactionCode = transactionObj?.strCode ?? "—";
   const [historyView, setHistoryView] = React.useState(null); // { tone, onBack } | null
+  // The Freight / EWT editor — opened from the For Approval stage.
+  const [showFreightEwtModal, setShowFreightEwtModal] = React.useState(false);
 
   const handleViewForPurchase = async () => {
-    if (!transactionObj?.nTransactionId) {
-      console.warn("No transaction found on this PO to view for purchase");
-      return;
-    }
-    const fullTransaction = await fetchTransactionForPurchase(
-      transactionObj.nTransactionId,
-    );
-    const finalTransaction = fullTransaction || {
-      ...transactionObj,
-      clientName:
-        transactionObj.client?.strClientNickName ||
-        transactionObj.client?.strClientName ||
-        "",
-      companyName:
-        transactionObj.company?.strCompanyNickName ||
-        transactionObj.company?.strCompanyName ||
-        "",
-      transactionId: transactionObj.strCode,
-    };
-    const statusCode = String(
-      finalTransaction.current_status ??
-        finalTransaction.latest_history?.nStatus ??
-        forPurchaseKey ??
-        "",
-    );
-    const statusLabelMap = isManagement ? transacstatus : ao_status;
-    const currentStatusLabel = statusLabelMap?.[statusCode] ?? "";
-    // Route to whichever workspace the transaction's status belongs to.
-    navigate(
-      String(statusCode) === String(forCollectionKey)
-        ? "/transaction-for-collection"
-        : "/transaction-for-purchase",
-      {
-      state: {
-        transaction: finalTransaction,
-        transactionCode: finalTransaction.transactionId,
-        selectedStatusCode: statusCode,
-        currentStatusLabel,
+    await openForPurchase(navigate, {
+      transaction: transactionObj,
+      currentUserId,
+      keys: {
+        isManagement,
+        isAccountOfficer,
+        isAOTL,
+        isProcurement,
+        transacstatus,
+        ao_status,
+        itemType,
+        procMode,
+        procSource,
+        statusTransaction,
+        archiveStatus,
         forPurchaseKey,
-        currentUserId,
+        forCollectionKey,
+        forCanvasKey,
+        canvasFinalizeKey,
+        canvasVerificationKey,
+        itemsManagementKey,
+        forPricingKey,
+        priceVerificationKey,
+        priceApprovalKey,
+        priceSettingKey,
+        priceFinalizeVerificationKey,
         cancelledPOKey,
         cartKey,
         forApprovalKey,
@@ -392,29 +388,14 @@ export default function ItemPurchasingUpdateView({
         forDeliveryKey,
         deliveredKey,
         removedFromCartKey,
-        isManagement,
-        isAccountOfficer,
-        isAOTL,
-        isProcurement,
-        itemType,
-        procMode,
-        procSource,
-        statusTransaction,
-        archiveStatus,
-        forCanvasKey,
-        canvasFinalizeKey,
-        canvasVerificationKey,
-        itemsManagementKey,
-        forCollectionKey,
-        ao_status,
-        forPricingKey,
-        priceVerificationKey,
-        priceApprovalKey,
-        priceSettingKey,
-        priceFinalizeVerificationKey,
       },
     });
   };
+
+  // The brand · model of an item is a link: it opens the transaction for
+  // purchase. Finance officers have no such view, so for them it stays
+  // plain text.
+  const brandLinkClick = isFinanceOfficer ? undefined : handleViewForPurchase;
 
   const toConfirmSlot = (key) => {
     if (key === "undo_approval") return "undo_approval";
@@ -459,13 +440,15 @@ export default function ItemPurchasingUpdateView({
         flexWrap: "wrap",
       }}
     >
-      <BaseButton
-        label="Cancel"
-        icon={icons.cancel}
-        onClick={() => setConfirmAction(cancelledPOKey)}
-        actionColor="delete"
-        disabled={isLoadingPage || actionLoading}
-      />
+      {!poIsCancelled && (
+        <BaseButton
+          label="Cancel"
+          icon={icons.cancel}
+          onClick={() => setConfirmAction(cancelledPOKey)}
+          actionColor="delete"
+          disabled={isLoadingPage || actionLoading}
+        />
+      )}
 
       {selectedStatusCode === forApprovalKey && !isFinanceOfficer && (
         <BaseButton
@@ -500,6 +483,16 @@ export default function ItemPurchasingUpdateView({
                     actionColor="default"
                     disabled={isLoadingPage || paymentLoading}
                   />
+                  {/* FREIGHT / EWT — the editor for the charge on the PO and
+                      the EWT on its lines. It sits right before the Close
+                      that sends the PO for approval. */}
+                  <BaseButton
+                    label="Freight/EWT"
+                    icon={<LocalShippingOutlined sx={{ fontSize: "1rem" }} />}
+                    onClick={() => setShowFreightEwtModal(true)}
+                    actionColor="default"
+                    disabled={isLoadingPage || actionLoading}
+                  />
                   <BaseButton
                     label="Close"
                     icon={icons.close}
@@ -522,15 +515,18 @@ export default function ItemPurchasingUpdateView({
         </>
       )}
 
-      {!isFinanceOfficer && (
+      {/* FREIGHT / EWT — the same editor, for the For Approval stage (where
+          the PO has no details buttons of its own to sit between). */}
+      {selectedStatusCode === forApprovalKey && (
         <BaseButton
-          label="View For Purchase"
-          icon={icons.view}
-          onClick={handleViewForPurchase}
+          label="Freight/EWT"
+          icon={<LocalShippingOutlined sx={{ fontSize: "1rem" }} />}
+          onClick={() => setShowFreightEwtModal(true)}
           actionColor="default"
           disabled={isLoadingPage || actionLoading}
         />
       )}
+
       {selectedStatusCode === pendingReceiptKey && (
         <BaseButton
           label="Confirm Received"
@@ -622,6 +618,7 @@ export default function ItemPurchasingUpdateView({
               fontSize: { xs: "0.6rem", sm: "0.65rem" },
               fontWeight: 700,
               color: c.textBody,
+              textTransform: "uppercase",
               mb: 0.2,
             }}
           >
@@ -658,6 +655,7 @@ export default function ItemPurchasingUpdateView({
                 fontSize: { xs: "0.6rem", sm: "0.65rem" },
                 fontWeight: 700,
                 color: c.textBody,
+                textTransform: "uppercase",
                 mb: 0.2,
               }}
             >
@@ -694,6 +692,7 @@ export default function ItemPurchasingUpdateView({
                 fontSize: { xs: "0.6rem", sm: "0.65rem" },
                 fontWeight: 700,
                 color: c.textBody,
+                textTransform: "uppercase",
                 mb: 0.2,
               }}
             >
@@ -851,7 +850,7 @@ export default function ItemPurchasingUpdateView({
         // "Client Nickname - Transaction Code" label as the card instead of
         // the status + PO number used by every other phase.
         isForDeliveryPhase && clientInfo
-          ? `${clientLabel} - ${transactionCode}`
+          ? `${String(clientLabel).toUpperCase()} - ${transactionCode}`
           : po?.strPurchaseOrderNo
             ? `${itemPurchasingStatus[selectedStatusCode]} / ${po.strPurchaseOrderNo}`
             : ""
@@ -908,6 +907,7 @@ export default function ItemPurchasingUpdateView({
               pendingReceiptKey={pendingReceiptKey}
               forDeliveryKey={forDeliveryKey}
               deliveredKey={deliveredKey}
+              onBrandClick={brandLinkClick}
             />
           ) : isDeliveredPhase ? (
             <DeliveredPanel
@@ -918,6 +918,7 @@ export default function ItemPurchasingUpdateView({
               savingDeliver={deliverSaving}
               onLoadReceiptNo={getLineReceiptNo}
               txnItemOptions={txnItemOptions}
+              onBrandClick={brandLinkClick}
             />
           ) : isForDeliveryPhase ? (
             <ForDeliveryPanel
@@ -930,38 +931,20 @@ export default function ItemPurchasingUpdateView({
               savingReceive={receiveSaving}
               onLoadReceiptNo={getLineReceiptNo}
               txnItemOptions={txnItemOptions}
+              onBrandClick={brandLinkClick}
             />
           ) : (
             options.length > 0 && (
               <>
-                <Box
-                  sx={{
-                    pt: 1,
-                    pb: 1.5,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.75,
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontSize: "0.58rem",
-                      fontWeight: 700,
-                      textTransform: "uppercase",
-                      color: c.textMutedAlt,
-                    }}
-                  >
-                    Purchase Items
-                  </Typography>
-                  <Box
-                    sx={{ flex: 1, height: "0.5px", background: c.border }}
-                  />
-                </Box>
+                {/* No "Purchase Items" title here — the table carries its own
+                    header row now, and the two read as one doubled title. */}
                 <LineItems
                   onHistoryViewChange={setHistoryView}
                   options={liveOptions}
                   nPurchaseOrderId={po?.nPurchaseOrderId}
                   poNumber={po?.strPurchaseOrderNo}
+                  // The PO's freight charge — it rides on the Order Total row.
+                  freight={po?.dFreight ?? 0}
                   initialArrivedOptionId={initialOptionId}
                   onPatchOption={onPatchOption}
                   total={total}
@@ -974,6 +957,11 @@ export default function ItemPurchasingUpdateView({
                   removedFromCartKey={removedFromCartKey}
                   currentUserId={currentUserId}
                   poStatus={currentStatus}
+                  // Only the brand · model is a link here — it opens the
+                  // transaction for purchase, the job the old "View For
+                  // Purchase" button used to do. The row itself is not
+                  // clickable.
+                  onBrandClick={brandLinkClick}
                   onArrivedViewChange={setIsArrivedView}
                   onFooterActionsChange={setArrivedFooterActions}
                   onRemoved={() => {
@@ -1015,6 +1003,19 @@ export default function ItemPurchasingUpdateView({
         isEditable={isFinanceOfficer || isManagement}
         voucherSupplierTypeKey={voucherSupplierTypeKey}
         onSuccess={async () => {
+          window.dispatchEvent(new CustomEvent("purchase_order_data_updated"));
+        }}
+      />
+      {/* FREIGHT / EWT — the freight on the PO and the EWT on its lines */}
+      <FreightEWTUpdateModal
+        open={showFreightEwtModal}
+        onClose={() => setShowFreightEwtModal(false)}
+        po={po}
+        options={liveOptions}
+        onSuccess={() => {
+          // The card, the totals and the PO itself all read these values —
+          // refetch so everything on screen is the saved one.
+          fetchPO();
           window.dispatchEvent(new CustomEvent("purchase_order_data_updated"));
         }}
       />

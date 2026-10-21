@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useTheme } from "@mui/material/styles";
-import { Box, Typography, IconButton } from "@mui/material";
+import { Box, Typography, IconButton, Tooltip } from "@mui/material";
 import {
-  ReceiptLongOutlined,
-  StoreOutlined,
   KeyboardArrowDown,
   KeyboardArrowUp,
   AccessTimeOutlined,
@@ -14,7 +12,7 @@ import {
 import PurchaseOrderAPI from "../../../../api/endpoints/purchase-order.api.js";
 import InventoryAPI from "../../../../api/endpoints/inventory.api.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
-import { fmtDate, fmtPHP } from "../../../../utils/formatters/formatter.js";
+import { fmtDate, fmtPHP, fmtQty } from "../../../../utils/formatters/formatter.js";
 import { CART_STATUS_STYLES } from "../../../../utils/style/sharedConfirmStyles.jsx";
 import CartRowPanel from "./shared/CartRowPanel.jsx";
 import { BadgeCycler } from "./shared/Stamp.jsx";
@@ -211,6 +209,14 @@ export default function CartCardPanel({
     (s, o) => s + (Number(o.purchase_option?.dEWT) || 0),
     0,
   );
+  // The PO's own freight charge — printed above the EWT on the card.
+  const poFreight = Number(po?.dFreight) || 0;
+  // Everything this card still has to take in — the sum of the "To Receive"
+  // of every line on it (same rule the item rows use).
+  const toReceiveTotal = options.reduce(
+    (s, o) => s + getToReceive(o.purchase_option),
+    0,
+  );
   const statusLabel = cartStatus?.[po.cStatus] ?? po.cStatus;
   const firstOpt = options[0];
   const primarySupplier =
@@ -297,26 +303,84 @@ export default function CartCardPanel({
           />
 
           <Box sx={{ flex: 1, minWidth: 0 }}>
+            {/* PO NUMBER + AO BADGE — the code line sits on top. */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: sm ? 0.5 : 0.4,
+                mb: sm ? 0.05 : 0,
+                ml: 0.3,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: sm ? "0.55rem" : "0.5rem",
+                  fontWeight: 600,
+                  color: c.textSecondary,
+                  textTransform: "uppercase",
+                  textAlign: "left",
+                  lineHeight: 1,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {po.strPurchaseOrderNo}
+              </Typography>
+              {/* AO BADGE — a soft blue chip so the eye finds the officer
+                  straight away; the name alone, hovering it says what it is. */}
+              <Box
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: sm ? 0.25 : 0.2,
+                  px: sm ? 0.6 : 0.5,
+                  py: sm ? 0.15 : 0.1,
+                  borderRadius: "50px",
+                  background: c.blueBg,
+                  border: `0.5px solid ${c.blueBorder}`,
+                  flexShrink: 1,
+                  minWidth: 0,
+                  overflow: "hidden",
+                }}
+              >
+                <Tooltip title="AO" arrow placement="top">
+                  <Typography
+                    sx={{
+                      fontSize: sm ? "0.55rem" : "0.5rem",
+                      fontWeight: 600,
+                      color: c.blueText,
+                      textTransform: "uppercase",
+                      lineHeight: 1,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {assignedAOName}
+                  </Typography>
+                </Tooltip>
+              </Box>
+            </Box>
+
+            {/* SUPPLIER — the nickname is the card's headline, so it is the
+                biggest thing in the header. */}
             <Box
               sx={{
                 display: "flex",
                 alignItems: "center",
                 gap: 0.5,
-                mb: sm ? 0.35 : 0.25,
                 ml: 0.3,
               }}
             >
-              <StoreOutlined
-                sx={{
-                  fontSize: sm ? "0.9rem" : "0.75rem",
-                  color: c.textSecondary,
-                }}
-              />
               <Typography
                 sx={{
-                  fontSize: sm ? "0.65rem" : "0.55rem",
+                  fontSize: sm ? "0.8rem" : "0.68rem",
                   fontWeight: 600,
                   color: c.textPrimary,
+                  textTransform: "uppercase",
+                  textAlign: "left",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -325,104 +389,66 @@ export default function CartCardPanel({
               >
                 {primarySupplier}
               </Typography>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: sm ? 0.5 : 0.4,
-                }}
-              >
-                {[{ text: companyName }].map(({ text }, i) => (
-                  <Box
-                    key={i}
-                    sx={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: sm ? 0.3 : 0.25,
-                      px: sm ? 0.6 : 0.5,
-                      py: sm ? 0.15 : 0.1,
-                      borderRadius: "50px",
-                      background: c.mutedBg,
-                      border: `0.5px solid ${c.mutedBorder}`,
-                      flexShrink: i === 0 ? 0 : 1,
-                      minWidth: 0,
-                      overflow: "hidden",
-                    }}
-                  >
-                    <Typography
-                      sx={{
-                        fontSize: sm ? "0.55rem" : "0.5rem",
-                        fontWeight: 600,
-                        color: c.textSecondary,
-                        lineHeight: 1,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {text}
-                    </Typography>
-                  </Box>
-                ))}
-              </Box>
             </Box>
+
+            {/* COMPANY — plain text under the supplier, no badge around it. */}
+            <Typography
+              sx={{
+                fontSize: sm ? "0.55rem" : "0.5rem",
+                fontWeight: 600,
+                color: c.textSecondary,
+                textTransform: "uppercase",
+                textAlign: "left",
+                lineHeight: 1,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                ml: 0.3,
+                mt: sm ? 0.1 : 0.05,
+              }}
+            >
+              {companyName}
+            </Typography>
+          </Box>
+
+          {/* TO RECEIVE — the card's total still to take in. It takes the
+              right side on the Pending Receipt phase, where the amount block
+              is already hidden (the PO is paid by then). */}
+          {isPendingReceiptPO ? (
             <Box
               sx={{
                 display: "flex",
-                alignItems: "center",
-                gap: sm ? 0.5 : 0.4,
+                flexDirection: "column",
+                alignItems: "flex-end",
+                mr: sm ? 1 : 0.5,
               }}
             >
-              {[
-                {
-                  icon: (
-                    <ReceiptLongOutlined
-                      sx={{
-                        fontSize: sm ? "0.8rem" : "0.6rem",
-                        color: c.textSecondary,
-                        flexShrink: 0,
-                      }}
-                    />
-                  ),
-                  text: `${po.strPurchaseOrderNo} - ${assignedAOName}`,
-                },
-              ].map(({ icon, text }, i) => (
-                <Box
-                  key={i}
-                  sx={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: sm ? 0.3 : 0.25,
-                    px: sm ? 0.6 : 0.5,
-                    py: sm ? 0.15 : 0.1,
-                    borderRadius: "50px",
-                    background: c.mutedBg,
-                    border: `0.5px solid ${c.mutedBorder}`,
-                    flexShrink: i === 0 ? 0 : 1,
-                    minWidth: 0,
-                    overflow: "hidden",
-                  }}
-                >
-                  {icon}
-                  <Typography
-                    sx={{
-                      fontSize: sm ? "0.55rem" : "0.5rem",
-                      fontWeight: 600,
-                      color: c.textSecondary,
-                      lineHeight: 1,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {text}
-                  </Typography>
-                </Box>
-              ))}
+              <Typography
+                sx={{
+                  fontSize: "0.48rem",
+                  fontWeight: 700,
+                  color: c.textSecondary,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  lineHeight: 1,
+                }}
+              >
+                To Receive
+              </Typography>
+              <Typography
+                sx={{
+                  fontSize: "0.8rem",
+                  fontWeight: 800,
+                  lineHeight: 1,
+                  textAlign: "right",
+                  color:
+                    toReceiveTotal > 0 ? c.blueTextStrong : c.textSecondary,
+                }}
+              >
+                {fmtQty(toReceiveTotal)}
+              </Typography>
             </Box>
-          </Box>
-
-          {!poIsPaidRcvdDvrd && (
+          ) : !poIsPaidRcvdDvrd ? (
             <Box
               sx={{
                 display: "flex",
@@ -442,6 +468,21 @@ export default function CartCardPanel({
               >
                 {fmtPHP(total)}
               </Typography>
+              {/* FREIGHT — the charge on top of the goods, above the EWT */}
+              <Typography
+                sx={{
+                  fontSize: sm ? "0.52rem" : "0.48rem",
+                  fontWeight: 500,
+                  fontStyle: "italic",
+                  color: c.textSecondary,
+                  textAlign: "right",
+                  lineHeight: 1.2,
+                }}
+              >
+                {poFreight > 0
+                  ? `Freight: ${fmtPHP(poFreight)}`
+                  : "No Freight"}
+              </Typography>
               <Typography
                 sx={{
                   fontSize: sm ? "0.52rem" : "0.48rem",
@@ -455,7 +496,7 @@ export default function CartCardPanel({
                 {poEwtTotal > 0 ? `EWT: ${fmtPHP(poEwtTotal)}` : "No EWT"}
               </Typography>
             </Box>
-          )}
+          ) : null}
 
           <Box sx={{ position: "relative", flexShrink: 0 }}>
             {!open && (
@@ -539,6 +580,10 @@ export default function CartCardPanel({
                 idx={idx}
                 totalCount={visibleOptions.length}
                 colors={base}
+                tableLayout
+                onRowClick={() =>
+                  onUpdateClick({ po, statusLabel, viewStatus: listStatus })
+                }
                 isRemoving={
                   removingOptionId === opt.purchase_option?.nPurchaseItemId
                 }

@@ -39,7 +39,9 @@ export default function ParticularsAEModal({
   onSave,
   onSuccess,
   voucherActiveKey,
-  voucherClosedKey,
+  // The PO status a voucher may pay — only a PO waiting for payment can be
+  // linked. A PO still at For Approval is not ready to be paid.
+  forPaymentKey,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -47,6 +49,9 @@ export default function ParticularsAEModal({
   const colors = useColors(base);
 
   const [availablePOs, setAvailablePOs] = useState([]);
+  // The ACTIVE voucher that already holds a PO — it is taken over (and
+  // deleted) when that PO is linked here.
+  const [activeVoucherByPO, setActiveVoucherByPO] = useState(new Map());
   const [posLoading, setPosLoading] = useState(false);
   const [linkError, setLinkError] = useState("");
 
@@ -64,26 +69,45 @@ export default function ParticularsAEModal({
         const all = Array.isArray(poRes) ? poRes : (poRes.data ?? []);
         const vouchers = Array.isArray(vRes) ? vRes : (vRes.data ?? []);
 
-        const vouchedPOIds = new Set();
+        // A PO another voucher already holds belongs to it — UNLESS that
+        // voucher is still ACTIVE, in which case it can be taken over (the
+        // old voucher is deleted when the PO is linked here).
+        const activeVoucherByPO = new Map();
+        const takenForGood = new Set();
         vouchers.forEach((v) => {
-          if (
-            String(v.cStatus) === String(voucherActiveKey) ||
-            String(v.cStatus) === String(voucherClosedKey)
-          ) {
-            (v.voucher_suppliers ?? []).forEach((vs) =>
-              vouchedPOIds.add(vs.nPurchaseOrderId),
+          const links = v.voucher_suppliers ?? [];
+          if (String(v.cStatus) === String(voucherActiveKey)) {
+            links.forEach((vs) =>
+              activeVoucherByPO.set(vs.nPurchaseOrderId, v),
             );
+          } else {
+            links.forEach((vs) => takenForGood.add(vs.nPurchaseOrderId));
           }
         });
+        setActiveVoucherByPO(activeVoucherByPO);
 
         const linkedIds = new Set(
           (voucher.voucher_suppliers ?? []).map((s) => s.nPurchaseOrderId),
         );
+
+        // Only the POs of the voucher's OWN company can be paid by it —
+        // a PO belongs to the company that ordered it.
+        const voucherCompanyId =
+          voucher?.nCompanyId ?? voucher?.company?.nCompanyId ?? null;
+        const poCompanyId = (po) =>
+          po?.purchase_order_options?.[0]?.purchase_option?.transaction_item
+            ?.transaction?.nCompanyId ??
+          null;
+
         setAvailablePOs(
           all.filter(
             (po) =>
+              // Only a PO that is ready to be paid — For Payment. A PO still
+              // at For Approval has not been through approval yet.
+              (!forPaymentKey || String(po.nStatus) === String(forPaymentKey)) &&
               !linkedIds.has(po.nPurchaseOrderId) &&
-              !vouchedPOIds.has(po.nPurchaseOrderId),
+              !takenForGood.has(po.nPurchaseOrderId) &&
+              (!voucherCompanyId || poCompanyId(po) === voucherCompanyId),
           ),
         );
       } catch {
@@ -93,7 +117,7 @@ export default function ParticularsAEModal({
       }
     };
     load();
-  }, [open, isAssigneeType, voucher, voucherActiveKey, voucherClosedKey]);
+  }, [open, isAssigneeType, voucher, voucherActiveKey, forPaymentKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -128,6 +152,16 @@ export default function ParticularsAEModal({
     onClose?.();
     try {
       await withSpinner(entity, async () => {
+        // The PO may still sit on another ACTIVE voucher — that voucher is
+        // replaced by this one, so it (and its journal) goes first.
+        const oldVoucher = activeVoucherByPO.get(po.nPurchaseOrderId);
+        if (
+          oldVoucher &&
+          String(oldVoucher.nVoucherId) !== String(voucher.nVoucherId)
+        ) {
+          await VoucherAPI.deleteVoucher(oldVoucher.nVoucherId);
+        }
+
         await VoucherSupplierAPI.create({
           nVoucherId: voucher.nVoucherId,
           nPurchaseOrderId: po.nPurchaseOrderId,
@@ -426,7 +460,7 @@ export default function ParticularsAEModal({
                 <Typography
                   sx={{ fontSize: "0.65rem", color: colors.gray.textMuted }}
                 >
-                  No available purchase orders for this supplier.
+                  No available purchase orders for this supplier and company.
                 </Typography>
               </Box>
             ) : (

@@ -1,15 +1,19 @@
-import { Fragment, useMemo } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import { Box, Typography, IconButton, useTheme } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 import {
   Visibility,
   ReceiptLongOutlined,
   Inventory2Outlined,
+  KeyboardArrowUp,
+  KeyboardArrowDown,
 } from "@mui/icons-material";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import { fmtPHP, fmtQty } from "../../../../utils/formatters/formatter.js";
 import {
   itemTotal,
   hasDeliveredRows,
+  isDeliveredRow,
   rowTransactionItemId,
   rowTransactionId,
 } from "../itemRows.js";
@@ -295,6 +299,141 @@ const rowSellingTotal = (row, prices) => {
 
 const fmtSelling = (value) => (value === undefined ? "—" : fmtPHP(value));
 
+// ─────────────────────────────────────────────────────────────────────
+// THE ITEMS HEADER CARD
+//
+// The header of an items table: the PO number(s) the batches were bought
+// on, the supplier behind them, and the triangle that folds the rows
+// away. Clicking ANYWHERE on the card folds/unfolds it — the triangle is
+// only the visual cue.
+//
+// It lives INSIDE the table's own container, so the header, the column
+// header, the rows and the Grand Total bar read as ONE card — the same
+// shape as the voucher's assignee card.
+// ─────────────────────────────────────────────────────────────────────
+export function ItemsHeaderCard({
+  colors,
+  // [{ label, poId }] — the code(s) on top. A code that knows its PO id is
+  // a link to that PO in Item Purchasing.
+  codes = [],
+  name = "",
+  open,
+  onToggle,
+  onOpenPO,
+}) {
+  const titles = (codes ?? []).filter((v) => v?.label && v.label !== "—");
+
+  return (
+    <Box
+      onClick={onToggle}
+      role="button"
+      tabIndex={0}
+      aria-expanded={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle?.();
+        }
+      }}
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        gap: 0.75,
+        px: 2,
+        py: 1,
+        background: colors.itemHeaderBg,
+        borderBottom: `0.5px solid ${colors.divider}`,
+        cursor: "pointer",
+        userSelect: "none",
+        "&:hover": { background: colors.hover },
+      }}
+    >
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        {titles.length > 0 && (
+          <Typography
+            component="div"
+            sx={{
+              fontSize: { xs: "0.5rem", sm: "0.55rem", md: "0.58rem" },
+              fontWeight: 700,
+              color: colors.gray.textMuted,
+              textTransform: "uppercase",
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {titles.map((t, i) => (
+              <Box
+                key={t.label}
+                component="span"
+                onClick={(e) => {
+                  if (!t.poId || !onOpenPO) return;
+                  e.stopPropagation();
+                  onOpenPO(t.poId);
+                }}
+                title={t.poId ? "Open this PO in Item Purchasing" : undefined}
+                sx={{
+                  font: "inherit",
+                  // Blue — a PO code with an id behind it is a link.
+                  color: t.poId && onOpenPO ? colors.blue.text : "inherit",
+                  cursor: t.poId && onOpenPO ? "pointer" : "inherit",
+                  textDecoration: "none",
+                  "&:hover": t.poId && onOpenPO
+                    ? { textDecoration: "underline" }
+                    : undefined,
+                }}
+              >
+                {i > 0 ? " · " : ""}
+                {t.label}
+              </Box>
+            ))}
+          </Typography>
+        )}
+        <Typography
+          sx={{
+            fontSize: { xs: "0.8rem", sm: "0.9rem", md: "1rem" },
+            fontWeight: 700,
+            color: colors.gray.textPrimary,
+            textTransform: "uppercase",
+            lineHeight: 1,
+            mt: 0.15,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {name || "—"}
+        </Typography>
+      </Box>
+
+      <IconButton
+        size="small"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle?.();
+        }}
+        title={open ? "Hide the items" : "Show the items"}
+        sx={{
+          width: { xs: 18, sm: 20 },
+          height: { xs: 18, sm: 20 },
+          color: colors.gray.textMuted,
+          border: `0.5px solid ${colors.border}`,
+          borderRadius: "50px",
+          p: 0,
+          flexShrink: 0,
+        }}
+      >
+        {open ? (
+          <KeyboardArrowUp sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }} />
+        ) : (
+          <KeyboardArrowDown sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }} />
+        )}
+      </IconButton>
+    </Box>
+  );
+}
+
 export default function ItemsTable({
   rows = [],
   total = 0,
@@ -302,6 +441,9 @@ export default function ItemsTable({
   // onRowClick: no ACTIONS column, no hover, no pointer cursor.
   readonly = false,
   onRowClick = null,
+  // The header card (PO number · supplier · triangle) painted INSIDE the
+  // table's own container, above the column header row.
+  showHeader = true,
   // nTransactionItemId → unit selling price, from useSellingPrices.
   // Only read on the delivered side, so a host may just always pass it.
   sellingPrices = {},
@@ -311,15 +453,72 @@ export default function ItemsTable({
   // in it — the shared JEV viewer passes it for an R JEV, whose table is
   // the batches received under that JEV, valued at cost.
   showSellingOverride = null,
+  // The brand · model becomes a LINK when this is set: it opens the
+  // transaction the batch was bought on. The callback receives the row.
+  onBrandClick = null,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useMemo(() => makeColors(base), [base]);
 
+  const navigate = useNavigate();
+
   const interactive = !readonly && typeof onRowClick === "function";
 
+  // The PO code is a LINK: it opens that PO in Item Purchasing, the same
+  // route the voucher page's PO list uses.
+  const openPurchaseOrder = useCallback(
+    (nPurchaseOrderId) => {
+      if (nPurchaseOrderId == null) return;
+      navigate(`/item-purchasing-update?id=${nPurchaseOrderId}`);
+    },
+    [navigate],
+  );
+
   const showSelling = showSellingOverride ?? hasDeliveredRows(rows);
+
+  // The header card folds the rows away — the header itself and the Grand
+  // Total bar stay, so a folded table still says what it holds.
+  const [open, setOpen] = useState(true);
+
+  // WHICH SIDE is this table about? A batch on its way OUT belongs to the
+  // client — its header carries the TRANSACTION code and the client's name;
+  // a batch on its way IN belongs to the supplier — its header carries the
+  // PO number and the supplier's name. A host that KNOWS its side says so;
+  // otherwise the rows themselves decide (the majority direction wins).
+  const clientSide = useMemo(() => {
+    if (showSellingOverride === false) return false;
+    if (showSellingOverride === true) return true;
+    if (!rows.length) return false;
+    const delivered = rows.filter(isDeliveredRow).length;
+    return delivered * 2 > rows.length;
+  }, [rows, showSellingOverride]);
+
+  // What the header card shows: the code on top, the counterparty under it.
+  // The received side's code IS a PO number — it carries the PO's id, so it
+  // opens that PO in Item Purchasing. The delivered side's code is a
+  // transaction code: nothing to open.
+  const headerCodes = useMemo(() => {
+    if (clientSide) {
+      return [
+        ...new Set(rows.map((r) => r.strTransactionCode).filter((v) => v && v !== "—")),
+      ].map((label) => ({ label, poId: null }));
+    }
+    const byCode = new Map();
+    rows.forEach((r) => {
+      const label = r.strPurchaseOrderNo;
+      if (!label || label === "—") return;
+      if (!byCode.has(label)) byCode.set(label, r.nPurchaseOrderId ?? null);
+    });
+    return [...byCode.entries()].map(([label, poId]) => ({ label, poId }));
+  }, [rows, clientSide]);
+
+  const headerName = useMemo(() => {
+    const field = clientSide ? "strClientNickName" : "strSupplierNickName";
+    const found = rows.find((r) => r[field] && r[field] !== "—");
+    return found?.[field] ?? "—";
+  }, [rows, clientSide]);
 
   console.log(
     rows[0] && {
@@ -412,11 +611,36 @@ export default function ItemsTable({
 
   return (
     <Box sx={panelSx}>
+      {/* The header card (PO number · supplier · triangle) lives INSIDE the
+          table's own container, so the whole thing reads as one card.
+          Clicking it folds/unfolds the rows. */}
+      {showHeader && (
+        <ItemsHeaderCard
+          colors={colors}
+          codes={headerCodes}
+          name={headerName}
+          open={open}
+          onToggle={() => setOpen((v) => !v)}
+          onOpenPO={openPurchaseOrder}
+        />
+      )}
+      {open && (
       <Box sx={scrollSx}>
         {/* COLUMN HEADER */}
         <Box sx={headerSx}>
-          <Box sx={{ width: 30, flexShrink: 0 }} />
-          <HeaderCell label="BRAND | MODEL" colors={colors} grow />
+          <Box sx={{ width: 20, flexShrink: 0, textAlign: "center" }}>
+            <Typography
+              sx={{
+                fontSize: "0.55rem",
+                fontWeight: 700,
+                color: colors.gray.textSecondary,
+                letterSpacing: "0.03em",
+              }}
+            >
+              #
+            </Typography>
+          </Box>
+          <HeaderCell label="ITEMS" colors={colors} grow />
           <HeaderCell
             label="QTY"
             colors={colors}
@@ -486,7 +710,7 @@ export default function ItemsTable({
                   : undefined,
               }}
             >
-              {/* LEFT: icon + brand/model + date */}
+              {/* LEFT: the numbering + brand/model + date */}
               <Box
                 sx={{
                   display: "flex",
@@ -496,36 +720,113 @@ export default function ItemsTable({
                   minWidth: { xs: 180, sm: 0 },
                 }}
               >
-                <RowIcon
-                  colors={colors}
-                  tint={colors.purple}
-                  index={idx}
-                  icon={
-                    <Inventory2Outlined
-                      sx={{
-                        fontSize: "0.85rem",
-                        color: colors.purple.text,
-                      }}
-                    />
-                  }
-                />
-                <Box sx={{ flex: 1, minWidth: 0 }}>
+                {/* The numbering — its own narrow column, centred on the
+                    row (same as the Purchase Items table). */}
+                <Box
+                  sx={{
+                    width: 20,
+                    flexShrink: 0,
+                    textAlign: "center",
+                    alignSelf: "center",
+                  }}
+                >
                   <Typography
                     sx={{
-                      fontSize: "0.72rem",
-                      color: colors.gray.textPrimary,
+                      fontSize: "0.55rem",
+                      fontWeight: 700,
+                      color: colors.gray.textSecondary,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {idx + 1}
+                  </Typography>
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  {/* The PO this batch was bought on — right on top of the
+                      brand · model it belongs to. Only on the DELIVERED
+                      side: there the header carries the transaction code,
+                      so the PO is what tells the rows apart. On the For
+                      Delivery side the header already shows the PO. */}
+                  {isDeliveredRow(row) &&
+                    row.strPurchaseOrderNo &&
+                    row.strPurchaseOrderNo !== "—" && (
+                    <Typography
+                      component="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openPurchaseOrder(row.nPurchaseOrderId);
+                      }}
+                      title={
+                        row.nPurchaseOrderId
+                          ? "Open this PO in Item Purchasing"
+                          : undefined
+                      }
+                      sx={{
+                        // The box hugs the text — otherwise the whole column
+                        // width is a link and clicking the empty space opens
+                        // the PO.
+                        display: "inline-block",
+                        width: "fit-content",
+                        maxWidth: "100%",
+                        textAlign: "left",
+                        p: 0,
+                        border: "none",
+                        background: "transparent",
+                        fontSize: "0.55rem",
+                        fontWeight: 700,
+                        // Blue — it is a link, like every other PO code.
+                        color: row.nPurchaseOrderId
+                          ? colors.blue.text
+                          : colors.gray.textSecondary,
+                        textTransform: "uppercase",
+                        lineHeight: 1,
+                        mb: 0.15,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        cursor: row.nPurchaseOrderId ? "pointer" : "default",
+                        "&:hover": row.nPurchaseOrderId
+                          ? { textDecoration: "underline" }
+                          : undefined,
+                      }}
+                    >
+                      {row.strPurchaseOrderNo}
+                    </Typography>
+                  )}
+                  <Typography
+                    onClick={onBrandClick ? () => onBrandClick(row) : undefined}
+                    title={
+                      onBrandClick
+                        ? "Open this transaction for purchase"
+                        : undefined
+                    }
+                    sx={{
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      // A link looks like a link.
+                      color: onBrandClick
+                        ? colors.blue.text
+                        : colors.gray.textPrimary,
+                      textTransform: "uppercase",
+                      lineHeight: 1,
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
+                      cursor: onBrandClick ? "pointer" : "default",
+                      ...(onBrandClick && {
+                        "&:hover": { textDecoration: "underline" },
+                      }),
                     }}
                   >
                     {row.strBrandModel}
                   </Typography>
                   <Typography
                     sx={{
-                      fontSize: "0.56rem",
+                      fontSize: "0.58rem",
                       color: colors.gray.textMuted,
-                      mt: 0.1,
+                      textTransform: "uppercase",
+                      lineHeight: 1.1,
+                      mt: 0.15,
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -627,6 +928,7 @@ export default function ItemsTable({
           );
         })}
       </Box>
+      )}
 
       <TotalFooter
         colors={colors}

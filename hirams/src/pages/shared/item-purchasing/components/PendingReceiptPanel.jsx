@@ -2,16 +2,23 @@ import React from "react";
 import { Box, Typography, Collapse, Divider } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import {
-  Inventory2Outlined,
   MoveToInboxOutlined,
   PhotoCameraOutlined,
 } from "@mui/icons-material";
-import { fmtDate, fmtQty } from "../../../../utils/formatters/formatter.js";
+import { fmtQty } from "../../../../utils/formatters/formatter.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
 import ScanSerialNumberModal from "../modal/ScanSerialNumberModal.jsx";
+import PurchaseItemsHeader, {
+  ItemInfoColumn,
+} from "./shared/PurchaseItemsTable.jsx";
 
-export default function PendingReceiptPanel({ options = [], forms, setForms }) {
+export default function PendingReceiptPanel({
+  options = [],
+  forms,
+  setForms,
+  onBrandClick,
+}) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
@@ -99,47 +106,6 @@ export default function PendingReceiptPanel({ options = [], forms, setForms }) {
 
   return (
     <>
-      {/* Section header */}
-      <Box
-        sx={{
-          pt: 1,
-          pb: 1.5,
-          display: "flex",
-          alignItems: "center",
-          gap: 0.75,
-        }}
-      >
-        <Typography
-          sx={{
-            fontSize: "0.58rem",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            color: gray.textDisabled,
-          }}
-        >
-          Purchase Items
-        </Typography>
-        <Box sx={{ flex: 1, height: "0.5px", background: slate.border }} />
-        <Box
-          component="button"
-          onClick={toggleAll}
-          sx={{
-            px: 1,
-            height: 22,
-            fontSize: "0.55rem",
-            fontWeight: 700,
-            color: blue.textStrong,
-            background: blue.bg,
-            border: `0.5px solid ${blue.border}`,
-            borderRadius: "50px",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {allExpanded ? "Collapse" : "Show All"}
-        </Box>
-      </Box>
-
       <Box
         sx={{
           border: `0.5px solid ${slate.border}`,
@@ -148,6 +114,32 @@ export default function PendingReceiptPanel({ options = [], forms, setForms }) {
           overflow: "hidden",
         }}
       >
+        {/* Table header — the title on the left, the toggle on the right.
+            It sits INSIDE the table box so the box rounds its top corners. */}
+        <PurchaseItemsHeader
+          action={
+            <Box
+              component="button"
+              onClick={toggleAll}
+              sx={{
+                px: 0.75,
+                height: 22,
+                fontSize: "0.55rem",
+                fontWeight: 700,
+                color: blue.textStrong,
+                background: blue.bg,
+                border: `0.5px solid ${blue.border}`,
+                // Barely rounded — it sits in the header's right corner.
+                borderRadius: "5px",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {allExpanded ? "Hide All" : "Show All"}
+            </Box>
+          }
+        />
+
         {visible.length === 0 && (
           <Box sx={{ px: 2, py: 2 }}>
             <Typography
@@ -204,7 +196,7 @@ export default function PendingReceiptPanel({ options = [], forms, setForms }) {
                   transition: "background 0.15s",
                 }}
               >
-                {/* Left: icon + item info */}
+                {/* Left: the numbering + item info */}
                 <Box
                   sx={{
                     display: "flex",
@@ -214,118 +206,12 @@ export default function PendingReceiptPanel({ options = [], forms, setForms }) {
                     flex: 1,
                   }}
                 >
-                  <Box sx={{ position: "relative", flexShrink: 0 }}>
-                    <Box
-                      sx={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: "6px",
-                        background: slate.mutedBg,
-                        border: `0.5px solid ${slate.mutedBorder}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Inventory2Outlined
-                        sx={{ fontSize: "0.75rem", color: slate.mutedColor }}
-                      />
-                    </Box>
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        top: -5,
-                        left: -5,
-                        minWidth: 13,
-                        height: 13,
-                        px: 0.25,
-                        borderRadius: "50px",
-                        background: gray.textSecondary,
-                        border: `1.5px solid ${slate.outerBg}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Typography
-                        sx={{
-                          fontSize: "0.4rem",
-                          fontWeight: 700,
-                          color: gray.textOnFill,
-                          lineHeight: 1,
-                        }}
-                      >
-                        {idx + 1}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ minWidth: 0 }}>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 0.4,
-                        mb: 0.2,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {(p?.strBrand || p?.strModel) && (
-                        <Typography
-                          sx={{
-                            fontSize: "0.65rem",
-                            fontWeight: 600,
-                            color: gray.textPrimary,
-                          }}
-                        >
-                          {[p?.strBrand, p?.strModel]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </Typography>
-                      )}
-                      <Box
-                        sx={{
-                          px: 0.35,
-                          py: 0.08,
-                          borderRadius: "50px",
-                          background: blue.bg,
-                          border: `0.5px solid ${blue.border}`,
-                        }}
-                      >
-                        <Typography
-                          sx={{
-                            fontSize: "0.45rem",
-                            fontWeight: 500,
-                            color: blue.textStrong,
-                            lineHeight: 1,
-                          }}
-                        >
-                          {tx?.strCode ?? "—"}
-                        </Typography>
-                      </Box>
-                    </Box>
-                    <Typography
-                      sx={{
-                        fontSize: "0.58rem",
-                        color: gray.textSecondary,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {p?.transaction_item?.strName ?? "—"}
-                    </Typography>
-                    <Typography
-                      sx={{
-                        fontSize: "0.48rem",
-                        color: slate.mutedColor,
-                        mt: 0.15,
-                        lineHeight: 1,
-                      }}
-                    >
-                      Delivery: {fmtDate(tx?.dtDelivery) || "—"}
-                    </Typography>
-                  </Box>
+                  <ItemInfoColumn
+                    p={p}
+                    tx={tx}
+                    idx={idx}
+                    onBrandClick={onBrandClick}
+                  />
                 </Box>
 
                 {/* Right: To Receive + toggle button */}

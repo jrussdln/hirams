@@ -1,11 +1,20 @@
 import React, { useMemo } from "react";
-import { useTheme } from "@mui/material";
+import { useTheme, Tooltip } from "@mui/material";
 import PageLayout from "../../../components/layouts/page/content-page";
 import CustomTable from "../../../components/ui/form/Table";
 import CustomSearchField from "../../../components/ui/form/SearchField";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
-import { History, Visibility, Unarchive } from "@mui/icons-material";
+import {
+  History,
+  Visibility,
+  Unarchive,
+  PersonOutline,
+  LocalShipping,
+  Event,
+  Storefront,
+  CalendarToday,
+} from "@mui/icons-material";
 import { getDueDateColor } from "../../../utils/helpers/dueDateColor";
 import TransactionHistoryModal from "../transactions/modal/TransactionHistoryModal";
 import ArchiveModal from "./modal/ArchiveModal";
@@ -31,21 +40,37 @@ const useColors = (c) => ({
   grayTextSecondary: c.gray.textSecondary,
 });
 
-// The label/value group. Fixed column widths (label 5rem + value 9.5rem) make
-// every row's group the SAME size, so the labels line up down the column AND
-// the whole group sits centered in the cell (the parent uses justify-center).
-// Tune 9.5rem to the widest value (the date) if it truncates or leaves a gap.
+// The row labels are drawn as small icons instead of text — the full name
+// waits in the tooltip, so the column stays narrow and the value sits right
+// next to its icon (same treatment as the transactions list).
+const LabelIcon = (props) => {
+  const { icon: Icon, title, className = "" } = props;
+  return (
+    <Tooltip title={title} arrow placement="top">
+      <span
+        className={`inline-flex items-center justify-center text-gray-500 dark:text-gray-400 ${className}`}
+        style={{ lineHeight: 0 }}
+      >
+        <Icon sx={{ fontSize: "0.7rem" }} />
+      </span>
+    </Tooltip>
+  );
+};
+
+// The label/value group. The label column is sized by its own content (auto)
+// so the value starts right next to the icon; the value track is
+// minmax(0, 9.5rem) so it gives space back when the column is narrow and
+// the text truncates instead of spilling out of the cell. Both rows share ONE
+// grid, so the two values in a cell start on the same x-position.
 const OfficerBlock = ({ children }) => (
-  <div className="grid w-fit max-w-full min-w-0 grid-cols-[5rem_9.5rem] items-center gap-x-2 uppercase tracking-wide text-[0.625rem] font-medium leading-tight">
+  <div className="grid w-fit max-w-full min-w-0 grid-cols-[auto_minmax(0,9.5rem)] items-baseline gap-x-2 uppercase tracking-wide text-[0.625rem] font-medium leading-tight">
     {children}
   </div>
 );
 
-const OfficerLine = ({ label, value, valueStyle }) => (
+const OfficerLine = ({ icon, title, value, valueStyle }) => (
   <>
-    <span className="text-right text-gray-500 dark:text-gray-400 whitespace-nowrap">
-      {label}
-    </span>
+    <LabelIcon icon={icon} title={title} />
     <span className="text-left truncate" style={valueStyle}>
       {value}
     </span>
@@ -123,11 +148,16 @@ export default function ArchiveView() {
                 </span>
               )}
             </div>
-            <span className="block truncate text-[0.8125rem] font-medium leading-tight -mt-0.5">
+            {/* It may take a second line — but never a third. line-clamp-2 caps
+                it there with an ellipsis; whitespace-normal is needed because
+                the table cell inherits white-space: nowrap. */}
+            <span className="line-clamp-2 whitespace-normal text-[0.75rem] font-normal leading-[1.1] mt-px">
               {val}
             </span>
             {selectedArchiveStatusCode !== lostKey && (
-              <span className="block truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+              // The caption and the status now read as one label: upright and
+              // the same weight, so the whole line is legible at this size.
+              <span className="block truncate text-[0.5625rem] font-medium not-italic leading-tight text-gray-500 dark:text-gray-400 mt-px">
                 PREVIOUS: {row.previous_status_label || "—"}
               </span>
             )}
@@ -218,8 +248,8 @@ export default function ArchiveView() {
           {
             key: "createdBy",
             label: "Account / Procurement Officer",
-            align: "center",
-            xs: 2,
+            align: "left",
+            xs: 1.5,
             render: (_, row) => {
               const prevCode = Number(row.previous_status_code ?? 0);
               const isAoStage = prevCode >= 200 && prevCode <= 245;
@@ -227,30 +257,53 @@ export default function ArchiveView() {
 
               if (isAoStage) {
                 const hasName = Boolean(row.aoName?.trim());
-                const secondDate = isForPurchaseStage
-                  ? row.dtDelivery
-                  : row.dtAODueDate || row.dtDocSubmission;
-                const hasSecond = Boolean(secondDate);
                 const formattedDate =
                   row.date && row.date !== "—" ? row.date : OPEN_DATE;
 
+                // The second line shows ONE date: the delivery date on the For
+                // Purchase stage, otherwise the AO due date — each falling
+                // back to the document-submission date, and finally to the
+                // "Open date" placeholder.
+                //
+                // The colour has to come from the date that is actually
+                // printed. Before, the colour came from the raw due date
+                // while the text could be the placeholder, so "Open date"
+                // came out RED.
+                const shownDate = isForPurchaseStage
+                  ? row.dtDelivery
+                  : row.dtAODueDate || row.dtDocSubmission;
+                const hasSecond = Boolean(shownDate);
+                const secondValue = isForPurchaseStage
+                  ? row.dtDelivery
+                    ? row.deliveryDate
+                    : formattedDate
+                  : row.dtAODueDate
+                    ? row.aoDueDate
+                    : formattedDate;
+                // Same rule as the live transactions list: red once the date
+                // has passed, orange when it is within 3 business days.
+                const secondColor = hasSecond
+                  ? getDueDateColor(shownDate)
+                  : null;
+
                 return (
-                  <div className="flex min-w-0 justify-center">
+                  <div className="flex min-w-0 justify-start">
                     <OfficerBlock>
                       <OfficerLine
-                        label="AO:"
+                        icon={PersonOutline}
+                        title="AO"
                         value={hasName ? row.aoName : "—"}
                       />
                       <OfficerLine
-                        label={isForPurchaseStage ? "DELIVERY:" : "DUE:"}
-                        valueStyle={{ color: colors.textMuted }}
-                        value={
-                          hasSecond
-                            ? isForPurchaseStage
-                              ? row.deliveryDate || formattedDate
-                              : row.aoDueDate || formattedDate
-                            : OPEN_DATE
-                        }
+                        icon={isForPurchaseStage ? LocalShipping : Event}
+                        title={isForPurchaseStage ? "Delivery" : "Due"}
+                        valueStyle={{
+                          color: hasSecond
+                            ? (secondColor ?? "inherit")
+                            : colors.textMuted,
+                          fontWeight: secondColor ? 600 : 500,
+                        }}
+                        value={secondValue}
                       />
                     </OfficerBlock>
                   </div>
@@ -258,18 +311,28 @@ export default function ArchiveView() {
               }
 
               const hasName = Boolean(row.createdBy?.trim());
+              const hasDate = Boolean(row.dtDocSubmission);
               const formattedDate =
                 row.date && row.date !== "—" ? row.date : OPEN_DATE;
+              // Same rule as the live transactions list.
+              const dateColor = getDueDateColor(row.dtDocSubmission);
               return (
-                <div className="flex min-w-0 justify-center">
+                <div className="flex min-w-0 justify-start">
                   <OfficerBlock>
                     <OfficerLine
-                      label="PO:"
+                      icon={Storefront}
+                      title="PO"
                       value={hasName ? row.createdBy : "—"}
                     />
                     <OfficerLine
-                      label="SUB. DATE:"
-                      valueStyle={{ color: colors.textMuted }}
+                      icon={CalendarToday}
+                      title="Submission Date"
+                      valueStyle={{
+                        color: hasDate
+                          ? (dateColor ?? "inherit")
+                          : colors.textMuted,
+                        fontWeight: dateColor ? 600 : 500,
+                      }}
                       value={formattedDate}
                     />
                   </OfficerBlock>

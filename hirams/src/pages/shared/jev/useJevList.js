@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import JevAPI from "../../../api/endpoints/jev.api.js";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 import { fmtPHP } from "../../../utils/formatters/formatter.js";
@@ -254,6 +255,36 @@ export default function useJevList() {
     setJevModalOpen(false);
     setJevCreateMode(false);
   }, []);
+
+  // ── Deep link — /jev?id=… opens that very journal ───────────────────
+  // The JEV number printed by the panel header (JevViewPanel) links here,
+  // so the list has to answer the id: it opens that JEV in the viewer and
+  // moves the sidebar (and the list with it) to the type it belongs to —
+  // this page shows one type at a time, and the journal may well be of
+  // another.
+  const [searchParams] = useSearchParams();
+  const deepLinkId = searchParams.get("id");
+  // The id already handled — one opening per id, so a refetch (or the
+  // close of the modal) never re-opens the journal behind the reader.
+  const deepLinkOpenedRef = useRef("");
+
+  useEffect(() => {
+    const id = String(deepLinkId ?? "");
+    if (!id || deepLinkOpenedRef.current === id) return;
+    // The list may still be loading — the journal is opened once it is
+    // there.
+    const j = jevs.find((x) => String(x.nJEVId) === id);
+    if (!j) return;
+    deepLinkOpenedRef.current = id;
+    if (j.cJEVLinkType && String(j.cJEVLinkType) !== String(selectedTypeCode)) {
+      window.dispatchEvent(
+        new CustomEvent("jev_type_changed", {
+          detail: { code: String(j.cJEVLinkType) },
+        }),
+      );
+    }
+    openJevModal(j);
+  }, [deepLinkId, jevs, selectedTypeCode, openJevModal]);
   const handleDeleteClick = useCallback(
     (row) => {
       const j = row?._raw ?? row;

@@ -13,6 +13,8 @@ export const PurchaseOrderAPI = {
     api.patch("purchase-orders/update-cart-status", payload),
   proceedToPODetails: (payload) =>
     api.patch("purchase-orders/proceed-to-po-details", payload),
+  // The freight charge on the PO (the Freight / EWT editor).
+  updateFreight: (id, payload) => api.patch(`purchase-orders/${id}/freight`, payload),
   // ── Purchase item histories (moved from purchase-item-histories.api.js) ──
   getLatestHistory: (payload) => api.post("purchase-order/latest-history", payload),
   getAllHistoryForOption: (optionId) => api.get(`purchase-order/option/${optionId}/all-history`),

@@ -320,7 +320,8 @@ function modeCellSx(isSelected) {
 function VoucherFooterTable({
   subtotal,
   items = [],
-  ewtDiscount,
+  freight = 0,
+  ewtDiscount = 0,
   accountRows = [],
   cPaymentTerms,
   cashKey,
@@ -354,9 +355,10 @@ function VoucherFooterTable({
     "ewtDiscountOverride" in values
       ? toNum(values.ewtDiscountOverride)
       : ewtDiscount;
-  // AMOUNT PAYABLE = SUB-TOTAL − Less: EWT/DISC, recomputed after any edit.
-  // (The cell stays editable — its own typed value wins until reset.)
-  const payableVal = subtotalVal - ewtVal;
+  // AMOUNT PAYABLE = SUB-TOTAL + FREIGHT − Less: EWT/DISC, recomputed after
+  // any edit. (The cell stays editable — its own typed value wins until
+  // reset.)
+  const payableVal = subtotalVal + Number(freight || 0) - ewtVal;
 
   const paidTerm = String(cPaymentTerms ?? "");
   const isOnline = !!onlineKey && paidTerm === String(onlineKey);
@@ -389,6 +391,28 @@ function VoucherFooterTable({
             style={{ ...cellSx, textAlign: "right" }}
             align="right"
             initialValue={subtotalVal}
+            formatDisplay={(v) => fmtPHP(toNum(v))}
+          />
+        </tr>
+        <tr>
+          <td
+            colSpan={7}
+            style={{
+              ...cellSx,
+              fontWeight: 500,
+              textAlign: "right",
+              fontSize: "0.6rem",
+              fontStyle: "italic",
+            }}
+          >
+            FREIGHT
+          </td>
+          <EditableCell
+            id="freightOverride"
+            colSpan={2}
+            style={{ ...cellSx, textAlign: "right" }}
+            align="right"
+            initialValue={Number(freight || 0)}
             formatDisplay={(v) => fmtPHP(toNum(v))}
           />
         </tr>
@@ -794,6 +818,7 @@ export default function PreviewVoucherView({
   payeeName = DEFAULTS.payeeName,
   payeeAddress = DEFAULTS.payeeAddress,
   items = DEFAULTS.items,
+  freight = 0,
   ewtDiscount = DEFAULTS.ewtDiscount,
   companyName = DEFAULTS.companyName,
   companyLogo = DEFAULTS.companyLogo,
@@ -834,6 +859,7 @@ export default function PreviewVoucherView({
           <VoucherFooterTable
             subtotal={subtotal}
             items={items}
+            freight={freight}
             ewtDiscount={ewtDiscount}
             accountRows={accountRows}
             cPaymentTerms={cPaymentTerms}

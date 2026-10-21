@@ -3,10 +3,12 @@
 namespace App\Services\Vouchers;
 
 use App\Events\InventoryUpdated;
+use App\Events\JevUpdated;
 use App\Events\PurchaseOrderUpdated;
 use App\Events\VoucherUpdated;
 use App\Models\Inventory;
 use App\Models\Jev;
+use App\Models\JevEntries;
 use App\Models\PurchaseOrder;
 use App\Models\Voucher;
 use App\Models\VoucherAssignee;
@@ -217,11 +219,24 @@ class VoucherService extends CrudService
 
     /**
      * destroy(): delete the voucher, then announce it.
+     *
+     * The journal it raised goes with it — the entries first, then the
+     * journal — and so do the links (the POs / assignees it was paying), so
+     * nothing is left pointing at a voucher that is gone.
      */
     public function destroy(string $id): Voucher
     {
         $voucher   = Voucher::findOrFail($id);
         $voucherId = $voucher->nVoucherId;
+
+        $this->deleteJevForVoucher(
+            $voucher,
+            (string) $this->statusCodes()['voucherCancelled']
+        );
+
+        VoucherSupplier::where('nVoucherId', $voucherId)->delete();
+        VoucherAssignee::where('nVoucherId', $voucherId)->delete();
+
         $voucher->delete();
 
         $this->broadcast('deleted', $voucherId);
@@ -261,6 +276,8 @@ class VoucherService extends CrudService
         // the other views.
         $inventoryCancelId = null;
         $movedPOIds        = [];
+        // The journal a reopened voucher leaves behind.
+        $deletedJevId      = null;
 
         DB::transaction(function () use (
             $voucher,
@@ -268,8 +285,10 @@ class VoucherService extends CrudService
             $insertInventory,
             $removeInventory,
             $codes,
+            $previousStatus,
             &$inventoryCancelId,
-            &$movedPOIds
+            &$movedPOIds,
+            &$deletedJevId
         ) {
             $voucher->cStatus = $request->cStatus;
             $voucher->save();
@@ -279,6 +298,21 @@ class VoucherService extends CrudService
             }
             if ($removeInventory) {
                 $this->removeInventoryForVoucher($voucher);
+            }
+
+            // Reopening a voucher voids the journal it was issued against:
+            // the link is dropped and the journal goes with its entries, so
+            // the reopened voucher starts from a clean journal. Only a REAL
+            // reopen counts — a voucher that was already Active keeps its
+            // journal.
+            if ($codes['voucherActive'] !== false
+                && (string) $request->cStatus === (string) $codes['voucherActive']
+                && (string) $previousStatus !== (string) $codes['voucherActive']
+            ) {
+                $deletedJevId = $this->deleteJevForVoucher(
+                    $voucher,
+                    (string) $codes['voucherCancelled']
+                );
             }
 
             // Cancelling a voucher voids everything it raised:
@@ -316,6 +350,12 @@ class VoucherService extends CrudService
         });
 
         $this->broadcast('status_changed', $voucher);
+
+        if ($deletedJevId) {
+            // The journal is gone — tell the other views so their open
+            // journal panels close too.
+            broadcast(new JevUpdated('deleted', $deletedJevId))->toOthers();
+        }
 
         if ($inventoryCancelId) {
             broadcast(new InventoryUpdated('cancelled', $inventoryCancelId))->toOthers();
@@ -523,6 +563,55 @@ class VoucherService extends CrudService
     }
 
     /**
+     * Reopening a voucher throws its journal away.
+     *
+     * A reopened voucher is being worked on again, so the journal it was
+     * issued against no longer describes it: the voucher's link to it is
+     * dropped (nJEVId → null) and the journal goes with its entries.
+     *
+     * tblvouchers points at tbljevs, so one journal can be shared by more
+     * than one voucher — it is only deleted once no other LIVE voucher still
+     * points at it. A shared journal keeps its entries and the voucher that
+     * still holds it keeps working; only the reopened voucher's own link is
+     * dropped.
+     *
+     * Returns the id of the journal that was deleted (for broadcasting), or
+     * null when there was nothing to remove.
+     */
+    private function deleteJevForVoucher(
+        Voucher $voucher,
+        string $voucherCancelledKey
+    ): ?int {
+        if (!$voucher->nJEVId) return null;
+
+        $jevId = (int) $voucher->nJEVId;
+
+        // Another live voucher still holds this journal — leave it alone.
+        $stillInUse = Voucher::where('nJEVId', $jevId)
+            ->where('nVoucherId', '!=', $voucher->nVoucherId)
+            ->where(fn ($q) => $q->where('cStatus', '!=', $voucherCancelledKey)
+                ->orWhereNull('cStatus'))
+            ->exists();
+
+        if ($stillInUse) {
+            // Only this voucher's link is dropped; the journal lives on for
+            // the voucher that still points at it.
+            $voucher->nJEVId = null;
+            $voucher->save();
+            return null;
+        }
+
+        // The entries go first — the journal's rows are what it holds.
+        JevEntries::where('nJEVId', $jevId)->delete();
+        Jev::where('nJEVId', $jevId)->delete();
+
+        $voucher->nJEVId = null;
+        $voucher->save();
+
+        return $jevId;
+    }
+
+    /**
      * The status codes this flow reacts to, pulled straight from
      * config/mappings.php — the file /mappings serves to the frontend, so the
      * API and the UI can never disagree about what a code means. A lookup that
@@ -532,6 +621,7 @@ class VoucherService extends CrudService
     {
         return [
             'voucherCancelled'   => array_search('Cancelled', config('mappings.voucher_status', []), true),
+            'voucherActive'      => array_search('Active', config('mappings.voucher_status', []), true),
             'jevCancelled'       => array_search('Cancelled', config('mappings.jev_status', []), true),
             'inventoryCancelled' => array_search('Cancelled', config('mappings.inventory_status', []), true),
             'forPayment'         => array_search('For Payment', config('mappings.item_purchasing_status', []), true),

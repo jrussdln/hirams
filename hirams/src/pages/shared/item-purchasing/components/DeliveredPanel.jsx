@@ -1,13 +1,17 @@
 import React from "react";
 import { Box, Typography, Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { EditOutlined, TaskAltOutlined } from "@mui/icons-material";
+import { EditOutlined, CloseRounded } from "@mui/icons-material";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import { fmtQty } from "../../../../utils/formatters/formatter.js";
 import {
   getDelivered,
 } from "../../../../utils/helpers/purchaseProgress.js";
 import RowEditForm from "./shared/RowEditForm.jsx";
+import PurchaseItemsHeader, {
+  ItemInfoColumn,
+} from "./shared/PurchaseItemsTable.jsx";
+import { hasApprovedInventory, approvedJevs } from "./shared/hasApprovedInventory.js";
 
 const num = (v) => Number(v) || 0;
 
@@ -33,6 +37,8 @@ export default function DeliveredPanel({
   // Every purchase option per transaction item (all POs) — a row whose
   // quantity is shared by several suppliers opens one form per supplier.
   txnItemOptions,
+  // The brand · model is a link — it opens the transaction for purchase.
+  onBrandClick,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -154,6 +160,25 @@ export default function DeliveredPanel({
     });
     if (willOpen) contributors(opt).forEach(seedEditForm);
   };
+
+  // Show All / Hide All — opens (or closes) every row's edit form.
+  const allKeys = visible.map(({ opt, origIdx }) => getKey(opt, origIdx));
+  const allExpanded =
+    allKeys.length > 0 && allKeys.every((k) => editIds.has(k));
+  const toggleAll = () => {
+    if (allExpanded) {
+      setEditIds(new Set());
+      return;
+    }
+    const next = new Set();
+    visible.forEach(({ opt, origIdx }) => {
+      const k = getKey(opt, origIdx);
+      next.add(k);
+      contributors(opt).forEach(seedEditForm);
+    });
+    setEditIds(next);
+  };
+
   const closeEdit = (k, opt) => {
     const ids = contributors(opt).map((q) => String(q?.nPurchaseItemId));
     // Forget the cached receipts — the next save may have written new ones.
@@ -203,29 +228,6 @@ export default function DeliveredPanel({
 
   return (
     <>
-      {/* Section header */}
-      <Box
-        sx={{
-          pt: 1,
-          pb: 1.5,
-          display: "flex",
-          alignItems: "center",
-          gap: 0.75,
-        }}
-      >
-        <Typography
-          sx={{
-            fontSize: "0.58rem",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            color: gray.textDisabled,
-          }}
-        >
-          Purchase Items
-        </Typography>
-        <Box sx={{ flex: 1, height: "0.5px", background: slate.border }} />
-      </Box>
-
       <Box
         sx={{
           border: `0.5px solid ${slate.border}`,
@@ -234,6 +236,32 @@ export default function DeliveredPanel({
           overflow: "hidden",
         }}
       >
+        {/* Table header — the title on the left, the toggle on the right.
+            It sits INSIDE the table box so the box rounds its top corners. */}
+        <PurchaseItemsHeader
+          action={
+            <Box
+              component="button"
+              onClick={toggleAll}
+              sx={{
+                px: 0.75,
+                height: 22,
+                fontSize: "0.55rem",
+                fontWeight: 700,
+                color: blue.textStrong,
+                background: blue.bg,
+                border: `0.5px solid ${blue.border}`,
+                // Barely rounded — it sits in the header's right corner.
+                borderRadius: "5px",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {allExpanded ? "Hide All" : "Show All"}
+            </Box>
+          }
+        />
+
         {visible.length === 0 && (
           <Box sx={{ px: 2, py: 2 }}>
             <Typography sx={{ fontSize: "0.6rem", color: gray.textSecondary }}>
@@ -244,6 +272,7 @@ export default function DeliveredPanel({
 
         {visible.map(({ opt, origIdx }, idx) => {
           const p = opt.purchase_option;
+          const tx = p?.transaction_item?.transaction;
           // Combined across every PO of the transaction so the row matches
           // the card (5 + 7 = 12).
           const total = txnTotals?.[p?.transaction_item?.nTransactionItemId];
@@ -287,88 +316,12 @@ export default function DeliveredPanel({
                     flex: 1,
                   }}
                 >
-                  <Box sx={{ position: "relative", flexShrink: 0 }}>
-                    <Box
-                      sx={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: "6px",
-                        background: slate.mutedBg,
-                        border: `0.5px solid ${slate.mutedBorder}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <TaskAltOutlined
-                        sx={{ fontSize: "0.75rem", color: slate.mutedColor }}
-                      />
-                    </Box>
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        top: -5,
-                        left: -5,
-                        minWidth: 13,
-                        height: 13,
-                        px: 0.25,
-                        borderRadius: "50px",
-                        background: gray.textSecondary,
-                        border: `1.5px solid ${slate.outerBg}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Typography
-                        sx={{
-                          fontSize: "0.4rem",
-                          fontWeight: 700,
-                          color: gray.textOnFill,
-                          lineHeight: 1,
-                        }}
-                      >
-                        {idx + 1}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ minWidth: 0 }}>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 0.4,
-                        mb: 0.2,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {(p?.strBrand || p?.strModel) && (
-                        <Typography
-                          sx={{
-                            fontSize: "0.65rem",
-                            fontWeight: 600,
-                            color: gray.textPrimary,
-                          }}
-                        >
-                          {[p?.strBrand, p?.strModel]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </Typography>
-                      )}
-                    </Box>
-                    <Typography
-                      sx={{
-                        fontSize: "0.58rem",
-                        color: gray.textSecondary,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {p?.transaction_item?.strName ?? "—"}
-                    </Typography>
-                  </Box>
+                  <ItemInfoColumn
+                    p={p}
+                    tx={tx}
+                    idx={idx}
+                    onBrandClick={onBrandClick}
+                  />
                 </Box>
 
                 {/* Right: Delivered total + edit */}
@@ -447,7 +400,11 @@ export default function DeliveredPanel({
                       cursor: "pointer",
                     }}
                   >
-                    <EditOutlined sx={{ fontSize: "0.8rem" }} />
+                    {editOpen ? (
+                      <CloseRounded sx={{ fontSize: "0.85rem" }} />
+                    ) : (
+                      <EditOutlined sx={{ fontSize: "0.8rem" }} />
+                    )}
                   </Box>
                 </Box>
               </Box>
@@ -481,6 +438,11 @@ export default function DeliveredPanel({
                         form={qForm}
                         onChange={(patch) => setEditForm(qk, patch)}
                         saving={savingDeliver}
+                        // An APPROVED inventory row means a JEV was already
+                        // raised for this item — the record is closed.
+                        locked={hasApprovedInventory(q)}
+                        // …and the JEV behind it is named in the notice.
+                        jevs={approvedJevs(q, "deliver")}
                         currentSerials={(q?.deliveredSerialNumbers || [])
                           .filter(Boolean)
                           .map(String)}

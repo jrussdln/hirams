@@ -1,16 +1,15 @@
 import { useMemo } from "react";
 import { Box, Typography, IconButton, useTheme } from "@mui/material";
 import {
-  ReceiptLongOutlined,
   KeyboardArrowUp,
   KeyboardArrowDown,
   DeleteOutlineOutlined,
-  Inventory2Outlined,
-  OpenInNew,
 } from "@mui/icons-material";
 import { fmtPHP, fmtQty } from "../../../../utils/formatters/formatter";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import PickableValue from "../../jev/components/AmountPick.jsx";
+import AddItemButton from "./AddItemButton.jsx";
+import { contactFallbacks } from "./contactFallbacks.js";
 
 const useColors = (c) => ({
   border: c.slate.border,
@@ -30,6 +29,13 @@ const useColors = (c) => ({
     text: c.blue.text,
     hover: c.blue.hover,
   },
+  green: {
+    bg: c.green.bg,
+    text: c.green.text,
+    border: c.green.border,
+    hover: c.green.hover,
+    active: c.green.active,
+  },
   gray: {
     textPrimary: c.gray.textPrimary,
     textSecondary: c.gray.textSecondary,
@@ -38,7 +44,7 @@ const useColors = (c) => ({
   orange: { text: c.orange.text },
   textOnFill: c.gray.textOnFill,
   amber: { text: c.amber.text },
-  red: { text: c.red.text, bg: c.red.bg },
+  red: { text: c.red.text, bg: c.red.bg, border: c.red.border },
 });
 
 export default function PORowPanel({
@@ -50,6 +56,25 @@ export default function PORowPanel({
   onToggle,
   onRemove,
   onNavigate,
+  // Clicking the brand · model opens the transaction for purchase.
+  onBrandClick,
+  // The voucher's supplier nickname (the PO graph has no supplier loaded).
+  supplierNickName: supplierNickNameProp = "",
+  // The voucher's own number (DV No.) — printed on the top line.
+  voucherNumber = "",
+  // The DV code becomes a LINK when this is set — it opens the voucher
+  // itself (the JEV viewer hands it over).
+  onVoucherClick,
+  // The supplier's address — printed under the supplier's name.
+  supplierAddress = "",
+  // The supplier's TIN — under the address.
+  supplierTIN = "",
+  // True when the list header already carries the supplier's details, so the
+  // row only needs the PO number.
+  compact = false,
+  // Adds a particular to the voucher (shown when the list has no header of
+  // its own to hold it).
+  onAddItem,
   isJEVPage = false,
 }) {
   const theme = useTheme();
@@ -61,6 +86,16 @@ export default function PORowPanel({
   const poNo =
     link.purchase_order?.strPurchaseOrderNo ?? `PO #${link.nPurchaseOrderId}`;
   const options = link.purchase_order?.purchase_order_options || [];
+  // The transaction the PO belongs to — printed after the voucher's number.
+  const transactionCode =
+    options[0]?.purchase_option?.transaction_item?.transaction?.strCode ?? "";
+  // The supplier behind this PO — printed under the code. The voucher's own
+  // supplier is passed in (the PO graph does not load the option's supplier).
+  const supplierNickName =
+    supplierNickNameProp ||
+    options[0]?.purchase_option?.supplier?.strSupplierNickName ||
+    link.purchase_order?.supplier?.strSupplierNickName ||
+    "";
 
   const poTotal = options.reduce((sum, opt) => {
     const p = opt.purchase_option;
@@ -77,6 +112,10 @@ export default function PORowPanel({
     0,
   );
 
+  // The supplier's address and TIN — the shared fallbacks fill in whatever
+  // is not on file.
+  const contact = contactFallbacks(supplierAddress, supplierTIN);
+
   return (
     <Box
       sx={{
@@ -84,8 +123,9 @@ export default function PORowPanel({
           idx < totalCount - 1 ? `0.5px solid ${colors.divider}` : "none",
       }}
     >
-      {/* PO ROW HEADER */}
+      {/* PO ROW HEADER — clicking the row opens / closes its items. */}
       <Box
+        onClick={onToggle}
         sx={{
           px: 2,
           py: 1,
@@ -97,76 +137,237 @@ export default function PORowPanel({
           background: colors.hover,
           backdropFilter: "blur(6px)",
           zIndex: 2,
+          cursor: "pointer",
           "&:hover": { background: colors.hover },
           transition: "background 0.15s",
         }}
       >
-        <Typography
-          sx={{
-            fontSize: { xs: "0.52rem", sm: "0.56rem", md: "0.6rem" },
-            fontWeight: 700,
-            color: colors.gray.textMuted,
-            width: 16,
-            textAlign: "center",
-            flexShrink: 0,
-          }}
-        >
-          {idx + 1}
-        </Typography>
-
-        <Box
-          sx={{
-            width: { xs: 26, sm: 30 },
-            height: { xs: 26, sm: 30 },
-            borderRadius: "7px",
-            background: colors.blue.bg,
-            border: `0.5px solid ${colors.blue.border}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          <ReceiptLongOutlined
-            sx={{
-              fontSize: { xs: "0.75rem", sm: "0.85rem" },
-              color: colors.blue.text,
-            }}
-          />
-        </Box>
-
+        {/* The receipt icon marks the PO — the PO number below is the link
+            that opens it. */}
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography
-            sx={{
-              fontSize: { xs: "0.62rem", sm: "0.68rem", md: "0.72rem" },
-              fontWeight: 700,
-              color: colors.gray.textPrimary,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-            }}
-          >
-            {poNo}
-          </Typography>
-          <Typography
-            sx={{
-              fontSize: { xs: "0.48rem", sm: "0.54rem", md: "0.58rem" },
-              color: colors.gray.textMuted,
-              mt: 0.2,
-            }}
-          >
-            {options.length > 0 && (
-              <>
-                {options[0].purchase_option?.transaction_item?.transaction
-                  ?.strCode ?? "—"}
-                {" - "}
-              </>
-            )}
-            {options.length} {options.length === 1 ? "item" : "items"}
-          </Typography>
+          {/* The voucher's own number — the top line of the block, ABOVE
+              the supplier's name. It has to be a BLOCK: as a plain span or
+              button it stays inline, and the supplier block below it is
+              inline-block too, so the two ended up sharing one line — the
+              DV code sitting to the LEFT of the supplier's name.
+
+              With several POs the list header already prints the DV code,
+              so the rows leave it out — it would just repeat it on every
+              row of the same list. */}
+          {voucherNumber && !compact && (
+            <Typography
+              component={onVoucherClick ? "button" : "span"}
+              onClick={
+                onVoucherClick
+                  ? (e) => {
+                      e.stopPropagation();
+                      onVoucherClick();
+                    }
+                  : undefined
+              }
+              title={onVoucherClick ? "Open this voucher" : undefined}
+              sx={{
+                fontSize: { xs: "0.5rem", sm: "0.55rem", md: "0.58rem" },
+                fontWeight: 700,
+                // Blue when it opens the voucher — it is a link then.
+                color: onVoucherClick ? colors.blue.text : colors.gray.textMuted,
+                textTransform: "uppercase",
+                lineHeight: 1,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                // Block, so it takes a line of its own above the supplier.
+                display: "block",
+                width: onVoucherClick ? "fit-content" : "auto",
+                p: 0,
+                border: "none",
+                background: "transparent",
+                fontFamily: "inherit",
+                cursor: onVoucherClick ? "pointer" : "inherit",
+                "&:hover": onVoucherClick
+                  ? { textDecoration: "underline" }
+                  : undefined,
+              }}
+            >
+              {voucherNumber}
+            </Typography>
+          )}
+
+          {compact ? (
+            /* The list header carries the supplier, so the row only needs
+               the PO number — with the transaction code under it. */
+            <>
+              <Typography
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigate?.(link.nPurchaseOrderId);
+                }}
+                title="Open this purchase order"
+                sx={{
+                  fontSize: { xs: "0.72rem", sm: "0.8rem", md: "0.88rem" },
+                  fontWeight: 700,
+                  color: colors.blue.text,
+                  textTransform: "uppercase",
+                  cursor: onNavigate ? "pointer" : "default",
+                  // The box hugs the text — otherwise the whole column width is
+                  // a link and clicking the empty space opens the PO. No
+                  // overflow clipping here: it would cut the hover
+                  // underline in half.
+                  display: "block",
+                  width: "fit-content",
+                  maxWidth: "100%",
+                  lineHeight: 1,
+                  mt: 0.15,
+                  whiteSpace: "nowrap",
+                  ...(onNavigate && {
+                    "&:hover": { textDecoration: "underline" },
+                  }),
+                }}
+              >
+                {poNo}
+              </Typography>
+              {transactionCode && (
+                <Typography
+                  sx={{
+                    fontSize: { xs: "0.4rem", sm: "0.44rem", md: "0.48rem" },
+                    color: colors.gray.textMuted,
+                    lineHeight: 1.15,
+                    mt: 0.15,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {transactionCode}
+                </Typography>
+              )}
+            </>
+          ) : (
+            /* One PO only — the row keeps the full layout. */
+            <Box sx={{ display: "inline-block", minWidth: 0, mt: 0.15 }}>
+              {/* The supplier's name with the transaction code beside it. */}
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 0.6,
+                  minWidth: 0,
+                }}
+              >
+                {supplierNickName && (
+                  <Typography
+                    sx={{
+                      fontSize: { xs: "0.8rem", sm: "0.9rem", md: "1rem" },
+                      fontWeight: 700,
+                      color: colors.gray.textPrimary,
+                      textTransform: "uppercase",
+                      lineHeight: 1,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {supplierNickName}
+                  </Typography>
+                )}
+                {transactionCode && (
+                  <Typography
+                    sx={{
+                      fontSize: { xs: "0.44rem", sm: "0.48rem", md: "0.52rem" },
+                      color: colors.gray.textMuted,
+                      lineHeight: 1.15,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {transactionCode}
+                  </Typography>
+                )}
+              </Box>
+              {/* The supplier's address, under its name. */}
+              {contact.combined ? (
+                <Typography
+                  sx={{
+                    fontSize: { xs: "0.48rem", sm: "0.52rem", md: "0.56rem" },
+                    fontWeight: 500,
+                    textTransform: "uppercase",
+                    color: colors.gray.textMuted,
+                    lineHeight: 1.15,
+                    mt: 0.15,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {contact.combined}
+                </Typography>
+              ) : (
+                <>
+                  <Typography
+                    sx={{
+                      fontSize: { xs: "0.48rem", sm: "0.52rem", md: "0.56rem" },
+                      fontWeight: 500,
+                      textTransform: "uppercase",
+                      color: colors.gray.textMuted,
+                      lineHeight: 1.15,
+                      mt: 0.15,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {contact.address}
+                  </Typography>
+                  {/* …and the TIN under the address. */}
+                  <Typography
+                    sx={{
+                      fontSize: { xs: "0.48rem", sm: "0.52rem", md: "0.56rem" },
+                      fontWeight: 500,
+                      textTransform: "uppercase",
+                      color: colors.gray.textMuted,
+                      lineHeight: 1.15,
+                      mt: 0.05,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {contact.tin}
+                  </Typography>
+                </>
+              )}
+              {/* The PO number — the last line of the block. */}
+              <Typography
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigate?.(link.nPurchaseOrderId);
+                }}
+                title="Open this purchase order"
+                sx={{
+                  fontSize: { xs: "0.5rem", sm: "0.54rem", md: "0.58rem" },
+                  fontWeight: 700,
+                  color: colors.blue.text,
+                  cursor: onNavigate ? "pointer" : "default",
+                  // The box hugs the text — otherwise the whole column width is
+                  // a link and clicking the empty space opens the PO. No
+                  // overflow clipping here: it would cut the hover
+                  // underline in half.
+                  display: "block",
+                  width: "fit-content",
+                  maxWidth: "100%",
+                  lineHeight: 1.15,
+                  mt: 0.15,
+                  whiteSpace: "nowrap",
+                  ...(onNavigate && {
+                    "&:hover": { textDecoration: "underline" },
+                  }),
+                }}
+              >
+                {poNo}
+              </Typography>
+            </Box>
+          )}
         </Box>
 
-        {/* Right-side cluster: total + action buttons */}
+        {/* Right-side cluster: the action buttons. The amounts live in the
+            Grand Total at the foot of the list. */}
         <Box
           sx={{
             display: "flex",
@@ -175,103 +376,29 @@ export default function PORowPanel({
             flexShrink: 0,
           }}
         >
-          {!isOpen && totalCount > 1 && (
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-end",
-              }}
-            >
-              <PickableValue
-                value={poTotal}
-                sx={{
-                  fontSize: { xs: "0.65rem", sm: "0.72rem", md: "0.78rem" },
-                  fontWeight: 800,
-                  color: colors.orange.text,
-                  textAlign: "right",
-                }}
-              >
-                {fmtPHP(poTotal)}
-              </PickableValue>
-              <Typography
-                sx={{
-                  fontSize: { xs: "0.48rem", sm: "0.52rem", md: "0.57rem" },
-                  fontWeight: 500,
-                  fontStyle: "italic",
-                  color: colors.gray.textSecondary,
-                  textAlign: "right",
-                  lineHeight: 0.5,
-                }}
-              >
-                {poEwtTotal > 0 ? (
-                  <>
-                    EWT:{" "}
-                    <PickableValue variant="inherit" value={poEwtTotal}>
-                      {fmtPHP(poEwtTotal)}
-                    </PickableValue>
-                  </>
-                ) : (
-                  "No EWT"
-                )}
-              </Typography>
-            </Box>
-          )}
-          {options.length > 0 && (
-            <IconButton
-              size="small"
-              onClick={onToggle}
-              sx={{
-                width: { xs: 18, sm: 20 },
-                height: { xs: 18, sm: 20 },
-                color: colors.gray.textMuted,
-                border: `0.5px solid ${colors.border}`,
-                borderRadius: "50px",
-                p: 0,
-              }}
-            >
-              {isOpen ? (
-                <KeyboardArrowUp
-                  sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }}
-                />
-              ) : (
-                <KeyboardArrowDown
-                  sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }}
-                />
-              )}
-            </IconButton>
-          )}
-          {!isJEVPage && (
-            <IconButton
-              size="small"
-              onClick={() => onNavigate?.(link.nPurchaseOrderId)}
-              sx={{
-                width: { xs: 18, sm: 20 },
-                height: { xs: 18, sm: 20 },
-                color: colors.blue.text,
-                border: `0.5px solid ${colors.blue.border}`,
-                borderRadius: "50px",
-                background: colors.blue.bg,
-                p: 0,
-                "&:hover": { background: colors.blue.hover },
-              }}
-              title="View PO"
-            >
-              <OpenInNew sx={{ fontSize: { xs: "0.65rem", sm: "0.75rem" } }} />
-            </IconButton>
-          )}
+          {/* A single PO has no list header of its own, so the button sits
+              here — left of the others. */}
+          {onAddItem && <AddItemButton onClick={onAddItem} c={colors} />}
           {onRemove && (
             <IconButton
               size="small"
               disabled={isRemoving}
-              onClick={onRemove}
+              onClick={(e) => {
+                // The row toggles on its own — the button must not double up.
+                e.stopPropagation();
+                onRemove?.();
+              }}
               sx={{
                 width: { xs: 18, sm: 20 },
                 height: { xs: 18, sm: 20 },
+                borderRadius: "50px",
+                border: `0.5px solid ${colors.red.border}`,
+                background: colors.red.bg,
                 color: colors.red.text,
-                opacity: isRemoving ? 0.4 : 0.6,
+                opacity: isRemoving ? 0.4 : 0.85,
                 "&:hover": { background: colors.red.bg, opacity: 1 },
                 p: 0,
+                flexShrink: 0,
               }}
             >
               {isRemoving ? (
@@ -287,6 +414,36 @@ export default function PORowPanel({
                 />
               ) : (
                 <DeleteOutlineOutlined
+                  sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }}
+                />
+              )}
+            </IconButton>
+          )}
+          {options.length > 0 && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                // The row toggles on its own — the button must not double up.
+                e.stopPropagation();
+                onToggle?.();
+              }}
+              sx={{
+                width: { xs: 18, sm: 20 },
+                height: { xs: 18, sm: 20 },
+                color: colors.gray.textMuted,
+                border: `0.5px solid ${colors.border}`,
+                borderRadius: "50px",
+                p: 0,
+                // The same gap as the buttons before it — the row's own
+                // spacing, nothing more.
+              }}
+            >
+              {isOpen ? (
+                <KeyboardArrowUp
+                  sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }}
+                />
+              ) : (
+                <KeyboardArrowDown
                   sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }}
                 />
               )}
@@ -327,11 +484,30 @@ export default function PORowPanel({
               sx={{
                 display: "flex",
                 alignItems: "center",
+                gap: 1,
                 flex: 1,
                 minWidth: 0,
               }}
             >
-              <Box sx={{ width: 26, flexShrink: 0, textAlign: "center" }} />
+              <Box
+                sx={{
+                  width: 20,
+                  flexShrink: 0,
+                  textAlign: "center",
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: "0.55rem",
+                    fontWeight: 700,
+                    color: colors.gray.textSecondary,
+                    letterSpacing: "0.03em",
+                    lineHeight: 1,
+                  }}
+                >
+                  #
+                </Typography>
+              </Box>
               <Typography
                 sx={{
                   fontSize: "0.55rem",
@@ -441,7 +617,7 @@ export default function PORowPanel({
                     "&:hover": { background: colors.itemHover },
                   }}
                 >
-                  {/* LEFT — Item Info with numbered badge */}
+                  {/* LEFT — Item Info with the numbering column */}
                   <Box
                     sx={{
                       display: "flex",
@@ -451,51 +627,26 @@ export default function PORowPanel({
                       minWidth: 0,
                     }}
                   >
-                    <Box sx={{ position: "relative", flexShrink: 0, mt: 0.25 }}>
-                      <Box
+                    {/* The numbering — its own narrow column, centred on
+                        the row (same as the Purchase Items table). */}
+                    <Box
+                      sx={{
+                        width: 20,
+                        flexShrink: 0,
+                        textAlign: "center",
+                        alignSelf: "center",
+                      }}
+                    >
+                      <Typography
                         sx={{
-                          width: 26,
-                          height: 26,
-                          borderRadius: "6px",
-                          background: colors.mutedBg,
-                          border: `0.5px solid ${colors.mutedBorder}`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          fontSize: "0.55rem",
+                          fontWeight: 700,
+                          color: colors.gray.textSecondary,
+                          lineHeight: 1,
                         }}
                       >
-                        <Inventory2Outlined
-                          sx={{ fontSize: "0.75rem", color: colors.mutedColor }}
-                        />
-                      </Box>
-                      <Box
-                        sx={{
-                          position: "absolute",
-                          top: -5,
-                          left: -5,
-                          minWidth: 13,
-                          height: 13,
-                          px: 0.25,
-                          borderRadius: "50px",
-                          background: colors.gray.textSecondary,
-                          border: `1.5px solid ${colors.outerBg}`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          zIndex: 1,
-                        }}
-                      >
-                        <Typography
-                          sx={{
-                            fontSize: "0.4rem",
-                            fontWeight: 700,
-                            color: colors.textOnFill,
-                            lineHeight: 1,
-                          }}
-                        >
-                          {i + 1}
-                        </Typography>
-                      </Box>
+                        {i + 1}
+                      </Typography>
                     </Box>
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Box
@@ -503,19 +654,42 @@ export default function PORowPanel({
                           display: "flex",
                           alignItems: "center",
                           gap: 0.4,
-                          mb: 0.2,
+                          mb: 0.1,
                           flexWrap: "wrap",
                         }}
                       >
                         {(p?.strBrand || p?.strModel) && (
                           <Typography
+                            onClick={
+                              onBrandClick
+                                ? () =>
+                                    onBrandClick(
+                                      p?.transaction_item?.transaction,
+                                    )
+                                : undefined
+                            }
+                            title={
+                              onBrandClick
+                                ? "Open this transaction for purchase"
+                                : undefined
+                            }
                             sx={{
-                              fontSize: "0.65rem",
+                              fontSize: "0.78rem",
                               fontWeight: 600,
-                              color: colors.gray.textPrimary,
+                              color: onBrandClick
+                                ? colors.blue.text
+                                : colors.gray.textPrimary,
+                              textTransform: "uppercase",
+                              // The box hugs the text — only the words are the
+                              // link, not the whole column width.
+                              display: "inline-block",
                               whiteSpace: "nowrap",
                               overflow: "hidden",
                               textOverflow: "ellipsis",
+                              cursor: onBrandClick ? "pointer" : "default",
+                              ...(onBrandClick && {
+                                "&:hover": { textDecoration: "underline" },
+                              }),
                             }}
                           >
                             {[p?.strBrand, p?.strModel]
@@ -528,6 +702,8 @@ export default function PORowPanel({
                         sx={{
                           fontSize: "0.58rem",
                           color: colors.gray.textSecondary,
+                          textTransform: "uppercase",
+                          lineHeight: 1.1,
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",

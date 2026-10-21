@@ -224,6 +224,8 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::patch('update-cart-status', [PurchaseOrderController::class, 'updateCartStatus']);
         Route::patch('update-cart-status-bulk', [PurchaseOrderController::class, 'updateCartStatusBulk']);
         Route::patch('proceed-to-po-details', [PurchaseOrderController::class, 'proceedToPODetails']);
+        // The freight charge on the PO (the Freight / EWT editor).
+        Route::patch('{id}/freight', [PurchaseOrderController::class, 'updateFreight']);
     });
 
     // ── PURCHASE ORDER OPTIONS (extra routes) ───────────────

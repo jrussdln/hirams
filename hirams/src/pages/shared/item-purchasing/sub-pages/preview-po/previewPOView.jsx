@@ -762,6 +762,7 @@ export default function PreviewPOView({
   freight = DEFAULTS.freight,
   ewt = DEFAULTS.ewt,
   subtotal: subtotalProp,
+  total: totalProp,
   payable: payableProp,
   preparedBy = DEFAULTS.preparedBy,
   preparedByRole = DEFAULTS.preparedByRole,
@@ -772,7 +773,9 @@ export default function PreviewPOView({
 }) {
   const subtotal =
     subtotalProp ?? items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
-  const payable = payableProp ?? subtotal + freight - ewt;
+  // subtotal + freight = total, then total - ewt = TOTAL (the payable).
+  const total = totalProp ?? subtotal + Number(freight ?? 0);
+  const payable = payableProp ?? total - Number(ewt ?? 0);
 
   const [datesDisabled, setDatesDisabled] = useState(false);
 

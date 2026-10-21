@@ -40,7 +40,7 @@ export const NO_JEV_NO = "No JEV number";
 export const NO_SUBMISSION_DATE = "No submission date";
 export const NO_TRANSACTION_ABC = "No ABC set";
 export const NOT_YET_ASSIGNED = "Not yet assigned.";
-export const OPEN_DATE = "Open date";
+export const OPEN_DATE = "OPEN DATE";
 
 // ── Assignee ──────────────────────────────────────────────────────────
 export const NO_NAME = "No name attached";

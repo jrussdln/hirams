@@ -10,6 +10,8 @@ class ProceedToPODetailsRequest extends PurchaseOrderRequest
             'nPurchaseOrderId'   => 'required|integer|exists:tblpurchaseorders,nPurchaseOrderId',
             'strShippingDetails' => 'required|string',
             'cPaymentTerms'      => 'required|string|max:1',
+            // The freight charge on the PO — optional, but never negative.
+            'dFreight'           => 'nullable|numeric|min:0',
         ];
     }
 }

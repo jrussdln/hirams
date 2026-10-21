@@ -3,16 +3,21 @@ import { Box, Typography, Collapse, Divider } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import {
   EditOutlined,
-  LocalShippingOutlined,
   OutboxOutlined,
   PhotoCameraOutlined,
   SyncOutlined,
+  CloseRounded,
 } from "@mui/icons-material";
-import { fmtDate, fmtQty } from "../../../../utils/formatters/formatter.js";
+import { fmtQty } from "../../../../utils/formatters/formatter.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
 import ScanSerialNumberModal from "../modal/ScanSerialNumberModal.jsx";
 import RowEditForm from "./shared/RowEditForm.jsx";
+import DeliveryDateLabel from "./shared/DeliveryDateLabel.jsx";
+import PurchaseItemsHeader, {
+  ItemInfoColumn,
+} from "./shared/PurchaseItemsTable.jsx";
+import { hasApprovedInventory, approvedJevs } from "./shared/hasApprovedInventory.js";
 import { getToDeliver } from "../../../../utils/helpers/purchaseProgress.js";
 
 const num = (v) => Number(v) || 0;
@@ -34,6 +39,8 @@ export default function ForDeliveryPanel({
   // Every purchase option per transaction item (all POs) — a row whose
   // quantity is shared by several suppliers opens one form per supplier.
   txnItemOptions,
+  // The brand · model is a link — it opens the transaction for purchase.
+  onBrandClick,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -94,15 +101,32 @@ export default function ForDeliveryPanel({
   const allExpanded =
     allKeys.length > 0 && allKeys.every((k) => expandedIds.has(k));
 
-  const toggleOne = (k) =>
+  // The row carries TWO forms — the deliver form and the receive (edit)
+  // form — and only one of them may be open on a row at a time. Opening
+  // either one closes the other.
+  const toggleOne = (k, opt) => {
+    const willOpen = !expandedIds.has(k);
     setExpandedIds((prev) => {
       const next = new Set(prev);
       next.has(k) ? next.delete(k) : next.add(k);
       return next;
     });
+    // Opening the deliver form closes the receive form on the same row.
+    if (willOpen && editIds.has(k)) closeEdit(k, opt);
+  };
 
-  const toggleAll = () =>
-    setExpandedIds(allExpanded ? new Set() : new Set(allKeys));
+  const toggleAll = () => {
+    if (allExpanded) {
+      setExpandedIds(new Set());
+      return;
+    }
+    setExpandedIds(new Set(allKeys));
+    // Opening every deliver form closes the receive forms on those rows.
+    visible.forEach(({ opt, origIdx }) => {
+      const k = getKey(opt, origIdx);
+      if (editIds.has(k)) closeEdit(k, opt);
+    });
+  };
 
   const getForm = (k) =>
     forms[k] ?? {
@@ -185,6 +209,14 @@ export default function ForDeliveryPanel({
       willOpen ? next.add(k) : next.delete(k);
       return next;
     });
+    // Opening the receive form closes the deliver form on the same row.
+    if (willOpen && expandedIds.has(k)) {
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(k);
+        return next;
+      });
+    }
     if (willOpen) contributors(opt).forEach(seedEditForm);
   };
   const closeEdit = (k, opt) => {
@@ -247,47 +279,6 @@ export default function ForDeliveryPanel({
 
   return (
     <>
-      {/* Section header */}
-      <Box
-        sx={{
-          pt: 1,
-          pb: 1.5,
-          display: "flex",
-          alignItems: "center",
-          gap: 0.75,
-        }}
-      >
-        <Typography
-          sx={{
-            fontSize: "0.58rem",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            color: gray.textDisabled,
-          }}
-        >
-          Purchase Items
-        </Typography>
-        <Box sx={{ flex: 1, height: "0.5px", background: slate.border }} />
-        <Box
-          component="button"
-          onClick={toggleAll}
-          sx={{
-            px: 1,
-            height: 22,
-            fontSize: "0.55rem",
-            fontWeight: 700,
-            color: blue.textStrong,
-            background: blue.bg,
-            border: `0.5px solid ${blue.border}`,
-            borderRadius: "50px",
-            cursor: "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {allExpanded ? "Collapse" : "Show All"}
-        </Box>
-      </Box>
-
       <Box
         sx={{
           border: `0.5px solid ${slate.border}`,
@@ -296,6 +287,32 @@ export default function ForDeliveryPanel({
           overflow: "hidden",
         }}
       >
+        {/* Table header — the title on the left, the toggle on the right.
+            It sits INSIDE the table box so the box rounds its top corners. */}
+        <PurchaseItemsHeader
+          action={
+            <Box
+              component="button"
+              onClick={toggleAll}
+              sx={{
+                px: 0.75,
+                height: 22,
+                fontSize: "0.55rem",
+                fontWeight: 700,
+                color: blue.textStrong,
+                background: blue.bg,
+                border: `0.5px solid ${blue.border}`,
+                // Barely rounded — it sits in the header's right corner.
+                borderRadius: "5px",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {allExpanded ? "Hide All" : "Show All"}
+            </Box>
+          }
+        />
+
         {visible.length === 0 && (
           <Box sx={{ px: 2, py: 2 }}>
             <Typography
@@ -397,98 +414,17 @@ export default function ForDeliveryPanel({
                     flex: 1,
                   }}
                 >
-                  <Box sx={{ position: "relative", flexShrink: 0 }}>
-                    <Box
-                      sx={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: "6px",
-                        background: slate.mutedBg,
-                        border: `0.5px solid ${slate.mutedBorder}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <LocalShippingOutlined
-                        sx={{ fontSize: "0.75rem", color: slate.mutedColor }}
-                      />
-                    </Box>
-                    <Box
-                      sx={{
-                        position: "absolute",
-                        top: -5,
-                        left: -5,
-                        minWidth: 13,
-                        height: 13,
-                        px: 0.25,
-                        borderRadius: "50px",
-                        background: gray.textSecondary,
-                        border: `1.5px solid ${slate.outerBg}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <Typography
-                        sx={{
-                          fontSize: "0.4rem",
-                          fontWeight: 700,
-                          color: gray.textOnFill,
-                          lineHeight: 1,
-                        }}
-                      >
-                        {idx + 1}
-                      </Typography>
-                    </Box>
-                  </Box>
-
-                  <Box sx={{ minWidth: 0 }}>
-                    <Box
-                      sx={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 0.4,
-                        mb: 0.2,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {(p?.strBrand || p?.strModel) && (
-                        <Typography
-                          sx={{
-                            fontSize: "0.65rem",
-                            fontWeight: 600,
-                            color: gray.textPrimary,
-                          }}
-                        >
-                          {[p?.strBrand, p?.strModel]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </Typography>
-                      )}
-                    </Box>
-                    <Typography
-                      sx={{
-                        fontSize: "0.58rem",
-                        color: gray.textSecondary,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {p?.transaction_item?.strName ?? "—"}
-                    </Typography>
-                    <Typography
-                      sx={{
-                        fontSize: "0.48rem",
-                        color: slate.mutedColor,
-                        mt: 0.15,
-                        lineHeight: 1,
-                      }}
-                    >
-                      Delivery: {fmtDate(tx?.dtDelivery) || "—"}
-                    </Typography>
-                  </Box>
+                  <ItemInfoColumn
+                    p={p}
+                    tx={tx}
+                    idx={idx}
+                    onBrandClick={onBrandClick}
+                  >
+                    <DeliveryDateLabel
+                      date={tx?.dtDelivery}
+                      sx={{ color: slate.mutedColor }}
+                    />
+                  </ItemInfoColumn>
                 </Box>
 
                 {/* Right: To Deliver + edit + toggle button */}
@@ -544,53 +480,75 @@ export default function ForDeliveryPanel({
                     </Typography>
                   </Box>
 
-                  {/* EDIT — opens the receive form for this line */}
+                  {/* EDIT + DELIVER — grouped so the two icons sit close to
+                      each other, while the "To Deliver" block keeps its own
+                      spacing from them. */}
                   <Box
-                    component="button"
-                    onClick={() => toggleEdit(k, opt)}
-                    title={
-                      editOpen
-                        ? "Hide receive form"
-                        : "Edit — open receive form"
-                    }
                     sx={{
-                      width: 28,
-                      height: 28,
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
+                      gap: 0.5,
                       flexShrink: 0,
-                      border: `0.5px solid ${editOpen ? blue.border : slate.mutedBorder}`,
-                      borderRadius: "50px",
-                      background: editOpen ? blue.bg : "transparent",
-                      color: editOpen ? blue.textStrong : slate.mutedColor,
-                      cursor: "pointer",
                     }}
                   >
-                    <EditOutlined sx={{ fontSize: "0.8rem" }} />
-                  </Box>
+                    {/* EDIT — opens the receive form for this line */}
+                    <Box
+                      component="button"
+                      onClick={() => toggleEdit(k, opt)}
+                      title={
+                        editOpen
+                          ? "Hide receive form"
+                          : "Edit — open receive form"
+                      }
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        border: `0.5px solid ${editOpen ? blue.border : slate.mutedBorder}`,
+                        borderRadius: "50px",
+                        background: editOpen ? blue.bg : "transparent",
+                        color: editOpen ? blue.textStrong : slate.mutedColor,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {editOpen ? (
+                        <CloseRounded sx={{ fontSize: "0.85rem" }} />
+                      ) : (
+                        <EditOutlined sx={{ fontSize: "0.8rem" }} />
+                      )}
+                    </Box>
 
-                  <Box
-                    component="button"
-                    onClick={() => toggleOne(k)}
-                    disabled={left <= 0}
-                    title={expanded ? "Hide deliver form" : "Show deliver form"}
-                    sx={{
-                      width: 28,
-                      height: 28,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      border: `0.5px solid ${expanded ? blue.border : slate.mutedBorder}`,
-                      borderRadius: "50px",
-                      background: expanded ? blue.bg : "transparent",
-                      color: expanded ? blue.textStrong : slate.mutedColor,
-                      cursor: "pointer",
-                      "&:disabled": { opacity: 0.4, cursor: "not-allowed" },
-                    }}
-                  >
-                    <OutboxOutlined sx={{ fontSize: "0.85rem" }} />
+                    <Box
+                      component="button"
+                      onClick={() => toggleOne(k, opt)}
+                      disabled={left <= 0}
+                      title={
+                        expanded ? "Hide deliver form" : "Show deliver form"
+                      }
+                      sx={{
+                        width: 28,
+                        height: 28,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                        border: `0.5px solid ${expanded ? blue.border : slate.mutedBorder}`,
+                        borderRadius: "50px",
+                        background: expanded ? blue.bg : "transparent",
+                        color: expanded ? blue.textStrong : slate.mutedColor,
+                        cursor: "pointer",
+                        "&:disabled": { opacity: 0.4, cursor: "not-allowed" },
+                      }}
+                    >
+                      {expanded ? (
+                        <CloseRounded sx={{ fontSize: "0.85rem" }} />
+                      ) : (
+                        <OutboxOutlined sx={{ fontSize: "0.85rem" }} />
+                      )}
+                    </Box>
                   </Box>
                 </Box>
               </Box>
@@ -832,6 +790,11 @@ export default function ForDeliveryPanel({
                         form={qForm}
                         onChange={(patch) => setEditForm(qk, patch)}
                         saving={savingReceive}
+                        // An APPROVED inventory row means a JEV was already
+                        // raised for this item — the record is closed.
+                        locked={hasApprovedInventory(q)}
+                        // …and the JEV behind it is named in the notice.
+                        jevs={approvedJevs(q, "receive")}
                         currentSerials={(q?.receivedSerialNumbers || [])
                           .filter(Boolean)
                           .map(String)}

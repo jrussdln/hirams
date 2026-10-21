@@ -4,6 +4,7 @@ import ModalContainer from "../../../../components/layouts/modal/ModalContainer.
 import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
 import {
   Box,
+  Button,
   Typography,
   Divider,
   Skeleton,
@@ -42,6 +43,9 @@ const useColors = (c) => ({
   skeletonBg: c.skeleton.overlay,
   // accent — primary = blue
   primary: c.blue.bg,
+  // The SOLID fill of an accent button — `primary` above is only a tint
+  // (good for text and icons, not for a button with white text on it).
+  primaryFill: c.blue.textStrong,
   primaryText: c.blue.text,
   primaryHover: c.blue.hover,
   primaryGlow: c.blue.active,
@@ -71,7 +75,7 @@ const initialFormData = {
   unitPrice: "",
   ewt: "",
   bIncluded: false,
-  bAddOn: false,
+  bAddOn: true,
   nSupplierContactId: "",
 };
 
@@ -300,23 +304,36 @@ function SuggestionRow({ suggestion, onUse, colors }) {
           minWidth: 90,
         }}
       >
-        <button
+        <Button
           onClick={() => onUse(suggestion)}
-          style={{
+          size="small"
+          disableElevation
+          sx={{
             fontSize: "0.68rem",
-            background: colors.primary,
+            // A SOLID accent fill with white text on it — the tint was
+            // unreadable.
+            backgroundColor: colors.primaryFill,
             color: colors.textOnFill,
             border: "none",
             borderRadius: "6px",
-            padding: "4px 12px",
+            px: 1.5,
+            py: 0.35,
+            minWidth: 0,
             cursor: "pointer",
             fontWeight: 600,
             whiteSpace: "nowrap",
             letterSpacing: "0.02em",
+            textTransform: "none",
+            transition: "all 0.15s",
+            "&:hover": {
+              backgroundColor: colors.primaryFill,
+              filter: "brightness(0.92)",
+              boxShadow: `0 2px 8px ${colors.primaryHover}`,
+            },
           }}
         >
           Use
-        </button>
+        </Button>
         {suggestion.dtCanvass && (
           <Typography
             sx={{
@@ -690,7 +707,11 @@ function GetSuggestionsModal({
     },
   ];
 
-  const switches = [{ name: "bAddOn", label: "Add-On?", xs: 12 }];
+  // The Add-On is ON and locked: an option suggested for a purchase is
+  // always an add-on, and it cannot be switched off.
+  const switches = [
+    { name: "bAddOn", label: "Add-On?", xs: 12, disabled: true },
+  ];
 
   /* ── Render ── */
   return (

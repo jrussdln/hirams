@@ -7,7 +7,6 @@ import {
   LinkOff,
   ReceiptLong,
   LocalShipping,
-  OpenInNew,
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer";
@@ -43,11 +42,6 @@ const useColors = (c) => ({
   secondaryBorder: c.slate.btnBorder,
   secondaryText: c.slate.btnText,
   secondaryHover: c.slate.btnHoverBg,
-  badgeBg: c.blue.bg,
-  badgeBorder: c.blue.border,
-  badgeTextPrimary: c.blue.textStrong,
-  badgeTextSecondary: c.blue.text,
-  badgeTextMuted: c.blue.text,
   linkButtonColor: c.blue.text,
   linkButtonHoverBg: c.blue.bgSoft,
   dangerButtonBorder: c.red.border,
@@ -596,8 +590,10 @@ export default function ManagePOVoucherModal({
               <Box
                 sx={{
                   borderRadius: "8px",
-                  border: `0.5px solid ${c.badgeBorder}`,
-                  background: c.badgeBg,
+                  border: `0.5px solid ${c.border}`,
+                  // A neutral card — the Voucher number is the only blue
+                  // thing in it, and it is the link.
+                  background: c.cardBg,
                   px: 1.5,
                   py: 1.25,
                   display: "flex",
@@ -606,39 +602,44 @@ export default function ManagePOVoucherModal({
                 }}
               >
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Box
-                    sx={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 0.6,
-                      mb: 0.3,
-                    }}
-                  >
-                    <ReceiptLong
-                      sx={{ fontSize: "0.9rem", color: c.badgeTextSecondary }}
-                    />
-                    <Typography
-                      sx={{
-                        fontSize: "0.62rem",
-                        fontWeight: 700,
-                        color: c.badgeTextSecondary,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.3px",
-                      }}
-                    >
-                      Linked Voucher
-                    </Typography>
-                  </Box>
+                  {/* VOUCHER — the label, with the number under it */}
                   <Typography
                     sx={{
+                      fontSize: "0.62rem",
+                      fontWeight: 700,
+                      color: c.textMuted,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.3px",
+                    }}
+                  >
+                    Voucher
+                  </Typography>
+
+                  {/* THE DV NUMBER — the one blue line here, and the way
+                      into the voucher itself. */}
+                  <Typography
+                    component="button"
+                    onClick={handleNavigateToVoucher}
+                    title="Go to Voucher"
+                    sx={{
+                      display: "block",
+                      mt: 0.3,
                       fontSize: "0.95rem",
                       fontWeight: 800,
-                      color: c.badgeTextPrimary,
+                      color: c.linkButtonColor,
                       lineHeight: 1.2,
+                      textAlign: "left",
+                      p: 0,
+                      border: "none",
+                      background: "transparent",
+                      fontFamily: "inherit",
+                      cursor: "pointer",
+                      "&:hover": { textDecoration: "underline" },
                     }}
                   >
                     {linkedVoucher.strNumber ?? "—"}
                   </Typography>
+
                   <Box
                     sx={{
                       display: "flex",
@@ -648,10 +649,10 @@ export default function ManagePOVoucherModal({
                     }}
                   >
                     <LocalShipping
-                      sx={{ fontSize: "0.7rem", color: c.badgeTextMuted }}
+                      sx={{ fontSize: "0.7rem", color: c.textMuted }}
                     />
                     <Typography
-                      sx={{ fontSize: "0.72rem", color: c.badgeTextSecondary }}
+                      sx={{ fontSize: "0.72rem", color: c.textSecondary }}
                     >
                       {linkedVoucher.supplier?.strSupplierNickName ??
                         linkedVoucher.supplier?.strSupplierName ??
@@ -662,7 +663,7 @@ export default function ManagePOVoucherModal({
                     <Typography
                       sx={{
                         fontSize: "0.68rem",
-                        color: c.textSecondary,
+                        color: c.textMuted,
                         mt: 0.5,
                       }}
                     >
@@ -673,30 +674,17 @@ export default function ManagePOVoucherModal({
                     </Typography>
                   )}
                 </Box>
-                <Box
-                  sx={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 0.75,
-                    flexShrink: 0,
-                  }}
-                >
-                  <IconButton
-                    size="small"
-                    onClick={handleNavigateToVoucher}
+
+                {/* The unlink button — the only action left on the card */}
+                {isEditable && (
+                  <Box
                     sx={{
-                      width: 34,
-                      height: 34,
-                      border: `1px solid ${c.primaryBg}`,
-                      background: c.primaryBg,
-                      color: c.primaryText,
-                      "&:hover": { background: c.primaryHover },
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 0.75,
+                      flexShrink: 0,
                     }}
-                    title="Go to Voucher"
                   >
-                    <OpenInNew sx={{ fontSize: "0.9rem" }} />
-                  </IconButton>
-                  {isEditable && (
                     <IconButton
                       size="small"
                       onClick={handleUnlinkVoucher}
@@ -726,8 +714,8 @@ export default function ManagePOVoucherModal({
                     >
                       <LinkOff sx={{ fontSize: "0.9rem" }} />
                     </IconButton>
-                  )}
-                </Box>
+                  </Box>
+                )}
               </Box>
             </Box>
           )}

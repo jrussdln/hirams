@@ -1,6 +1,31 @@
+/**
+ * Skeleton.jsx — the loading states of the Item Purchasing pages.
+ *
+ * Both skeletons mirror the CURRENT UI, piece for piece, so the page does
+ * not jump when the data arrives:
+ *
+ *   • CartSkeleton      → the Item Purchasing LIST page: the time-period
+ *                         groups (This Week / This Month / …) and the PO
+ *                         cards inside them — PO number · AO chip · supplier ·
+ *                         company · amount, the item rows and the date/VIEW
+ *                         footer.
+ *   • CartUpdateSkeleton→ the PO DETAIL page: the progress stepper, the
+ *                         company / supplier / purchase-order cards, the
+ *                         shipping + payment row and the Purchase Items table
+ *                         with its Order Total footer.
+ *
+ * The bars themselves are neutral (the theme's own skeleton shades), so a
+ * loading state never shouts — only the small chips keep their tint, so the
+ * shape of the real row still reads.
+ */
 import { useTheme } from "@mui/material/styles";
 import { Box, Skeleton } from "@mui/material";
 import {
+  AccessTimeOutlined,
+  Visibility,
+  Inventory2Outlined,
+  ExpandLess,
+  ExpandMore,
   StoreOutlined,
   LocalShippingOutlined,
   ReceiptLongOutlined,
@@ -10,765 +35,692 @@ import getThemeColors from "../../../../../utils/style/getThemeColors";
 
 // ── Pulse keyframes (theme-aware) ─────────────────────────────────────────────
 const getPulseStyles = (isDark) => `
-  @keyframes pulseCard {
+  @keyframes ip-card-pulse {
     0%, 100% { opacity: 1; }
-    50% { opacity: ${isDark ? 0.75 : 0.82}; }
-  }
-  @keyframes cart-update-pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: ${isDark ? 0.78 : 0.85}; }
+    50% { opacity: ${isDark ? 0.78 : 0.86}; }
   }
 `;
 
-// ── Purchase Cart Skeleton Preloader ──────────────────────────────────────────
-export function CartSkeleton() {
+// ── The building block: a thin bar ────────────────────────────────────────────
+const Bar = ({ w = "100%", h = 10, tint, radius, sx }) => (
+  <Skeleton
+    variant="text"
+    width={w}
+    height={h}
+    sx={{
+      bgcolor: tint,
+      my: 0,
+      ...(radius ? { borderRadius: radius } : null),
+      ...sx,
+    }}
+  />
+);
+
+// The colors + a pre-bound bar factory, so every piece below reads the same.
+const useSkel = () => {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const c = getThemeColors(isDark);
-  const cardCount = 6;
+  const bar = ({ tint, ...rest }) => (
+    <Bar {...rest} tint={tint ?? c.skeleton.skelLight} />
+  );
+  return { c, isDark, bar };
+};
 
-  const SkeletonPOCard = ({ index }) => (
+// ═══════════════════════════════════════════════════════════════════════════
+// LIST PAGE — the Item Purchasing cards
+// ═══════════════════════════════════════════════════════════════════════════
+
+// One PO card — the shape of CartCardPanel: header, item rows, footer.
+function POCardSkeleton({ bar, c, isDark, index, rows = 2 }) {
+  return (
     <Box
       sx={{
         border: `0.5px solid ${c.slate.border}`,
         borderRadius: 2,
         overflow: "hidden",
         background: c.slate.outerBg,
+        width: "100%",
         boxShadow: `0 1px ${isDark ? "4px" : "3px"} ${c.shadow.loading}`,
-        animation: `pulseCard 1.8s ease-in-out ${index * 0.08}s infinite`,
+        animation: `ip-card-pulse 1.8s ease-in-out ${index * 0.08}s infinite`,
       }}
     >
-      {/* Card Header */}
+      {/* HEADER — stamp · PO number + AO chip · supplier · company · amount */}
       <Box
         sx={{
           display: "flex",
           alignItems: "center",
           gap: 1,
           px: 1.5,
-          py: 0.875,
+          py: 1,
           background: c.slate.itemHeaderBg,
           borderBottom: `0.5px solid ${c.slate.border}`,
         }}
       >
+        {/* The status stamp */}
+        <Box
+          sx={{
+            width: 22,
+            height: 22,
+            borderRadius: "50%",
+            bgcolor: c.skeleton.skelMed,
+            flexShrink: 0,
+          }}
+        />
+
+        <Box sx={{ flex: 1, minWidth: 0, ml: 0.3 }}>
+          {/* PO NUMBER + AO BADGE */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              mb: 0.05,
+            }}
+          >
+            {bar({ w: 66, h: 9 })}
+            <Box
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                px: 0.5,
+                py: 0.1,
+                borderRadius: "50px",
+                background: c.blue.bg,
+                border: `0.5px solid ${c.blue.border}`,
+                flexShrink: 0,
+              }}
+            >
+              {bar({ w: 30, h: 7, tint: c.blue.border })}
+            </Box>
+          </Box>
+          {/* SUPPLIER — the card's headline */}
+          {bar({ w: "52%", h: 12, sx: { mt: 0.15 } })}
+          {/* COMPANY */}
+          {bar({ w: "30%", h: 8, sx: { mt: 0.1 } })}
+        </Box>
+
+        {/* THE AMOUNT — the figure, then the EWT line under it */}
         <Box
           sx={{
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
-            gap: 0.15,
-            mr: 0.7,
+            alignItems: "flex-end",
+            mr: 1,
+            flexShrink: 0,
           }}
         >
-          <Skeleton
-            variant="circular"
-            width={14}
-            height={14}
-            sx={{ bgcolor: c.skeleton.skelLight }}
-          />
-          <Skeleton
-            variant="text"
-            width={22}
-            height={6}
-            sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-          />
+          {bar({ w: 52, h: 11, tint: c.skeleton.skelMed })}
+          {bar({ w: 42, h: 8, sx: { mt: 0.1 } })}
         </Box>
-        <Skeleton
-          variant="circular"
-          width={22}
-          height={22}
-          sx={{ flexShrink: 0, bgcolor: c.skeleton.skelLight }}
-        />
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Box
-            sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 0.35 }}
-          >
-            <Skeleton
-              variant="circular"
-              width={12}
-              height={12}
-              sx={{ bgcolor: c.skeleton.skelLight }}
-            />
-            <Skeleton
-              variant="text"
-              width="60%"
-              height={10}
-              sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-            />
-          </Box>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-            <Skeleton
-              variant="rounded"
-              width={90}
-              height={16}
-              sx={{ bgcolor: c.skeleton.skelLight, borderRadius: "50px" }}
-            />
-            <Skeleton
-              variant="rounded"
-              width={70}
-              height={16}
-              sx={{ bgcolor: c.skeleton.skelLight, borderRadius: "50px" }}
-            />
-          </Box>
-        </Box>
-        <Skeleton
-          variant="text"
-          width={60}
-          height={10}
-          sx={{ bgcolor: c.skeleton.skelLight, flexShrink: 0, my: 0 }}
-        />
-        <Skeleton
-          variant="circular"
-          width={22}
-          height={22}
-          sx={{ flexShrink: 0, bgcolor: c.skeleton.skelLight }}
+
+        {/* The fold triangle */}
+        <Box
+          sx={{
+            width: 22,
+            height: 22,
+            borderRadius: "50px",
+            border: `0.5px solid ${c.slate.border}`,
+            flexShrink: 0,
+          }}
         />
       </Box>
 
-      {/* Expanded body */}
-      <Box sx={{ maxHeight: 220, overflow: "hidden" }}>
-        {[0, 1].map((row) => (
+      {/* THE ITEM ROWS — icon + index badge, brand · model, and the figures */}
+      <Box sx={{ maxHeight: "20vh", overflow: "hidden" }}>
+        {Array.from({ length: rows }).map((_, row) => (
           <Box
             key={row}
             sx={{
+              position: "relative",
+              px: 2,
+              py: 1,
               display: "flex",
               alignItems: "center",
-              px: 1.5,
-              py: 1,
-              borderBottom: row < 1 ? `0.5px solid ${c.slate.divider}` : "none",
-              gap: 0.75,
+              gap: 2,
+              justifyContent: "space-between",
+              borderBottom:
+                row < rows - 1 ? `0.5px solid ${c.slate.divider}` : "none",
             }}
           >
-            <Skeleton
-              variant="text"
-              width={14}
-              height={10}
-              sx={{ bgcolor: c.skeleton.skelLight, flexShrink: 0, my: 0 }}
-            />
-            <Box sx={{ flex: 1, minWidth: 0 }}>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.5,
-                  mb: 0.2,
-                }}
-              >
-                <Skeleton
-                  variant="rounded"
-                  width={44}
-                  height={14}
-                  sx={{ bgcolor: c.skeleton.skelLight, borderRadius: "3px" }}
-                />
-                <Skeleton
-                  variant="text"
-                  width="55%"
-                  height={10}
-                  sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+                flex: "1 1 0",
+                minWidth: 0,
+              }}
+            >
+              {/* The item icon with its row number on the corner */}
+              <Box sx={{ position: "relative", flexShrink: 0 }}>
+                <Box
+                  sx={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: "6px",
+                    background: c.slate.mutedBg,
+                    border: `0.5px solid ${c.slate.mutedBorder}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Inventory2Outlined
+                    sx={{ fontSize: "0.75rem", color: c.slate.mutedColor }}
+                  />
+                </Box>
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: -5,
+                    left: -5,
+                    minWidth: 13,
+                    height: 13,
+                    px: 0.25,
+                    borderRadius: "50px",
+                    background: c.skeleton.skelMed,
+                    border: `1.5px solid ${c.slate.outerBg}`,
+                  }}
                 />
               </Box>
-              <Skeleton
-                variant="text"
-                width="80%"
-                height={8}
-                sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-              />
-              <Skeleton
-                variant="text"
-                width="45%"
-                height={6}
-                sx={{ bgcolor: c.skeleton.skelFaint, my: 0, mt: 0.2 }}
-              />
+
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                {/* BRAND · MODEL + the transaction-code chip */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.4,
+                    mb: 0.2,
+                  }}
+                >
+                  {bar({ w: 92, h: 10 })}
+                  <Box
+                    sx={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      px: 0.35,
+                      py: 0.08,
+                      borderRadius: "50px",
+                      background: c.blue.bg,
+                      border: `0.5px solid ${c.blue.border}`,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {bar({ w: 24, h: 6, tint: c.blue.border })}
+                  </Box>
+                </Box>
+                {/* THE ITEM NAME */}
+                {bar({ w: "58%", h: 8 })}
+              </Box>
             </Box>
-            <Skeleton
-              variant="text"
-              width={50}
-              height={10}
-              sx={{ bgcolor: c.skeleton.skelLight, flexShrink: 0, my: 0 }}
-            />
-            <Skeleton
-              variant="rounded"
-              width={44}
-              height={22}
+
+            {/* QTY · UNIT PRICE · TOTAL */}
+            <Box
               sx={{
-                bgcolor: c.skeleton.skelLight,
+                display: "flex",
+                alignItems: "center",
+                gap: 2,
                 flexShrink: 0,
-                borderRadius: "4px",
               }}
-            />
-            <Skeleton
-              variant="text"
-              width={56}
-              height={10}
-              sx={{ bgcolor: c.skeleton.skelLight, flexShrink: 0, my: 0 }}
-            />
-            {row === 0 && index % 2 === 0 && (
-              <Skeleton
-                variant="rounded"
-                width={22}
-                height={22}
-                sx={{ bgcolor: c.red.bg, flexShrink: 0, borderRadius: "6px" }}
-              />
-            )}
+            >
+              <Box sx={{ minWidth: 50, textAlign: "right" }}>
+                {bar({ w: 28, h: 10, sx: { ml: "auto" } })}
+              </Box>
+              <Box sx={{ minWidth: 70, textAlign: "right" }}>
+                {bar({ w: 40, h: 10, sx: { ml: "auto" } })}
+              </Box>
+              <Box sx={{ minWidth: 70, textAlign: "right" }}>
+                {bar({
+                  w: 44,
+                  h: 10,
+                  tint: c.skeleton.skelMed,
+                  sx: { ml: "auto" },
+                })}
+              </Box>
+            </Box>
           </Box>
         ))}
       </Box>
 
-      {/* Footer bar */}
+      {/* FOOTER — the date on the left, VIEW on the right */}
+      <Box
+        sx={{
+          borderTop: `0.5px solid ${c.slate.border}`,
+          background: c.slate.itemHeaderBg,
+          px: 1.5,
+          py: 0.875,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
+          <AccessTimeOutlined
+            sx={{ fontSize: "0.6rem", color: c.slate.mutedColor }}
+          />
+          {bar({ w: 64, h: 8 })}
+        </Box>
+        <Box
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 0.4,
+            px: 1,
+            py: 0.4,
+            borderRadius: "6px",
+            background: c.slate.btnBg,
+            border: `1px solid ${c.slate.btnBorder}`,
+          }}
+        >
+          <Visibility sx={{ fontSize: "0.65rem", color: c.blue.text }} />
+          {bar({ w: 24, h: 8, tint: c.blue.border })}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+// One time-period group — the header (label · count · triangle) and the
+// cards inside it. The real page opens the first group only.
+function PeriodGroupSkeleton({ bar, c, isDark, cards = 2, open = true, index = 0 }) {
+  return (
+    <Box
+      sx={{
+        mb: 0.75,
+        borderRadius: "7px",
+        border: `0.5px solid ${c.slate.border}`,
+        overflow: "hidden",
+      }}
+    >
       <Box
         sx={{
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
-          px: 1.5,
-          py: 0.875,
-          background: c.slate.innerBg,
-          borderTop: `0.5px solid ${c.slate.border}`,
+          gap: 1,
+          px: 1.75,
+          py: 1.25,
+          background: c.slate.itemHeaderBg,
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
-          <Skeleton
-            variant="circular"
-            width={10}
-            height={10}
-            sx={{ bgcolor: c.skeleton.skelLight }}
-          />
-          <Skeleton
-            variant="text"
-            width={90}
-            height={8}
-            sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-          />
+        {bar({ w: 68, h: 9 })}
+        <Box
+          sx={{
+            px: 0.6,
+            py: 0.15,
+            borderRadius: "4px",
+            background: c.slate.mutedBg,
+          }}
+        >
+          {bar({ w: 10, h: 8 })}
         </Box>
-        <Skeleton
-          variant="rounded"
-          width={60}
-          height={22}
-          sx={{ bgcolor: c.skeleton.skelLight, borderRadius: "6px" }}
-        />
+        <Box sx={{ flex: 1 }} />
+        {open ? (
+          <ExpandLess sx={{ fontSize: "0.75rem", color: c.slate.mutedColor }} />
+        ) : (
+          <ExpandMore sx={{ fontSize: "0.75rem", color: c.slate.mutedColor }} />
+        )}
       </Box>
+
+      {open && (
+        <Box sx={{ p: 0.75 }}>
+          {/* Mobile: one card per row. Desktop: two columns. */}
+          <Box
+            sx={{
+              display: { xs: "flex", md: "none" },
+              flexDirection: "column",
+              gap: 0.5,
+            }}
+          >
+            {Array.from({ length: cards }).map((_, i) => (
+              <POCardSkeleton
+                key={i}
+                bar={bar}
+                c={c}
+                isDark={isDark}
+                index={index * 3 + i}
+              />
+            ))}
+          </Box>
+          <Box
+            sx={{
+              display: { xs: "none", md: "flex" },
+              flexDirection: "row",
+              gap: 0.5,
+              alignItems: "flex-start",
+            }}
+          >
+            {[0, 1].map((col) => (
+              <Box
+                key={col}
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 0.5,
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {Array.from({
+                  length: Math.ceil(cards / 2),
+                }).map((_, i) => (
+                  <POCardSkeleton
+                    key={i}
+                    bar={bar}
+                    c={c}
+                    isDark={isDark}
+                    index={index * 3 + col * 2 + i}
+                  />
+                ))}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      )}
     </Box>
   );
+}
+
+// ── Purchase Cart Skeleton Preloader ──────────────────────────────────────────
+export function CartSkeleton() {
+  const { c, isDark, bar } = useSkel();
 
   return (
     <>
       <style>{getPulseStyles(isDark)}</style>
-      {/* Mobile */}
-      <Box
-        sx={{
-          display: { xs: "flex", md: "none" },
-          flexDirection: "column",
-          gap: 0.5,
-          width: "100%",
-        }}
-      >
-        {Array.from({ length: cardCount }).map((_, i) => (
-          <SkeletonPOCard key={i} index={i} />
-        ))}
-      </Box>
-      {/* Desktop: 2-column grid */}
-      <Box
-        sx={{
-          display: { xs: "none", md: "flex" },
-          flexDirection: "row",
-          gap: 0.5,
-          width: "100%",
-          alignItems: "flex-start",
-        }}
-      >
-        {[0, 1].map((col) => (
-          <Box
-            key={col}
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 0.5,
-              flex: 1,
-              minWidth: 0,
-            }}
-          >
-            {Array.from({ length: cardCount / 2 }).map((_, i) => (
-              <SkeletonPOCard key={i} index={col * 3 + i} />
-            ))}
-          </Box>
-        ))}
+      <Box>
+        {/* The first period is open, the next one is folded away — the same
+            shape the real page takes when it opens. */}
+        <PeriodGroupSkeleton
+          bar={bar}
+          c={c}
+          isDark={isDark}
+          cards={2}
+          open
+          index={0}
+        />
+        <PeriodGroupSkeleton
+          bar={bar}
+          c={c}
+          isDark={isDark}
+          cards={2}
+          open={false}
+          index={1}
+        />
       </Box>
     </>
   );
 }
 
-// ── Purchase Cart Update Page Skeleton ────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// PO DETAIL PAGE — the Item Purchasing update view
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The progress stepper — six pips with their labels, joined by a line.
+function StepperSkeleton({ bar, c }) {
+  const steps = [
+    "In Cart",
+    "For Approval",
+    "For Payment",
+    "Pending Receipt",
+    "For Delivery",
+    "Delivered",
+  ];
+
+  return (
+    <Box sx={{ pt: 0.5, mb: 2 }}>
+      <Box sx={{ display: "flex", alignItems: "flex-start", pt: 0.5 }}>
+        {steps.map((label, i) => (
+          <Box
+            key={label}
+            sx={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              position: "relative",
+            }}
+          >
+            {i < steps.length - 1 && (
+              <Box
+                sx={{
+                  position: "absolute",
+                  top: 11,
+                  left: "50%",
+                  width: "100%",
+                  height: "1.5px",
+                  borderRadius: "2px",
+                  background: c.slate.mutedBg,
+                }}
+              />
+            )}
+            <Box
+              sx={{
+                position: "relative",
+                width: 22,
+                height: 22,
+                borderRadius: "50%",
+                background: c.slate.mutedBg,
+                border: `2px solid ${c.slate.mutedBorder}`,
+                zIndex: 1,
+                mb: 0.5,
+              }}
+            />
+            <Box sx={{ px: 0.25, textAlign: "center" }}>
+              {bar({ w: 52, h: 8 })}
+            </Box>
+            <Box sx={{ px: 0.25, mt: 0.15, textAlign: "center" }}>
+              {bar({ w: 40, h: 6, tint: c.skeleton.skelFaint })}
+            </Box>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+  );
+}
+
+// One info card of the header row (Company / Supplier / Purchase Order).
+function InfoCardSkeleton({ bar, c, icon, lines = 2, extra = null }) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        px: 1.25,
+        py: 1.25,
+        borderRadius: "8px",
+        background: c.slate.innerBg,
+        border: `0.5px solid ${c.slate.border}`,
+        display: "flex",
+        flexDirection: "column",
+        gap: 0.5,
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
+        {icon}
+        {bar({ w: 56, h: 8 })}
+      </Box>
+      {Array.from({ length: lines }).map((_, i) => (
+        <Box key={i}>
+          {bar({ w: i === lines - 1 ? "45%" : "78%", h: i === 0 ? 10 : 8 })}
+        </Box>
+      ))}
+      {extra}
+    </Box>
+  );
+}
+
+// ── Purchase Cart Update Page Skeleton ───────────────────────────────────────
 export function CartUpdateSkeleton() {
-  const theme = useTheme();
-  const isDark = theme.palette.mode === "dark";
-  const c = getThemeColors(isDark);
+  const { c, isDark, bar } = useSkel();
   const lineItemCount = 3;
 
   return (
     <>
       <style>{getPulseStyles(isDark)}</style>
 
-      {/* Stepper */}
+      {/* STEPPER */}
+      <StepperSkeleton bar={bar} c={c} />
+
+      {/* HEADER CARDS — Company | Supplier | Purchase Order */}
       <Box
         sx={{
-          background: c.slate.itemHeaderBg,
-          borderBottom: `0.5px solid ${c.slate.border}`,
-          px: 2,
-          pt: 1.25,
-          pb: 1.75,
-          mb: 0.5,
-        }}
-      >
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            mb: 1.25,
-          }}
-        >
-          <Skeleton
-            variant="text"
-            width={90}
-            height={10}
-            sx={{ bgcolor: c.skeleton.skelLight }}
-          />
-          <Skeleton
-            variant="text"
-            width={40}
-            height={10}
-            sx={{ bgcolor: c.skeleton.skelLight }}
-          />
-        </Box>
-        <Box sx={{ display: "flex", gap: 0.5 }}>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <Box
-              key={i}
-              sx={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 0.5,
-              }}
-            >
-              <Skeleton
-                variant="circular"
-                width={22}
-                height={22}
-                sx={{ bgcolor: c.skeleton.skelLight }}
-              />
-              <Skeleton
-                variant="text"
-                width="70%"
-                height={9}
-                sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-              />
-              <Skeleton
-                variant="text"
-                width="50%"
-                height={8}
-                sx={{ bgcolor: c.skeleton.skelFaint, my: 0 }}
-              />
-            </Box>
-          ))}
-        </Box>
-      </Box>
-
-      {/* Header Cards: Company | Supplier | Print */}
-      <Box sx={{ pt: 2, pb: 1 }}>
-        <Box
-          sx={{
-            background: c.slate.totalBg,
-            border: `1px solid ${c.slate.border}`,
-            borderRadius: "16px",
-            p: 1.5,
-            animation: "cart-update-pulse 1.8s ease-in-out infinite",
-          }}
-        >
-          <Box sx={{ display: "flex", gap: 1, alignItems: "stretch" }}>
-            {/* Company */}
-            <Box
-              sx={{
-                flex: 1,
-                px: 1,
-                py: 0.75,
-                borderRadius: "8px",
-                background: c.slate.innerBg,
-                border: `0.5px solid ${c.slate.border}`,
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.4,
-                  mb: 0.3,
-                }}
-              >
-                <StoreOutlined
-                  sx={{ fontSize: "0.6rem", color: c.slate.mutedColor }}
-                />
-                <Skeleton
-                  variant="text"
-                  width={55}
-                  height={8}
-                  sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-                />
-              </Box>
-              <Skeleton
-                variant="text"
-                width="80%"
-                height={10}
-                sx={{ bgcolor: c.skeleton.skelLight, my: 0, mb: 0.2 }}
-              />
-              <Skeleton
-                variant="text"
-                width="65%"
-                height={7}
-                sx={{ bgcolor: c.skeleton.skelLight, my: 0, mb: 0.2 }}
-              />
-              <Skeleton
-                variant="text"
-                width="45%"
-                height={7}
-                sx={{ bgcolor: c.skeleton.skelFaint, my: 0 }}
-              />
-            </Box>
-
-            {/* Supplier */}
-            <Box
-              sx={{
-                flex: 1,
-                px: 1,
-                py: 0.75,
-                borderRadius: "8px",
-                background: c.slate.innerBg,
-                border: `0.5px solid ${c.slate.border}`,
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-              }}
-            >
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.4,
-                  mb: 0.3,
-                }}
-              >
-                <LocalShippingOutlined
-                  sx={{ fontSize: "0.6rem", color: c.slate.mutedColor }}
-                />
-                <Skeleton
-                  variant="text"
-                  width={55}
-                  height={8}
-                  sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-                />
-              </Box>
-              <Skeleton
-                variant="text"
-                width="75%"
-                height={10}
-                sx={{ bgcolor: c.skeleton.skelLight, my: 0, mb: 0.2 }}
-              />
-              <Skeleton
-                variant="text"
-                width="60%"
-                height={7}
-                sx={{ bgcolor: c.skeleton.skelLight, my: 0, mb: 0.2 }}
-              />
-              <Skeleton
-                variant="text"
-                width="40%"
-                height={7}
-                sx={{ bgcolor: c.skeleton.skelFaint, my: 0 }}
-              />
-            </Box>
-
-            {/* Print PO */}
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "center",
-                gap: 0.5,
-                px: 1,
-                py: 0.75,
-                borderRadius: "8px",
-                background: c.slate.innerBg,
-                border: `0.5px solid ${c.slate.border}`,
-                minWidth: "140px",
-              }}
-            >
-              <Box>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.35,
-                    mb: 0.2,
-                  }}
-                >
-                  <ReceiptLongOutlined
-                    sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }}
-                  />
-                  <Skeleton
-                    variant="text"
-                    width={70}
-                    height={10}
-                    sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-                  />
-                </Box>
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 0.5,
-                    mt: 0.3,
-                  }}
-                >
-                  <AccountCircleOutlined
-                    sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }}
-                  />
-                  <Skeleton
-                    variant="text"
-                    width={55}
-                    height={8}
-                    sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-                  />
-                </Box>
-              </Box>
-              <Skeleton
-                variant="rounded"
-                width="100%"
-                height={26}
-                sx={{ bgcolor: c.skeleton.skelLight, borderRadius: "6px" }}
-              />
-            </Box>
-          </Box>
-
-          {/* Shipping + Payment */}
-          <Box
-            sx={{ mt: 1, display: "flex", gap: 1, alignItems: "flex-start" }}
-          >
-            <Box
-              sx={{
-                flex: 1,
-                px: 1.25,
-                py: 1.25,
-                borderRadius: "8px",
-                background: c.slate.innerBg,
-                border: `0.5px solid ${c.slate.border}`,
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 1,
-              }}
-            >
-              <LocalShippingOutlined
-                sx={{
-                  fontSize: "0.85rem",
-                  color: c.slate.mutedColor,
-                  flexShrink: 0,
-                  mt: 0.1,
-                }}
-              />
-              <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                <Skeleton
-                  variant="text"
-                  width={80}
-                  height={7}
-                  sx={{
-                    bgcolor: c.skeleton.skelLight,
-                    my: 0,
-                    mb: 0.15,
-                    flexShrink: 0,
-                  }}
-                />
-                <Skeleton
-                  variant="text"
-                  width="90%"
-                  height={8}
-                  sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-                />
-              </Box>
-            </Box>
-            <Box
-              sx={{
-                flex: 1,
-                px: 1.25,
-                py: 1.25,
-                borderRadius: "8px",
-                background: c.slate.innerBg,
-                border: `0.5px solid ${c.slate.border}`,
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 1,
-              }}
-            >
-              <ReceiptLongOutlined
-                sx={{
-                  fontSize: "0.85rem",
-                  color: c.slate.mutedColor,
-                  flexShrink: 0,
-                  mt: 0.1,
-                }}
-              />
-              <Box sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
-                <Skeleton
-                  variant="text"
-                  width={80}
-                  height={7}
-                  sx={{
-                    bgcolor: c.skeleton.skelLight,
-                    my: 0,
-                    mb: 0.15,
-                    flexShrink: 0,
-                  }}
-                />
-                <Skeleton
-                  variant="text"
-                  width="70%"
-                  height={8}
-                  sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-                />
-              </Box>
-            </Box>
-          </Box>
-        </Box>
-      </Box>
-
-      {/* Offers Header + Badges */}
-      <Box
-        sx={{
-          pt: 1,
-          pb: 1.5,
           display: "flex",
-          alignItems: "center",
-          gap: 0.75,
+          flexDirection: { xs: "column", sm: "row" },
+          gap: 1,
+          alignItems: "stretch",
         }}
       >
-        <Skeleton
-          variant="text"
-          width={45}
-          height={8}
-          sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
+        <InfoCardSkeleton
+          bar={bar}
+          c={c}
+          icon={
+            <StoreOutlined sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }} />
+          }
+          lines={3}
         />
-        <Box sx={{ flex: 1, height: "0.5px", background: c.slate.border }} />
-        <Skeleton
-          variant="rounded"
-          width={80}
-          height={22}
-          sx={{ bgcolor: c.orange.bg, borderRadius: "50px" }}
+        <InfoCardSkeleton
+          bar={bar}
+          c={c}
+          icon={
+            <LocalShippingOutlined
+              sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }}
+            />
+          }
+          lines={3}
         />
-        <Skeleton
-          variant="rounded"
-          width={70}
-          height={22}
-          sx={{ bgcolor: c.amber.bg, borderRadius: "50px" }}
+        <InfoCardSkeleton
+          bar={bar}
+          c={c}
+          icon={
+            <ReceiptLongOutlined
+              sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }}
+            />
+          }
+          lines={1}
+          // The assigned AO, under the PO number.
+          extra={
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
+              <AccountCircleOutlined
+                sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }}
+              />
+              {bar({ w: 54, h: 8 })}
+            </Box>
+          }
         />
       </Box>
 
-      {/* Line Items */}
+      {/* SHIPPING + PAYMENT */}
       <Box
         sx={{
+          mt: 1,
+          display: "flex",
+          flexDirection: { xs: "column", sm: "row" },
+          gap: 1,
+          alignItems: "stretch",
+        }}
+      >
+        <InfoCardSkeleton
+          bar={bar}
+          c={c}
+          icon={
+            <LocalShippingOutlined
+              sx={{ fontSize: "0.85rem", color: c.slate.mutedColor }}
+            />
+          }
+          lines={2}
+        />
+        <InfoCardSkeleton
+          bar={bar}
+          c={c}
+          icon={
+            <ReceiptLongOutlined
+              sx={{ fontSize: "0.85rem", color: c.slate.mutedColor }}
+            />
+          }
+          lines={2}
+        />
+      </Box>
+
+      {/* PURCHASE ITEMS — the table with its header strip and total footer */}
+      <Box
+        sx={{
+          mt: 1.5,
           mb: 1.5,
           borderRadius: "10px",
           border: `0.5px solid ${c.slate.border}`,
           overflow: "hidden",
         }}
       >
+        {/* The table's own header — title on the left, the toggle on the right */}
+        <Box
+          sx={{
+            pl: 2,
+            pr: 0.5,
+            py: 0.5,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 1,
+            background: c.slate.itemHeaderBg,
+            borderBottom: `0.5px solid ${c.slate.divider}`,
+          }}
+        >
+          {bar({ w: 70, h: 8 })}
+          <Box
+            sx={{
+              px: 0.75,
+              height: 22,
+              display: "flex",
+              alignItems: "center",
+              borderRadius: "5px",
+              background: c.blue.bg,
+              border: `0.5px solid ${c.blue.border}`,
+            }}
+          >
+            {bar({ w: 40, h: 7, tint: c.blue.border })}
+          </Box>
+        </Box>
+
+        {/* THE ROWS — numbering · code · brand · model · name | qty · price · total */}
         {Array.from({ length: lineItemCount }).map((_, idx) => (
           <Box
             key={idx}
             sx={{
-              px: 1.5,
+              px: 2,
               py: 0.875,
               display: "flex",
-              alignItems: "stretch",
+              alignItems: "center",
+              gap: 0.75,
               borderBottom:
                 idx < lineItemCount - 1
                   ? `0.5px solid ${c.slate.divider}`
                   : "none",
-              gap: 0.75,
-              animation: `cart-update-pulse 1.8s ease-in-out ${idx * 0.1}s infinite`,
             }}
           >
-            <Box
-              sx={{
-                width: 18,
-                flexShrink: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                mr: 0.75,
-                alignSelf: "center",
-              }}
-            >
-              <Skeleton
-                variant="text"
-                width={14}
-                height={10}
-                sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-              />
+            {/* The numbering column */}
+            <Box sx={{ width: 20, flexShrink: 0, textAlign: "center" }}>
+              {bar({ w: 12, h: 9 })}
             </Box>
-            <Box sx={{ flex: 1, minWidth: 0, alignSelf: "center" }}>
+
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              {/* The transaction code, above the brand · model */}
+              {bar({ w: 62, h: 8 })}
               <Box
                 sx={{
                   display: "flex",
                   alignItems: "center",
                   gap: 0.4,
-                  mb: 0.2,
+                  mt: 0.15,
                 }}
               >
-                <Skeleton
-                  variant="rounded"
-                  width={44}
-                  height={14}
-                  sx={{ bgcolor: c.blue.bg, borderRadius: "3px" }}
-                />
-                <Skeleton
-                  variant="text"
-                  width="55%"
-                  height={10}
-                  sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-                />
+                {bar({ w: 92, h: 10 })}
               </Box>
-              <Skeleton
-                variant="text"
-                width="80%"
-                height={8}
-                sx={{ bgcolor: c.skeleton.skelLight, my: 0, mb: 0.1 }}
-              />
-              <Skeleton
-                variant="text"
-                width="45%"
-                height={7}
-                sx={{ bgcolor: c.skeleton.skelFaint, my: 0 }}
-              />
+              {/* The item name */}
+              {bar({ w: "55%", h: 8, sx: { mt: 0.15 } })}
             </Box>
-            <Box
-              sx={{
-                width: 72,
-                flexShrink: 0,
-                textAlign: "right",
-                alignSelf: "center",
-                pr: 1,
-                display: "flex",
-                justifyContent: "flex-end",
-              }}
-            >
-              <Skeleton
-                variant="text"
-                width={50}
-                height={10}
-                sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
-              />
-            </Box>
+
+            {/* QTY (with the unit under it) */}
             <Box
               sx={{
                 width: 60,
@@ -776,85 +728,86 @@ export function CartUpdateSkeleton() {
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                justifyContent: "center",
               }}
             >
-              <Skeleton
-                variant="rounded"
-                width={44}
-                height={22}
-                sx={{ bgcolor: c.skeleton.skelLight, borderRadius: "4px" }}
-              />
+              {bar({ w: 28, h: 10 })}
+              {bar({ w: 18, h: 6, tint: c.skeleton.skelFaint, sx: { mt: 0.1 } })}
             </Box>
+
+            {/* UNIT PRICE */}
             <Box
               sx={{
                 width: 80,
                 flexShrink: 0,
                 textAlign: "right",
-                alignSelf: "center",
-                pl: 1,
                 display: "flex",
                 justifyContent: "flex-end",
               }}
             >
-              <Skeleton
-                variant="text"
-                width={56}
-                height={10}
-                sx={{ bgcolor: c.amber.warnBg, my: 0 }}
-              />
+              {bar({ w: 44, h: 10 })}
+            </Box>
+
+            {/* TOTAL */}
+            <Box
+              sx={{
+                width: 80,
+                flexShrink: 0,
+                textAlign: "right",
+                display: "flex",
+                justifyContent: "flex-end",
+              }}
+            >
+              {bar({ w: 48, h: 10, tint: c.skeleton.skelMed })}
             </Box>
           </Box>
         ))}
 
-        {/* Grand Total Footer */}
+        {/* ORDER TOTAL — the receipt icon, the count and the amount */}
         <Box
           sx={{
             px: 1.5,
             py: 0.875,
             display: "flex",
             alignItems: "center",
-            background: c.slate.innerBg,
+            background: c.slate.totalBg,
+            borderTop: `0.5px solid ${c.slate.totalBorder}`,
           }}
         >
-          <Skeleton
-            variant="circular"
-            width={34}
-            height={34}
-            sx={{ bgcolor: c.skeleton.skelLight, mr: 1, flexShrink: 0 }}
-          />
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Skeleton
-              variant="text"
-              width={70}
-              height={10}
-              sx={{ bgcolor: c.skeleton.skelLight, my: 0, mb: 0.1 }}
-            />
-            <Skeleton
-              variant="text"
-              width={50}
-              height={7}
-              sx={{ bgcolor: c.skeleton.skelLight, my: 0 }}
+          <Box
+            sx={{
+              width: 34,
+              height: 34,
+              borderRadius: "8px",
+              background: c.slate.innerBg,
+              border: `0.5px solid ${c.slate.border}`,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              mr: 1,
+              flexShrink: 0,
+            }}
+          >
+            <ReceiptLongOutlined
+              sx={{ fontSize: "0.85rem", color: c.slate.mutedColor }}
             />
           </Box>
-          <Box sx={{ width: 44, flexShrink: 0 }} />
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {bar({ w: 62, h: 10 })}
+            {bar({ w: 42, h: 7, sx: { mt: 0.1 } })}
+          </Box>
           <Box
             sx={{
               width: 80,
               flexShrink: 0,
               textAlign: "right",
-              pl: 1,
-              mr: 1.5,
               display: "flex",
-              justifyContent: "flex-end",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              mr: 1.5,
             }}
           >
-            <Skeleton
-              variant="text"
-              width={60}
-              height={12}
-              sx={{ bgcolor: c.orange.text, my: 0 }}
-            />
+            {bar({ w: 52, h: 12, tint: c.skeleton.skelMed })}
+            {bar({ w: 40, h: 7, tint: c.skeleton.skelFaint, sx: { mt: 0.1 } })}
           </Box>
         </Box>
       </Box>

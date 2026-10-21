@@ -1,26 +1,21 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Box, Typography, Collapse, useTheme } from "@mui/material";
 import {
-  Inventory2Outlined,
-  StoreOutlined,
-  PersonOutlined,
-  BusinessOutlined,
   ExpandMoreOutlined,
   ExpandLessOutlined,
   TagOutlined,
   MoveToInboxOutlined,
   OutputOutlined,
-  ReceiptLongOutlined,
 } from "@mui/icons-material";
 import {
-  fmtDate,
   fmtPHP,
   fmtQty,
 } from "../../../../utils/formatters/formatter.js";
+import { fmtDateTime } from "../../../../utils/helpers/timeZone.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import JevAPI from "../../../../api/endpoints/jev.api.js";
 import useKeysLabels from "../../../../hooks/useKeysLabels.js";
-import JevEntriesViewModal from "../../jev/modal/JevEntriesViewModal.jsx";
+import JevViewPanel from "../../jev/components/JevViewPanel.jsx";
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — pulls ONLY tokens THIS component actually uses
@@ -91,53 +86,6 @@ const SectionLabel = ({ children, colors }) => (
       {children}
     </Typography>
     <Box sx={{ flex: 1, height: "1px", background: colors.divider }} />
-  </Box>
-);
-
-const InfoRow = ({ icon, label, value, valueColor, colors }) => (
-  <Box
-    sx={{
-      display: "flex",
-      alignItems: "flex-start",
-      gap: 1,
-      py: 0.75,
-      borderBottom: `1px solid ${colors.borderRow}`,
-      "&:last-child": { borderBottom: "none" },
-    }}
-  >
-    <Box sx={{ color: colors.textMuted, mt: 0.1, flexShrink: 0 }}>{icon}</Box>
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      <Typography
-        sx={{
-          fontSize: "0.52rem",
-          fontWeight: 700,
-          color: colors.textMuted,
-          textTransform: "uppercase",
-          letterSpacing: "0.07em",
-          lineHeight: 1,
-          mb: 0.3,
-        }}
-      >
-        {label}
-      </Typography>
-      <Typography
-        sx={{
-          fontSize: "0.67rem",
-          fontWeight: 600,
-          color: valueColor || colors.textPrimary,
-          lineHeight: 1.3,
-          wordBreak: "break-word",
-        }}
-      >
-        {value || "—"}
-      </Typography>
-    </Box>
-  </Box>
-);
-
-const TwoCol = ({ children }) => (
-  <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 0 }}>
-    {children}
   </Box>
 );
 
@@ -276,136 +224,6 @@ const SerialSection = ({
     </Box>
   );
 };
-
-// Status chip of the JEV strip — same pill the Pending group view and the
-// voucher page use for a JEV row.
-const JevStatusChip = ({ label, tint }) => (
-  <Box
-    sx={{
-      display: "inline-flex",
-      alignItems: "center",
-      px: 0.75,
-      py: 0.35,
-      borderRadius: "99px",
-      background: tint.bg,
-      border: `1px solid ${tint.border}`,
-      flexShrink: 0,
-    }}
-  >
-    <Typography
-      sx={{
-        fontSize: "0.55rem",
-        fontWeight: 700,
-        textTransform: "uppercase",
-        letterSpacing: "0.04em",
-        color: tint.text,
-        lineHeight: 1,
-      }}
-    >
-      {label}
-    </Typography>
-  </Box>
-);
-
-// ── JEV header strip ────────────────────────────────────────────────
-// Receipt icon · clickable JEV number · type label · status chip — the
-// IDENTITY of the Journal Entry Voucher (JV2026-0059 / Received Purchases
-// / Active), without the entries panel below it. The number opens the
-// same JEV viewer the Account Report's "JEV No." column opens.
-const JevHeader = ({ jev, jev_types, jev_status, tint, colors, onOpen }) => (
-  <Box
-    sx={{
-      display: "flex",
-      alignItems: "center",
-      gap: 1,
-      px: 1.5,
-      py: 1,
-      borderRadius: "10px",
-      border: `0.5px solid ${colors.border}`,
-      background: colors.jevCardBg,
-    }}
-  >
-    <Box
-      sx={{
-        width: 30,
-        height: 30,
-        borderRadius: "7px",
-        background: colors.purple.bg,
-        border: `0.5px solid ${colors.purple.border}`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      <ReceiptLongOutlined
-        sx={{ fontSize: "0.85rem", color: colors.purple.text }}
-      />
-    </Box>
-
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      {jev?.strJEVNumber ? (
-        <Box
-          component="button"
-          type="button"
-          onClick={() => onOpen?.(jev)}
-          title={`Open JEV ${jev.strJEVNumber}`}
-          aria-label={`View entries of JEV ${jev.strJEVNumber}`}
-          sx={{
-            p: 0,
-            m: 0,
-            display: "block",
-            textAlign: "left",
-            width: "100%",
-            border: "none",
-            background: "transparent",
-            fontFamily: "inherit",
-            fontSize: "0.7rem",
-            fontWeight: 700,
-            lineHeight: 1.3,
-            color: colors.blueTextDark,
-            wordBreak: "break-word",
-            cursor: "pointer",
-            "&:hover": { textDecoration: "underline" },
-            "&:focus-visible": {
-              outline: "none",
-              textDecoration: "underline",
-            },
-          }}
-        >
-          {jev.strJEVNumber}
-        </Box>
-      ) : (
-        <Typography
-          sx={{
-            fontSize: "0.7rem",
-            fontWeight: 700,
-            color: colors.textPrimary,
-            lineHeight: 1.3,
-          }}
-        >
-          —
-        </Typography>
-      )}
-      <Typography
-        sx={{
-          fontSize: "0.56rem",
-          color: colors.textMuted,
-          mt: 0.1,
-          lineHeight: 1.3,
-        }}
-      >
-        {jev_types?.[jev?.cJEVLinkType] ?? jev?.cJEVLinkType ?? "—"}
-      </Typography>
-    </Box>
-
-    <JevStatusChip
-      tint={tint}
-      label={jev_status?.[jev?.cStatus] ?? jev?.cStatus ?? "—"}
-    />
-  </Box>
-);
-
 // Dashed fallback under the "Journal Entry Voucher" label — same shell the
 // Pending group view uses when there is no JEV to show yet.
 const JevEmptyBox = ({ colors, message }) => (
@@ -425,7 +243,30 @@ const JevEmptyBox = ({ colors, message }) => (
   </Box>
 );
 
-const DarkSummary = ({ item, accent, colors }) => {
+// A date the server already stores in LOCAL time (the JEV's occurrence,
+// the transaction's delivery date) is printed as it stands — the PHT
+// shift the UTC stamps get would move it.
+const fmtLocalDateTime = (val) => {
+  if (!val) return "—";
+  const d = new Date(val);
+  if (isNaN(d)) return "—";
+  return d.toLocaleString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const DarkSummary = ({
+  item,
+  accent,
+  colors,
+  statusKind,
+  deliveredDate = null,
+}) => {
   const p = item?.purchaseOption;
   const qty = Math.abs(item?.nQuantity ?? 0);
   const unitPrice = Number(p?.dUnitPrice ?? 0);
@@ -441,105 +282,58 @@ const DarkSummary = ({ item, accent, colors }) => {
         mb: 1.5,
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.25 }}>
-        <Box
-          sx={{
-            width: 34,
-            height: 34,
-            flexShrink: 0,
-            borderRadius: "8px",
-            background: colors.mutedBg,
-            border: `1px solid ${colors.mutedBorder}`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Inventory2Outlined
-            sx={{ fontSize: "0.9rem", color: colors.textMuted }}
-          />
-        </Box>
-
-        <Box sx={{ flex: 1, minWidth: 0 }}>
+      {/* THREE COLUMNS:
+          FIRST  — who the item is (status · brand · model · title) and what
+                   it costs (QTY · UNIT PRICE · TOTAL, side by side);
+          SECOND — the transaction behind it (code · company) and who
+                   supplied it;
+          THIRD  — the serial numbers of this batch. */}
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 2,
+          flexWrap: { xs: "wrap", sm: "nowrap" },
+        }}
+      >
+        {/* ── COLUMN 1 — the item and its figures ── */}
+        <Box sx={{ flex: "1 1 0", minWidth: 0 }}>
+          {/* The status sits ON TOP of the brand · model — plain text, no
+              badge: the same muted label colour the QTY / UNIT PRICE /
+              TOTAL captions use. */}
           <Typography
             sx={{
-              fontSize: "0.72rem",
+              fontSize: "0.55rem",
+              fontWeight: 700,
+              color: colors.textMuted,
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              lineHeight: 1,
+              mb: 0.5,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {accent.label}
+          </Typography>
+
+          <Typography
+            sx={{
+              fontSize: { xs: "0.78rem", sm: "0.85rem", md: "0.9rem" },
               fontWeight: 700,
               color: colors.textPrimary,
-              lineHeight: 1.3,
+              // Brand · model reads the same everywhere else in the app.
+              textTransform: "uppercase",
+              lineHeight: 1.05,
               wordBreak: "break-word",
             }}
           >
             {[p?.strBrand, p?.strModel].filter(Boolean).join(" · ") || "—"}
           </Typography>
-          <Typography
-            sx={{
-              fontSize: "0.6rem",
-              color: colors.textSecondary,
-              mt: 0.25,
-              lineHeight: 1.2,
-            }}
-          >
-            {p?.transaction_item?.strName ?? "—"}
-          </Typography>
-        </Box>
 
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 0.5,
-            px: 0.75,
-            py: 0.35,
-            borderRadius: "99px",
-            background: accent.bg,
-            border: `1px solid ${accent.border}`,
-            flexShrink: 0,
-          }}
-        >
-          <Box
-            sx={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: accent.dot,
-              flexShrink: 0,
-            }}
-          />
-          <Typography
-            sx={{
-              fontSize: "0.55rem",
-              fontWeight: 700,
-              color: accent.color,
-              letterSpacing: "0.04em",
-              lineHeight: 1,
-            }}
-          >
-            {accent.label}
-          </Typography>
-        </Box>
-      </Box>
-
-      <Box sx={{ height: "1px", background: colors.divider, mb: 1.25 }} />
-
-      <Box
-        sx={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 0.75 }}
-      >
-        {[
-          { label: "Qty", value: fmtQty(qty), unit: p?.strUOM ?? "units" },
-          { label: "Unit Price", value: fmtPHP(unitPrice), unit: null },
-          { label: "Total", value: fmtPHP(total), unit: null, highlight: true },
-        ].map(({ label, value, unit, highlight }) => (
-          <Box
-            key={label}
-            sx={{
-              background: highlight ? accent.bg : colors.mutedBg,
-              border: `1px solid ${highlight ? accent.border : colors.mutedBorder}`,
-              borderRadius: "7px",
-              px: 0.75,
-              py: 0.6,
-            }}
-          >
+          {/* ITEM NAME — the item this brand · model belongs to. */}
+          <Box sx={{ mt: 0.35 }}>
             <Typography
               sx={{
                 fontSize: "0.5rem",
@@ -548,35 +342,264 @@ const DarkSummary = ({ item, accent, colors }) => {
                 textTransform: "uppercase",
                 letterSpacing: "0.07em",
                 lineHeight: 1,
-                mb: 0.35,
+                mb: 0.25,
               }}
             >
-              {label}
+              Item Name
             </Typography>
             <Typography
               sx={{
-                fontSize: "0.67rem",
-                fontWeight: 700,
-                color: highlight ? accent.color : colors.textPrimary,
+                fontSize: "0.6rem",
+                fontWeight: 600,
+                color: colors.textPrimary,
+                textTransform: "uppercase",
                 lineHeight: 1.2,
+                wordBreak: "break-word",
               }}
             >
-              {value}
+              {p?.transaction_item?.strName ?? "—"}
             </Typography>
-            {unit && (
+          </Box>
+
+          {/* The figures — side by side, each a label over a value (the
+              qty carries its unit under it). */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: { xs: 2, sm: 3 },
+              mt: 1.25,
+            }}
+          >
+            {[
+              { label: "Qty", value: fmtQty(qty), unit: p?.strUOM ?? "units" },
+              { label: "Unit Price", value: fmtPHP(unitPrice), unit: null },
+              {
+                label: "Total",
+                value: fmtPHP(total),
+                unit: null,
+                highlight: true,
+              },
+            ].map(({ label, value, unit, highlight }) => (
+              <Box key={label}>
+                <Typography
+                  sx={{
+                    fontSize: "0.5rem",
+                    fontWeight: 700,
+                    color: colors.textMuted,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.07em",
+                    lineHeight: 1,
+                    mb: 0.2,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {label}
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: { xs: "0.8rem", sm: "0.9rem" },
+                    fontWeight: 700,
+                    color: highlight ? accent.color : colors.textPrimary,
+                    lineHeight: 1.05,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {value}
+                </Typography>
+                {unit && (
+                  <Typography
+                    sx={{
+                      fontSize: "0.5rem",
+                      color: colors.textMuted,
+                      mt: 0.1,
+                      lineHeight: 1,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {unit}
+                  </Typography>
+                )}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+
+        {/* ── COLUMN 2 — the transaction behind the item ── */}
+        <Box
+          sx={{
+            flexShrink: 0,
+            width: { xs: "100%", sm: 230 },
+            pl: { xs: 0, sm: 2 },
+            borderLeft: { xs: "none", sm: `1px solid ${colors.borderRow}` },
+          }}
+        >
+          <Typography
+            sx={{
+              fontSize: "0.5rem",
+              fontWeight: 700,
+              color: colors.textMuted,
+              textTransform: "uppercase",
+              letterSpacing: "0.07em",
+              lineHeight: 1,
+              mb: 0.25,
+            }}
+          >
+            Transaction
+          </Typography>
+          <Typography
+            sx={{
+              fontSize: { xs: "0.85rem", sm: "0.95rem" },
+              fontWeight: 700,
+              color: colors.blueTextDark,
+              textTransform: "uppercase",
+              lineHeight: 1.05,
+              wordBreak: "break-word",
+            }}
+          >
+            {p?.transaction_item?.transaction?.strCode || "—"}
+          </Typography>
+          <Typography
+            sx={{
+              fontSize: "0.6rem",
+              fontWeight: 600,
+              color: colors.textSecondary,
+              textTransform: "uppercase",
+              lineHeight: 1.1,
+              mt: 0.15,
+              wordBreak: "break-word",
+            }}
+          >
+            {item?.strCompanyNickName ||
+              p?.transaction_item?.transaction?.company?.strCompanyNickName ||
+              "—"}
+          </Typography>
+
+          {/* CLIENT — the nickname of the client the goods go to. */}
+          <Box sx={{ mt: 0.6 }}>
+            <Typography
+              sx={{
+                fontSize: "0.5rem",
+                fontWeight: 700,
+                color: colors.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.07em",
+                lineHeight: 1,
+                mb: 0.25,
+              }}
+            >
+              Client
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: { xs: "0.78rem", sm: "0.85rem" },
+                fontWeight: 700,
+                color: colors.textPrimary,
+                textTransform: "uppercase",
+                lineHeight: 1.05,
+                wordBreak: "break-word",
+              }}
+            >
+              {item?.strClientNickName ||
+                p?.transaction_item?.transaction?.client?.strClientNickName ||
+                "—"}
+            </Typography>
+          </Box>
+
+          {/* SUPPLIED BY — the supplier's name under its own label. */}
+          <Box sx={{ mt: 0.6 }}>
+            <Typography
+              sx={{
+                fontSize: "0.5rem",
+                fontWeight: 700,
+                color: colors.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.07em",
+                lineHeight: 1,
+                mb: 0.25,
+              }}
+            >
+              Supplied By
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: { xs: "0.78rem", sm: "0.85rem" },
+                fontWeight: 700,
+                color: colors.textPrimary,
+                textTransform: "uppercase",
+                lineHeight: 1.05,
+                wordBreak: "break-word",
+              }}
+            >
+              {item?.strSupplierNickName ||
+                p?.supplier?.strSupplierNickName ||
+                p?.supplier?.strSupplierName ||
+                "—"}
+            </Typography>
+          </Box>
+        </Box>
+
+        {/* ── COLUMN 3 — when the batch came in and when it went out ── */}
+        <Box
+          sx={{
+            flexShrink: 0,
+            width: { xs: "100%", sm: 230 },
+            pl: { xs: 0, sm: 2 },
+            borderLeft: { xs: "none", sm: `1px solid ${colors.borderRow}` },
+          }}
+        >
+          {[
+            {
+              label: "Received Date",
+              // The batch's own log — the day it was booked in.
+              value: fmtDateTime(item?.dtLog),
+            },
+            {
+              // A batch that already went out is DELIVERED, not "to be
+              // delivered" — the label follows what happened to it.
+              label:
+                statusKind === "delivered" ? "Delivered Date" : "Delivery Date",
+              // A delivered batch is dated by its Delivered Items JEV (the
+              // day it left); a batch still waiting shows the scheduled
+              // delivery date, falling back to its own log when the
+              // transaction carries none.
+              value: fmtLocalDateTime(
+                deliveredDate ??
+                  p?.transaction_item?.transaction?.dtDelivery ??
+                  item?.dtLog,
+              ),
+            },
+          ].map(({ label, value }) => (
+            <Box key={label} sx={{ mb: 0.6 }}>
               <Typography
                 sx={{
                   fontSize: "0.5rem",
+                  fontWeight: 700,
                   color: colors.textMuted,
-                  mt: 0.2,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.07em",
                   lineHeight: 1,
+                  mb: 0.25,
+                  whiteSpace: "nowrap",
                 }}
               >
-                {unit}
+                {label}
               </Typography>
-            )}
-          </Box>
-        ))}
+              <Typography
+                sx={{
+                  fontSize: "0.6rem",
+                  fontWeight: 600,
+                  color: colors.textPrimary,
+                  textTransform: "uppercase",
+                  lineHeight: 1.2,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {value}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
       </Box>
     </Box>
   );
@@ -600,8 +623,7 @@ export default function InventoryDetailsPanel({
 
   // Label maps for the JEV header strip (type + status come from the
   // shared mappings, not from this page's inventory statuses).
-  const { jev_types, jev_status, jevPendingKey, jevCancelledKey } =
-    useKeysLabels();
+  const { jev_types, jev_status, jevPendingKey } = useKeysLabels();
 
   const [serialNumbers, setSerialNumbers] = useState([]);
 
@@ -654,8 +676,6 @@ export default function InventoryDetailsPanel({
     };
   }, [jevIdsKey]);
 
-  const p = item?.purchaseOption;
-
   // ✅ Determine status → pick accent from local map
   const statusKind =
     item?.cStatus === inventoryDeliveredKey
@@ -685,46 +705,21 @@ export default function InventoryDetailsPanel({
     setSerialNumbers((item.serialNumbers || []).filter(Boolean));
   }, [item]);
 
-  // Strip tint — Pending is purple, Cancelled red, everything else
-  // (Active) green: same rule the JEV rows elsewhere in the app use.
-  // Per JEV: a Delivered row can hold one Active and one Pending voucher.
-  const jevTintOf = (j) =>
-    String(j?.cStatus) === String(jevPendingKey)
-      ? colors.purple
-      : String(j?.cStatus) === String(jevCancelledKey)
-        ? colors.red
-        : colors.green;
-
   // ── JEV viewer ─────────────────────────────────────────────────────
-  // Clicking a JEV number opens the same viewer the Account Report's
-  // "JEV No." column opens — every entry of that JEV, both sides, plus
-  // whichever block its type has (the Items table for R / D). `jevModal`
-  // survives closing so the fade-out never blanks the content; only
-  // `jevModalOpen` drives visibility.
-  const [jevModal, setJevModal] = useState(null);
-  const [jevModalOpen, setJevModalOpen] = useState(false);
+  // The JEVs of this item are shown with the shared JevViewPanel: its own
+  // header (number · type · status · triangle) and the From / To entries
+  // under it, read-only — the entry form lives on the Pending group view.
 
-  const openJevModal = (j) => {
-    if (!j?.nJEVId) return;
-    setJevModal({
-      // Rebuilt WITHOUT `entries` → JevViewPanel fetches them fresh with
-      // their journal_account data (same trick the report page uses).
-      nJEVId: j.nJEVId,
-      strJEVNumber: j.strJEVNumber ?? "",
-      dtOccur: j.dtOccur ?? "",
-      cStatus: j.cStatus ?? "",
-      cJEVLinkType: j.cJEVLinkType ?? "",
-    });
-    setJevModalOpen(true);
-  };
-
-  // "Received Purchases · Sep 15, 2026" — the JEV's type plus its day.
-  const jevSubTitle = useMemo(() => {
-    if (!jevModal) return "";
-    const typeLabel = jev_types?.[jevModal.cJEVLinkType] ?? "";
-    const day = jevModal.dtOccur ? fmtDate(jevModal.dtOccur) : "";
-    return [typeLabel, day].filter(Boolean).join(" · ");
-  }, [jevModal, jev_types]);
+  // WHEN the batch went OUT. A delivered batch's own log still says when it
+  // was booked in, so the day it left comes from its Delivered Items JEV
+  // — otherwise both dates would read the same day.
+  const deliveredDate = useMemo(() => {
+    if (statusKind !== "delivered") return null;
+    const deliveryJev = jevs.find(
+      (j) => String(j?.cJEVLinkType ?? "").toUpperCase() === "D",
+    );
+    return deliveryJev?.dtOccur ?? item?.dtLog ?? null;
+  }, [statusKind, jevs, item]);
 
   if (!item) return null;
 
@@ -733,72 +728,14 @@ export default function InventoryDetailsPanel({
   // section of the page (no card inset, no centering).
   return (
     <Box>
-      <DarkSummary item={item} accent={accent} colors={colors} />
+      <DarkSummary
+        item={item}
+        accent={accent}
+        colors={colors}
+        statusKind={statusKind}
+        deliveredDate={deliveredDate}
+      />
 
-      <SectionLabel colors={colors}>Transaction</SectionLabel>
-      <Box
-        sx={{
-          borderRadius: "8px",
-          border: `1px solid ${colors.border}`,
-          px: 1.5,
-          py: 1,
-          mb: 1.5,
-          background: colors.mutedBg,
-        }}
-      >
-        <InfoRow
-          icon={<BusinessOutlined sx={{ fontSize: "0.75rem" }} />}
-          label="Transaction Code"
-          value={
-            p?.transaction_item?.transaction?.strCode +
-            " | " +
-            p?.transaction_item?.transaction?.strTitle
-          }
-          valueColor={colors.blueTextDark}
-          colors={colors}
-        />
-
-        <TwoCol>
-          <InfoRow
-            icon={<StoreOutlined sx={{ fontSize: "0.75rem" }} />}
-            label="Company"
-            value={
-              item?.strCompanyNickName ||
-              p?.transaction_item?.transaction?.company?.strCompanyNickName
-            }
-            colors={colors}
-          />
-          <InfoRow
-            icon={<PersonOutlined sx={{ fontSize: "0.75rem" }} />}
-            label="Client"
-            value={
-              item?.strClientNickName ||
-              p?.transaction_item?.transaction?.client?.strClientNickName
-            }
-            colors={colors}
-          />
-        </TwoCol>
-        <TwoCol>
-          <InfoRow
-            icon={<StoreOutlined sx={{ fontSize: "0.75rem" }} />}
-            label="Delivery Date"
-            value={fmtDate(p?.transaction_item?.transaction?.dtDelivery)}
-            colors={colors}
-          />
-          <InfoRow
-            icon={<PersonOutlined sx={{ fontSize: "0.75rem" }} />}
-            label="Supplier"
-            value={
-              item?.strSupplierNickName ||
-              p?.supplier?.strSupplierNickName ||
-              p?.supplier?.strSupplierName
-            }
-            colors={colors}
-          />
-        </TwoCol>
-      </Box>
-
-      <SectionLabel colors={colors}>Serial Numbers</SectionLabel>
       <SerialSection
         title={`${accent.label} Serial Numbers`}
         serials={serialNumbers}
@@ -814,24 +751,29 @@ export default function InventoryDetailsPanel({
         colors={colors}
       />
 
-      {/* JOURNAL ENTRY VOUCHER — header rows only (number / type /
-          status), never the entries panel: that one stays on the group
-          view. A Delivered item lists its Received Purchases JEV AND its
-          Delivered Items JEV, one strip each. */}
-      <SectionLabel colors={colors}>Journal Entry Voucher</SectionLabel>
+      {/* JOURNAL ENTRY VOUCHER — the shared panel: its own header (number ·
+          type · status · triangle) and the From / To entries under it.
+          A Delivered item lists its Received Purchases JEV AND its
+          Delivered Items JEV, one panel each. */}
       {jevs.length > 0 ? (
         <Box
-          sx={{ display: "flex", flexDirection: "column", gap: 0.75, mb: 1.5 }}
+          sx={{ display: "flex", flexDirection: "column", gap: 1, mb: 1.5 }}
         >
           {jevs.map((j) => (
-            <JevHeader
+            <JevViewPanel
               key={j.nJEVId ?? j.strJEVNumber}
-              jev={j}
+              // entries stripped so the panel reloads them with the full
+              // journal-account paths
+              jev={{ ...j, entries: undefined }}
               jev_types={jev_types}
               jev_status={jev_status}
-              tint={jevTintOf(j)}
-              colors={colors}
-              onOpen={openJevModal}
+              jevPendingKey={jevPendingKey}
+              // this screen only SHOWS the journal — the entry form lives
+              // on the Pending group view
+              readOnly
+              // folded away by default: the header alone identifies the
+              // journal here, the entries open on demand
+              defaultOpen={false}
             />
           ))}
         </Box>
@@ -845,15 +787,6 @@ export default function InventoryDetailsPanel({
           }
         />
       )}
-
-      {/* The whole JEV — the same viewer the Account Report's "JEV No."
-          column opens (Items block for R / D, From/To entries always). */}
-      <JevEntriesViewModal
-        open={jevModalOpen}
-        onClose={() => setJevModalOpen(false)}
-        jev={jevModal}
-        subTitle={jevSubTitle}
-      />
     </Box>
   );
 }

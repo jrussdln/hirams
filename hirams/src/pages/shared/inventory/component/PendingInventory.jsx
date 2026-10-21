@@ -193,19 +193,6 @@ export default function PendingInventory({
     border: `1px dashed ${colors.border}`,
     borderRadius: "10px",
   };
-  // One JEV row inside the section (number + type + status chip)
-  const jevCardSx = {
-    display: "flex",
-    alignItems: "center",
-    gap: 1,
-    px: 1.5,
-    py: 1,
-    mb: 0.75,
-    borderRadius: "10px",
-    border: `0.5px solid ${colors.border}`,
-    background: colors.itemHeaderBg,
-    "&:last-of-type": { mb: 0 },
-  };
   const directionOptions = useMemo(
     () => [
       { value: "received", label: inventoryReceivedLabel || "Received" },
@@ -430,16 +417,100 @@ export default function PendingInventory({
     </section>
   );
 
+  // ── The balance banner of ONE JEV ───────────────────────────────────
+  // Amber wash, dashed rule, warning icon, message + dismiss — the same
+  // banner the voucher page shows. One per JEV, so a group holding several
+  // says which one is short and why.
+  //
+  // It is printed at the VERY TOP of the content (above the items table),
+  // not down with its own JEV panel: a balance problem is the first thing
+  // to read, whatever else the group holds.
+  const balanceBannerFor = (j) => {
+    const bal = jevBalances[String(j.nJEVId)];
+    const balanceMsg = bal?.message || "";
+    if (!balanceMsg || bal.loading) return null;
+    if (dismissedBal[String(j.nJEVId)] === balanceMsg) return null;
+
+    return (
+      <Box
+        sx={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          gap: 1,
+          px: 2,
+          py: 0.75,
+          borderRadius: "8px",
+          bgcolor: colors.amber.warnBg,
+          border: `1px dashed ${colors.amber.warnBorder}`,
+        }}
+      >
+        <WarningAmberOutlined
+          sx={{
+            fontSize: "1rem",
+            color: colors.amber.warnText,
+            flexShrink: 0,
+          }}
+        />
+        <Box
+          sx={{
+            fontSize: "0.72rem",
+            color: colors.amber.warnText,
+            lineHeight: 1.4,
+            pr: 3,
+          }}
+        >
+          <strong>{balanceMsg}</strong>
+        </Box>
+        <Box
+          component="button"
+          onClick={() =>
+            setDismissedBal((d) => ({
+              ...d,
+              [String(j.nJEVId)]: balanceMsg,
+            }))
+          }
+          aria-label="Dismiss banner"
+          sx={{
+            position: "absolute",
+            right: 8,
+            top: "50%",
+            transform: "translateY(-50%)",
+            display: "flex",
+            p: 0.4,
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            color: colors.amber.warnText,
+          }}
+        >
+          <CloseOutlined sx={{ fontSize: "0.9rem" }} />
+        </Box>
+      </Box>
+    );
+  };
+
   // ── Group drill-down: every item of this supplier / client
   //    WITHIN this company ────────────────────────────────────────────
   // Voucher particulars layout (sticky header, scroll, Grand Total bar).
   // No toolbar here — search / sync / filters stay on the group list.
   if (groupView) {
+    // The banners that have something to say (no message, still loading, or
+    // already dismissed → no banner at all).
+    const banners = jevList.map((j) => balanceBannerFor(j)).filter(Boolean);
+
     return (
       <>
-        {/* Section title above the group's item table */}
-        {groupListRows.length > 0 && (
-          <SectionLabel colors={colors}>Items</SectionLabel>
+        {/* No section labels here — the items table carries its own header
+            row and each JEV panel its own header, the same as the voucher
+            page. */}
+
+        {/* BALANCE BANNERS — at the very top of the content, above the
+            items table. */}
+        {banners.length > 0 && (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75, mb: 1 }}>
+            {banners}
+          </Box>
         )}
 
         {groupListRows.length === 0 ? (
@@ -451,18 +522,10 @@ export default function PendingInventory({
         {/* JEV SECTION — below the item table (voucher-page shell) */}
         {groupListRows.length > 0 && (
           <Box sx={{ mt: 1 }}>
-            <SectionLabel colors={colors}>Journal Entry Voucher</SectionLabel>
             {jevList.length === 0 ? (
               <Box sx={jevEmptySx}>No JEV Entries</Box>
             ) : (
               jevList.map((j) => {
-                const bal = jevBalances[String(j.nJEVId)];
-                const balanceMsg = bal?.message || "";
-                const showBalanceBanner =
-                  !!balanceMsg &&
-                  !bal.loading &&
-                  dismissedBal[String(j.nJEVId)] !== balanceMsg;
-
                 // Key of THIS JEV. Its own rows' total is what the Amount
                 // field gets prefilled with (particularsGrandTotal below) —
                 // but the modal's Items table shows the WHOLE group, never
@@ -479,116 +542,10 @@ export default function PendingInventory({
                   key={j.nJEVId}
                   sx={{ mb: 1.5, "&:last-of-type": { mb: 0 } }}
                 >
-                  {/* Strip: JEV number / type / status above the panel */}
-                  <Box sx={jevCardSx}>
-                    <Box
-                      sx={{
-                        width: 30,
-                        height: 30,
-                        borderRadius: "7px",
-                        background: colors.purple.bg,
-                        border: `0.5px solid ${colors.purple.border}`,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <ReceiptLongOutlined
-                        sx={{ fontSize: "0.85rem", color: colors.purple.text }}
-                      />
-                    </Box>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography
-                        sx={{
-                          fontSize: "0.7rem",
-                          fontWeight: 700,
-                          color: colors.gray.textPrimary,
-                        }}
-                      >
-                        {j.strJEVNumber || "—"}
-                      </Typography>
-                      <Typography
-                        sx={{
-                          fontSize: "0.56rem",
-                          color: colors.gray.textMuted,
-                          mt: 0.1,
-                        }}
-                      >
-                        {jev_types?.[j.cJEVLinkType] ?? j.cJEVLinkType ?? "—"}
-                      </Typography>
-                    </Box>
-                    <TypeBadge
-                      tint={colors.purple}
-                      label={jev_status?.[j.cStatus] ?? j.cStatus ?? "—"}
-                    />
-                  </Box>
-
-                  {/* Balance banner — identical to the voucher page's:
-                      amber wash, dashed rule, warning icon, message +
-                      dismiss. One per JEV, so a group holding several
-                      says which one is short and why. */}
-                  {showBalanceBanner && (
-                    <Box
-                      sx={{
-                        position: "relative",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 1,
-                        // The strip's own mb:0.75 stays the gap above
-                        // this box; mb:1 keeps the panel from crowding it.
-                        mt: 0,
-                        mb: 1,
-                        px: 2,
-                        py: 0.75,
-                        borderRadius: "8px",
-                        bgcolor: colors.amber.warnBg,
-                        border: `1px dashed ${colors.amber.warnBorder}`,
-                      }}
-                    >
-                      <WarningAmberOutlined
-                        sx={{
-                          fontSize: "1rem",
-                          color: colors.amber.warnText,
-                          flexShrink: 0,
-                        }}
-                      />
-                      <Box
-                        sx={{
-                          fontSize: "0.72rem",
-                          color: colors.amber.warnText,
-                          lineHeight: 1.4,
-                          pr: 3,
-                        }}
-                      >
-                        <strong>{balanceMsg}</strong>
-                      </Box>
-                      <Box
-                        component="button"
-                        onClick={() =>
-                          setDismissedBal((d) => ({
-                            ...d,
-                            [String(j.nJEVId)]: balanceMsg,
-                          }))
-                        }
-                        aria-label="Dismiss banner"
-                        sx={{
-                          position: "absolute",
-                          right: 8,
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          display: "flex",
-                          p: 0.4,
-                          border: "none",
-                          background: "transparent",
-                          cursor: "pointer",
-                          color: colors.amber.warnText,
-                        }}
-                      >
-                        <CloseOutlined sx={{ fontSize: "0.9rem" }} />
-                      </Box>
-                    </Box>
-                  )}
+                  {/* No strip here — the JEV panel below carries its own
+                      header (number · type · status · toggle), the same one
+                      the voucher page shows. The balance banner lives at the
+                      TOP of the content, above the items table. */}
 
                   {/* Same panel the voucher page renders */}
                   <JevViewPanel

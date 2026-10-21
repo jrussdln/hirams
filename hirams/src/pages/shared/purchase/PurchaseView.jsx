@@ -225,6 +225,7 @@ export default function PurchaseView(props) {
     setAssignMode,
     accountOfficers,
     isAssignedToMe,
+    hasAssignedAO,
     showReassignAO,
     proc_status,
     cancelledPOKey,
@@ -403,10 +404,14 @@ export default function PurchaseView(props) {
             )}
           {!statusChangedAlert && showReassignAO && (
             <BaseButton
-              label="Reassign AO"
+              // An AO that is not on the transaction yet is ASSIGNED; one
+              // that is already there is REASSIGNED.
+              label={hasAssignedAO ? "Reassign AO" : "Assign AO"}
               icon={icons.assign}
-              onClick={() => setAssignMode("reassign")}
-              actionColor="reassign"
+              onClick={() =>
+                setAssignMode(hasAssignedAO ? "reassign" : "assign")
+              }
+              actionColor={hasAssignedAO ? "reassign" : "assign"}
             />
           )}
           {!statusChangedAlert &&

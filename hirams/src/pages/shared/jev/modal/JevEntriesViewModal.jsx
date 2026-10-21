@@ -8,7 +8,6 @@ import JevViewPanel from "../components/JevViewPanel.jsx";
 import useJevBalance, { computeJevBalance } from "../hooks/useJevBalance.js";
 import POListPanel from "../../voucher/components/POListPanel.jsx";
 import AssigneeListPanel from "../../voucher/components/AssigneeListPanel.jsx";
-import { SectionLabel } from "../../voucher/sub-pages/voucher-update/VoucherUpdateView.jsx";
 import VoucherAPI from "../../../../api/endpoints/voucher.api.js";
 import JevAPI from "../../../../api/endpoints/jev.api.js";
 import JevEntriesAPI from "../../../../api/endpoints/jev-entries.api.js";
@@ -18,10 +17,14 @@ import {
   mapInventoryItems,
   itemTotal,
   isDeliveredRow,
+  rowTransactionId,
 } from "../../inventory/itemRows.js";
 import useSellingPrices from "../../inventory/useSellingPrices.js";
 import { fmtDate } from "../../../../utils/formatters/formatter.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import useKeysLabels from "../../../../hooks/useKeysLabels.js";
+import { openForPurchase } from "../../../../utils/helpers/openForPurchase.js";
+import { getItem } from "../../../../utils/storage/localStorage.js";
 
 const makeColors = (c) => ({
   border: c.slate.border,
@@ -169,9 +172,10 @@ const InfoField = ({ label, value, colors }) => (
  * and from the JEV list page (see AccountReportPanel / JevListView).
  *
  * Laid out exactly like VoucherUpdateView: a top block first
- * (SectionLabel + POListPanel / AssigneeListPanel with their Grand Total
- * footer), then "Journal Entry Voucher" over the From / To columns of
+ * (POListPanel / AssigneeListPanel with their Grand Total footer), then
  * JevViewPanel — the same component the voucher and purchase pages use.
+ * Every block carries its own header now, so this viewer prints no
+ * section labels of its own.
  *
  * What the top block holds depends on what the JEV was made from:
  *
@@ -242,6 +246,49 @@ function JevEntriesViewModal({
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const colors = useMemo(() => makeColors(getThemeColors(isDark)), [isDark]);
+  // The journal's type and status, in words ("Disbursement Voucher",
+  // "Active") — handed to the panel so its header never prints the raw
+  // codes.
+  const {
+    jev_types,
+    jev_status,
+    jevPendingKey,
+    // The transaction status keys — the brand · model opens the transaction
+    // in the For Purchase workspace, and that workspace is driven by them.
+    isManagement,
+    isAccountOfficer,
+    isAOTL,
+    isProcurement,
+    transacstatus,
+    ao_status,
+    itemType,
+    procMode,
+    procSource,
+    statusTransaction,
+    archiveStatus,
+    forPurchaseKey,
+    forCollectionKey,
+    forCanvasKey,
+    canvasFinalizeKey,
+    canvasVerificationKey,
+    itemsManagementKey,
+    forPricingKey,
+    priceVerificationKey,
+    priceApprovalKey,
+    priceSettingKey,
+    priceFinalizeVerificationKey,
+    cartKey,
+    forApprovalKey,
+    forPaymentKey,
+    pendingReceiptKey,
+    forDeliveryKey,
+    deliveredKey,
+    cancelledPOKey,
+    removedFromCartKey,
+  } = useKeysLabels();
+  // The signed-in user — the workspace needs it to load the transaction the
+  // way this role sees it.
+  const currentUserId = useMemo(() => getItem("user", {})?.nUserId, []);
   const [infoEditing, setInfoEditing] = useState(false);
   const [dateValue, setDateValue] = useState(""); // "YYYY-MM-DD" while editing
   const [titleValue, setTitleValue] = useState("");
@@ -633,6 +680,17 @@ function JevEntriesViewModal({
     !(voucher?.voucher_suppliers?.length > 0);
   const assigneeLinks = voucher?.voucher_assignees ?? [];
   const supplierLinks = voucher?.voucher_suppliers ?? [];
+
+  // ── The voucher's identity ──────────────────────────────────────────
+  // The particulars card prints the voucher's number, the supplier's name,
+  // its address and its TIN — the same header the voucher page shows. The
+  // supplier's details ride on the voucher's own relation (the list
+  // endpoint loads it); without them the card fell back to "No Address &
+  // TIN attached.".
+  const voucherNumber = voucher?.strNumber ?? "";
+  const supplierNickName = voucher?.supplier?.strSupplierNickName ?? "";
+  const supplierAddress = voucher?.supplier?.strAddress ?? "";
+  const supplierTIN = voucher?.supplier?.strTIN ?? "";
   const particularsCount = isAssigneeType
     ? assigneeLinks.length
     : supplierLinks.length;
@@ -698,53 +756,73 @@ function JevEntriesViewModal({
     }
   };
 
-  // "Disbursement Voucher · DV" — the caller's type label with the voucher
-  // number joined on as soon as its record is in.
-  const headerLine = [subTitle, voucher?.strNumber].filter(Boolean).join(" · ");
+  // The subtitle names the journal — its type, then the voucher's DV code.
+  // The type is plain text; the DV code is the clickable part: it opens
+  // the voucher itself — the same /voucher-update?id= route the voucher
+  // list's View uses.
+  const jevTypeLabel =
+    jev_types?.[jev?.cJEVLinkType] ?? subTitle ?? jev?.cJEVLinkType ?? "";
 
-  // A voucher-backed JEV (V / C) shows that line as a LINK: clicking it
-  // closes this modal and opens the voucher itself — the same
-  // /voucher-update?id= route the voucher list's View uses. JEVs with no
-  // voucher behind them (R / D / N) keep the line as plain text.
   const openVoucher = () => {
     if (!voucher?.nVoucherId) return;
     onClose?.();
     navigate(`/voucher-update?id=${voucher.nVoucherId}`);
   };
 
-  // Kept INLINE (a span, not a button) so the header's ellipsis still
-  // clips long subtitles the way it did as plain text.
-  const headerNode = voucher?.nVoucherId ? (
-    <Box
-      component="span"
-      role="button"
-      tabIndex={0}
-      onClick={openVoucher}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          openVoucher();
-        }
-      }}
-      title={`Open voucher ${voucher.strNumber ?? ""}`.trim()}
-      sx={{
-        cursor: "pointer",
-        borderRadius: "2px",
-        // Always blue — it is a link, not plain text; hover only adds
-        // the underline.
-        color: colors.blue.text,
-        "&:hover": { textDecoration: "underline" },
-        "&:focus-visible": {
-          outline: "none",
-          textDecoration: "underline",
-        },
-      }}
-    >
-      {headerLine}
-    </Box>
-  ) : (
-    headerLine
-  );
+  // ── The brand · model opens its transaction ──────────────────────────────
+  // The item's brand · model is a link: it opens the transaction the item
+  // belongs to, in the same For Purchase workspace the item-purchasing and
+  // voucher pages open.
+  const openTransactionForPurchase = async (transaction) => {
+    if (!transaction?.nTransactionId) return;
+    onClose?.();
+    await openForPurchase(navigate, {
+      transaction,
+      currentUserId,
+      keys: {
+        isManagement,
+        isAccountOfficer,
+        isAOTL,
+        isProcurement,
+        transacstatus,
+        ao_status,
+        itemType,
+        procMode,
+        procSource,
+        statusTransaction,
+        archiveStatus,
+        forPurchaseKey,
+        forCollectionKey,
+        forCanvasKey,
+        canvasFinalizeKey,
+        canvasVerificationKey,
+        itemsManagementKey,
+        forPricingKey,
+        priceVerificationKey,
+        priceApprovalKey,
+        priceSettingKey,
+        priceFinalizeVerificationKey,
+        cancelledPOKey,
+        cartKey,
+        forApprovalKey,
+        forPaymentKey,
+        pendingReceiptKey,
+        forDeliveryKey,
+        deliveredKey,
+        removedFromCartKey,
+      },
+    });
+  };
+
+  // An inventory row carries only the transaction's ID — the workspace
+  // fetches the rest itself.
+  const openInventoryRowTransaction = (row) =>
+    openTransactionForPurchase({ nTransactionId: rowTransactionId(row) });
+
+  // The subtitle names the journal — its type, in words. The voucher's DV
+  // code is NOT part of it: the voucher is already named (and reachable)
+  // in the particulars block below, so the header line stays one thing.
+  const headerNode = jevTypeLabel;
 
   return (
     <ModalContainer
@@ -861,26 +939,49 @@ function JevEntriesViewModal({
             </Box>
           )}
 
-          {/* ── Particulars — same block as VoucherUpdateView ─────── */}
+          {/* ── Particulars — same block as VoucherUpdateView. No label here:
+              the list carries its own header (voucher number · supplier)
+              and its own grand total. ── */}
           {showParticulars && (
             <Box>
-              <SectionLabel>Particulars ({particularsCount})</SectionLabel>
               {isAssigneeType ? (
                 <AssigneeListPanel
                   assigneeLinks={assigneeLinks}
                   voucher={voucher}
+                  // The DV code opens the voucher itself — the same link the
+                  // supplier's PO card carries.
+                  onVoucherClick={
+                    voucher?.nVoucherId ? openVoucher : undefined
+                  }
                 />
               ) : (
-                <POListPanel supplierLinks={supplierLinks} />
+                /* The same particulars the voucher page shows — the voucher's
+                   number, the supplier's name, its address and its TIN, so the
+                   card reads the same here (and a voucher with several POs
+                   collapses into its compact list, exactly as it does there). */
+                <POListPanel
+                  supplierLinks={supplierLinks}
+                  voucherNumber={voucherNumber}
+                  supplierNickName={supplierNickName}
+                  supplierAddress={supplierAddress}
+                  supplierTIN={supplierTIN}
+                  // The DV code opens the voucher itself.
+                  onVoucherClick={voucher?.nVoucherId ? openVoucher : undefined}
+                  // The brand · model opens the transaction the item belongs
+                  // to — the same workspace the item-purchasing and voucher
+                  // pages open.
+                  onBrandClick={openTransactionForPurchase}
+                />
               )}
             </Box>
           )}
 
           {/* ── Items — the batches an inventory JEV covers (a D JEV:
-              its whole delivered group, as the entry modal shows) ── */}
+              its whole delivered group, as the entry modal shows). No
+              label: the table carries its own header card and its own
+              grand total. ── */}
           {itemRows.length > 0 && (
             <Box>
-              <SectionLabel>Items ({itemRows.length})</SectionLabel>
               <ItemsTable
                 rows={itemRows}
                 total={itemsTotal}
@@ -889,6 +990,9 @@ function JevEntriesViewModal({
                 // since gone out still belongs in this table, but the
                 // selling columns stay the delivered side's own.
                 showSellingOverride={isReceivedSide ? false : null}
+                // The brand · model opens the transaction the batch was
+                // bought on.
+                onBrandClick={openInventoryRowTransaction}
               />
             </Box>
           )}
@@ -1040,12 +1144,18 @@ function JevEntriesViewModal({
               </>
             )}
 
-            {/* Hidden while the entry form stands in for the columns —
-                the form IS this section then (entryForm is set). */}
-            {!entryForm && <SectionLabel>Journal Entry Voucher</SectionLabel>}
+            {/* The panel below carries its own header (JEV number · status ·
+                JOURNAL ENTRY VOUCHER · type), so no label here. Hidden
+                while the entry form stands in for the columns — the form
+                IS this section then (entryForm is set). */}
             <JevViewPanel
               key={jev.nJEVId}
               jev={jev}
+              // The type and status, in words — the header must never
+              // print the raw "V" / "A" codes.
+              jev_types={jev_types}
+              jev_status={jev_status}
+              jevPendingKey={jevPendingKey}
               // The amount this JEV's entries must reconcile against —
               // the same figure the Items block prints as its total
               // (for a D JEV: the delivered group's, which the panel
@@ -1070,6 +1180,19 @@ function JevEntriesViewModal({
               isAssigneeType={isAssigneeType}
               assigneeLinks={assigneeLinks}
               supplierLinks={supplierLinks}
+              // The voucher's identity, handed on so the Add / Edit Entry
+              // form's particulars card reads the same as the block above
+              // (voucher number · supplier · address · TIN).
+              voucherNumber={voucherNumber}
+              supplierInfo={
+                isAssigneeType
+                  ? null
+                  : {
+                      strSupplierNickName: supplierNickName,
+                      strAddress: supplierAddress,
+                      strTIN: supplierTIN,
+                    }
+              }
             />
           </Box>
         </Box>

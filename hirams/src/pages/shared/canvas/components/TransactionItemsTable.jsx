@@ -501,10 +501,9 @@ function TransactionItemsTable({
   );
 
   // ── Per-item purchase progress ─────────────────────────────────────────
-  // ONE source of truth for the row's Progress bar and for the gate on
-  // Get Suggestions / + Option (those two only make sense while an item
-  // is still at 0% — once an option enters the purchase workflow the item
-  // must stop accepting new/suggested options).
+  // ONE source of truth for the row's Progress bar. The Get Suggestions /
+  // + Option buttons are NOT gated on it any more — an item's options can
+  // always grow, even when it is already fully covered.
   const getItemProgress = (item) => {
     let num = 0,
       den = 0;
@@ -1248,13 +1247,14 @@ function TransactionItemsTable({
                   )}
                 </Box>
                 <Box sx={{ display: "flex", gap: 1 }}>
-                  {checkboxOptionsEnabled &&
+                  {/* The two buttons stay available in the PURCHASE stage
+                      even when the item is fully covered (12 / 12) or an
+                      add-on was just added — the options of an item can
+                      always grow. Only a read-only view or a status change
+                      (the transaction moved on) hides them. */}
+                  {(checkboxOptionsEnabled || isPurchase) &&
                     !statusChangedAlert &&
                     !readOnly &&
-                    // For Purchase: the row's own Progress bar must read 0% —
-                    // past that point the item's options are already in the
-                    // purchase workflow and must not change.
-                    (!isPurchase || getItemProgress(item) === 0) &&
                     (() => {
                       const remainingQty = totalQty - includedQty;
                       return (
@@ -1561,7 +1561,10 @@ function TransactionItemsTable({
                           color: colors.textPrimary,
                         }}
                       >
-                        {transaction.clientName || "—"}
+                        {transaction.clientName ||
+                          transaction.client?.strClientNickName ||
+                          transaction.client?.strClientName ||
+                          "—"}
                       </Box>
                       <Box
                         component="span"

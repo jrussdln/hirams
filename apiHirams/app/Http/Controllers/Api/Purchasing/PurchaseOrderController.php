@@ -92,6 +92,28 @@ class PurchaseOrderController extends ApiController
         }
     }
 
+    /**
+     * The freight charge on the PO — owned by the Freight / EWT editor.
+     */
+    public function updateFreight(Request $request, int $id): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'dFreight' => 'nullable|numeric|min:0',
+            ]);
+            $validated['nPurchaseOrderId'] = $id;
+
+            $po = $this->service->updateFreight($validated);
+
+            return response()->json([
+                'message'       => 'Freight updated successfully.',
+                'purchaseOrder' => $po,
+            ]);
+        } catch (Exception $e) {
+            return response()->json(['message' => 'Failed to update freight.', 'error' => $e->getMessage()], 500);
+        }
+    }
+
     public function getBySupplier(Request $request): JsonResponse
     {
         try {

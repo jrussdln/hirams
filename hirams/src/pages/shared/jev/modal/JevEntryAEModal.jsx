@@ -130,13 +130,15 @@ export default function JevEntryAEModal({
   supplierLinks = [],
   logsPanel = null,
   supplierInfo = null,
-  companyName = null,
-  clientName = null,
-  panelTitle,
+  // The company behind the voucher — the particulars panel prints it on the
+  // same row as the assignee's name.
+  companyName = "",
+  // The voucher's own number — the particulars panel prints it above the
+  // list, exactly as the voucher page does.
+  voucherNumber = "",
   flowType = "received",
   // Non-voucher callers (the inventory Pending JEV screen) hand over
-  // their own panel — without it this falls back to the voucher
-  // particulars, which is always empty outside a voucher.
+  // their own panel — the items or the logs.
   itemsPanel = null,
   // To/From state for R/D JEVs — informational only. It is deliberately
   // NOT written into formErrors, so Save Entry is never blocked by it.
@@ -322,51 +324,35 @@ export default function JevEntryAEModal({
     >
       <AmountPickContext.Provider value={pickAmount}>
         <Box sx={{ px: 0.5, py: 0.5 }}>
-          {/* The strip only renders once the caller names a side: the voucher
-              hands over supplierInfo, the inventory For Delivery group hands
-              over supplierInfo, the Delivered group hands over clientName. */}
-          {(supplierInfo || clientName) && (
-            <SupplierCompanyBreadcrumb
-              flowType={flowType}
-              supplierName={
-                supplierInfo?.strSupplierNickName ??
-                supplierInfo?.strSupplierName
-              }
-              companyName={companyName}
-              clientName={clientName}
-              c={{
-                pendingText: colors.orange.text,
-                pendingBorder: colors.orange.border,
-                btnBgDisabled: colors.slate.btnBg,
-              }}
-            />
-          )}
-          <Typography
-            sx={{
-              fontSize: "0.58rem",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: colors.gray.textMuted,
-              mb: 0.5,
-            }}
-          >
-            {panelTitle ??
-              (flowType === "collected"
-                ? "Details"
-                : logsPanel
-                  ? "Logs"
-                  : "Particulars")}
-          </Typography>
-
+          {/* No flow guide (the company ➜ supplier strip) and no section
+              label here — the particulars below already say who this is and
+              what it covers. */}
           {logsPanel ? (
             <Box sx={{ mb: 1 }}>{logsPanel}</Box>
           ) : itemsPanel ? (
             <Box sx={{ mb: 1 }}>{itemsPanel}</Box>
           ) : isAssigneeType ? (
-            <AssigneeListPanel assigneeLinks={assigneeLinks} />
+            <AssigneeListPanel
+              assigneeLinks={assigneeLinks}
+              voucher={{ strNumber: voucherNumber }}
+              companyName={companyName}
+            />
           ) : (
-            <POListPanel supplierLinks={supplierLinks} isJEVPage />
+            /* The same particulars the voucher page shows — the supplier's
+               name, address and TIN travel with the links, so the list is
+               not a bare list of PO numbers here. */
+            <POListPanel
+              supplierLinks={supplierLinks}
+              isJEVPage
+              voucherNumber={voucherNumber}
+              supplierNickName={
+                supplierInfo?.strSupplierNickName ??
+                supplierInfo?.strSupplierName ??
+                ""
+              }
+              supplierAddress={supplierInfo?.strAddress ?? ""}
+              supplierTIN={supplierInfo?.strTIN ?? ""}
+            />
           )}
           <Box ref={formRef}>
             <FormGrid

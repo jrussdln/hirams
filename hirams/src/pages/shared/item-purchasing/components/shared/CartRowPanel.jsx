@@ -7,10 +7,10 @@ import {
 } from "@mui/icons-material";
 import {
   fmtPHP,
-  fmtDate,
   fmtQty,
 } from "../../../../../utils/formatters/formatter.js";
 import { IconBox } from "../LineItems.jsx";
+import DeliveryDateLabel from "./DeliveryDateLabel.jsx";
 
 const useColors = (c) => ({
   border: c.slate.border,
@@ -161,10 +161,23 @@ export default function CartRowPanel({
   isDelivered = false,
   arrivedStats = null,
   hideRowBadge = false,
+  // Clicking the row opens the PO — the same thing the card's VIEW button
+  // does. The card passes it in; the table (PO detail page) does not.
+  onRowClick,
+  // Only the brand · model is a link (the PO detail page uses it to open the
+  // transaction for purchase). A line with no brand · model falls back to
+  // the item name, so there is always something to click.
+  onBrandClick,
+  // The Purchase Items TABLE (the PO detail page) reads better with its own
+  // layout: a "#" column for the numbering, no item icon, and the code
+  // stacked above the brand · model. The cards keep the compact row.
+  tableLayout = false,
   variant = "item",
   itemCount,
   totalAmount,
   ewtAmount = 0,
+  // The PO's freight charge — printed above the EWT line in the total row.
+  freightAmount = 0,
 }) {
   const c = React.useMemo(() => useColors(colors), [colors]);
 
@@ -239,6 +252,20 @@ export default function CartRowPanel({
               lineHeight: 1.4,
             }}
           >
+            {freightAmount > 0
+              ? `Freight: ${fmtPHP(freightAmount)}`
+              : "No Freight"}
+          </Typography>
+          <Typography
+            sx={{
+              fontSize: "0.57rem",
+              fontWeight: 500,
+              fontStyle: "italic",
+              color: c.textSecondary,
+              textAlign: "right",
+              lineHeight: 1.4,
+            }}
+          >
             {ewtAmount > 0 ? `EWT: ${fmtPHP(ewtAmount)}` : "No EWT"}
           </Typography>
         </Box>
@@ -251,7 +278,6 @@ export default function CartRowPanel({
   const tx = p?.transaction_item?.transaction;
   const lineTotal = (p?.nQuantity || 0) * (p?.dUnitPrice || 0);
   const txnCode = tx?.strCode ?? "—";
-  const deliveryDate = fmtDate(tx?.dtDelivery) || "—";
   const ewtValue = p?.dEWT;
   // Pending ("P") rows count as received/delivered too — the goods are
   // already in hand, they only await approval. This matches the backend's
@@ -263,6 +289,11 @@ export default function CartRowPanel({
     ? arrivedStats.approvedDlvd + (arrivedStats.pendingDlvd || 0)
     : p?.nDeliveredQty || 0;
   const forDeliveryQty = Math.max(rcvdQty - dlvdQty, 0);
+  // The brand · model is the link; a line without one links on its name.
+  const brandClickable = Boolean(
+    onBrandClick && (p?.strBrand || p?.strModel),
+  );
+  const nameClickable = Boolean(onBrandClick && !brandClickable);
   const orderedQty = arrivedStats ? arrivedStats.totalQty : p?.nQuantity || 0;
   const toReceiveQty = Math.max(orderedQty - rcvdQty, 0);
   const removeSpinner = (
@@ -293,7 +324,11 @@ export default function CartRowPanel({
     <IconButton
       size="small"
       disabled={removingOptionId !== null}
-      onClick={() => onRemove(p?.nPurchaseItemId)}
+      onClick={(e) => {
+        // The row itself opens the PO — the remove button must not.
+        e.stopPropagation();
+        onRemove(p?.nPurchaseItemId);
+      }}
       sx={{
         width: { xs: 18, sm: 20 },
         height: { xs: 18, sm: 20 },
@@ -323,11 +358,12 @@ export default function CartRowPanel({
       {idx === 0 && !poIsPaidRcvdDvrd && (
         <Box
           sx={{
-            px: 1,
+            px: 2,
             py: 0.5,
             display: { xs: "none", sm: "flex" },
             alignItems: "center",
             justifyContent: "space-between",
+            gap: 2,
             background: c.itemHeaderBg,
             borderBottom: `0.5px solid ${c.divider}`,
             position: "sticky",
@@ -336,9 +372,32 @@ export default function CartRowPanel({
           }}
         >
           <Box
-            sx={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0 }}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              flex: 1,
+              minWidth: 0,
+              gap: tableLayout ? 2 : 1,
+            }}
           >
-            <Box sx={{ width: 26, flexShrink: 0 }} />
+            {/* The numbering column — the row's icon slot in the card rows. */}
+            {tableLayout ? (
+              <Box sx={{ width: 20, flexShrink: 0, textAlign: "center" }}>
+                <Typography
+                  sx={{
+                    fontSize: "0.55rem",
+                    fontWeight: 700,
+                    color: c.textSecondary,
+                    letterSpacing: "0.03em",
+                    lineHeight: 1,
+                  }}
+                >
+                  #
+                </Typography>
+              </Box>
+            ) : (
+              <Box sx={{ width: 26, flexShrink: 0 }} />
+            )}
             <Typography
               sx={{
                 fontSize: "0.55rem",
@@ -354,7 +413,7 @@ export default function CartRowPanel({
             sx={{
               display: "flex",
               alignItems: "center",
-              gap: 2.2,
+              gap: 2,
               flexShrink: 0,
             }}
           >
@@ -366,19 +425,42 @@ export default function CartRowPanel({
             ) : (
               <>
                 {showQty && <HeaderCell label="QTY" width={50} c={c} />}
-                <HeaderCell label="UNIT PRICE" width={75} c={c} />
+                <HeaderCell label="UNIT PRICE" width={70} c={c} />
                 <HeaderCell label="TOTAL" width={70} c={c} />
               </>
             )}
-            {showRemove && <Box sx={{ width: 28, flexShrink: 0 }} />}
+            {showRemove && (
+              <Box
+                sx={{
+                  width: 28,
+                  flexShrink: 0,
+                  display: "flex",
+                  justifyContent: "center",
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: "0.55rem",
+                    fontWeight: 700,
+                    color: c.textSecondary,
+                    letterSpacing: "0.03em",
+                    lineHeight: 1,
+                  }}
+                >
+                  ACTION
+                </Typography>
+              </Box>
+            )}
           </Box>
         </Box>
       )}
 
       <Box
+        onClick={onRowClick}
         sx={{
           borderBottom:
             idx < totalCount - 1 ? `0.5px solid ${c.divider}` : "none",
+          cursor: onRowClick ? "pointer" : "default",
           "&:hover": { background: c.itemHover },
           transition: "background 0.15s",
         }}
@@ -410,6 +492,29 @@ export default function CartRowPanel({
             </Box>
           )}
 
+          {/* COLUMN 0 — the row number (Purchase Items table only) */}
+          {tableLayout && (
+            <Box
+              sx={{
+                width: 20,
+                flexShrink: 0,
+                textAlign: "center",
+                alignSelf: "center",
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: "0.55rem",
+                  fontWeight: 700,
+                  color: c.textSecondary,
+                  lineHeight: 1,
+                }}
+              >
+                {idx + 1}
+              </Typography>
+            </Box>
+          )}
+
           {/* COLUMN 1 — Item Info */}
           <Box
             sx={{
@@ -421,80 +526,111 @@ export default function CartRowPanel({
               pr: { xs: showRemove ? 3.5 : 0, sm: 0 },
             }}
           >
-            <Box sx={{ position: "relative", flexShrink: 0 }}>
-              <Box
-                sx={{
-                  width: 26,
-                  height: 26,
-                  borderRadius: "6px",
-                  background: c.mutedBg,
-                  border: `0.5px solid ${c.mutedBorder}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Inventory2Outlined
-                  sx={{ fontSize: "0.75rem", color: c.mutedColor }}
-                />
-              </Box>
-              <Box
-                sx={{
-                  position: "absolute",
-                  top: -5,
-                  left: -5,
-                  minWidth: 13,
-                  height: 13,
-                  px: 0.25,
-                  borderRadius: "50px",
-                  background: c.textSecondary,
-                  border: `1.5px solid ${c.outerBg}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  zIndex: 1,
-                }}
-              >
-                <Typography
+            {!tableLayout && (
+              <Box sx={{ position: "relative", flexShrink: 0 }}>
+                <Box
                   sx={{
-                    fontSize: "0.4rem",
-                    fontWeight: 700,
-                    color: c.textOnFill,
-                    lineHeight: 1,
+                    width: 26,
+                    height: 26,
+                    borderRadius: "6px",
+                    background: c.mutedBg,
+                    border: `0.5px solid ${c.mutedBorder}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  {idx + 1}
-                </Typography>
+                  <Inventory2Outlined
+                    sx={{ fontSize: "0.75rem", color: c.mutedColor }}
+                  />
+                </Box>
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: -5,
+                    left: -5,
+                    minWidth: 13,
+                    height: 13,
+                    px: 0.25,
+                    borderRadius: "50px",
+                    background: c.textSecondary,
+                    border: `1.5px solid ${c.outerBg}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    zIndex: 1,
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      fontSize: "0.4rem",
+                      fontWeight: 700,
+                      color: c.textOnFill,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {idx + 1}
+                  </Typography>
+                </Box>
               </Box>
-            </Box>
+            )}
 
             <Box sx={{ flex: 1, minWidth: 0 }}>
+              {/* CODE — above the brand · model, plain text, exactly like the
+                  code line of the card header (same size, weight, colour and
+                  line spacing). */}
+              {tableLayout && !hideRowBadge && (
+                <Typography
+                  sx={{
+                    fontSize: "0.55rem",
+                    fontWeight: 600,
+                    color: c.textSecondary,
+                    textTransform: "uppercase",
+                    lineHeight: 1,
+                    mb: 0.05,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {txnCode}
+                </Typography>
+              )}
               <Box
                 sx={{
                   display: "flex",
                   alignItems: "center",
                   gap: 0.4,
-                  mb: 0.2,
+                  mb: tableLayout ? 0.1 : 0.2,
                   flexWrap: "wrap",
                 }}
               >
                 {(p?.strBrand || p?.strModel) && (
                   <Typography
+                    onClick={brandClickable ? onBrandClick : undefined}
                     sx={{
-                      fontSize: "0.65rem",
+                      fontSize: tableLayout ? "0.78rem" : "0.65rem",
                       fontWeight: 600,
-                      color: c.textPrimary,
+                      // A link looks like a link — blue, underlined on hover.
+                      color: brandClickable ? c.blueText : c.textPrimary,
+                      textTransform: tableLayout ? "uppercase" : "none",
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
+                      cursor: brandClickable ? "pointer" : "default",
+                      ...(brandClickable && {
+                        "&:hover": { textDecoration: "underline" },
+                      }),
                     }}
                   >
                     {[p?.strBrand, p?.strModel].filter(Boolean).join(" · ")}
                   </Typography>
                 )}
                 {/* No badge on the transaction cards (For Delivery /
-                    Delivered) — the PO code is not wanted in the row. */}
-                {!hideRowBadge && (
+                    Delivered) — the PO code is not wanted in the row. The
+                    Purchase Items table shows the code as plain text above
+                    the brand · model instead. */}
+                {!hideRowBadge && !tableLayout && (
                   <Box
                     sx={{
                       display: "inline-flex",
@@ -521,29 +657,31 @@ export default function CartRowPanel({
                 )}
               </Box>
               <Typography
+                onClick={nameClickable ? onBrandClick : undefined}
                 sx={{
                   fontSize: "0.58rem",
-                  color: c.textSecondary,
+                  color: nameClickable ? c.blueText : c.textSecondary,
+                  textTransform: tableLayout ? "uppercase" : "none",
+                  lineHeight: tableLayout ? 1.1 : 1.2,
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
+                  cursor: nameClickable ? "pointer" : "default",
+                  ...(nameClickable && {
+                    "&:hover": { textDecoration: "underline" },
+                  }),
                 }}
               >
                 {p?.transaction_item?.strName ?? "—"}
               </Typography>
-              {/* The delivery date is a promise while the PO is still in
-                  flight — once it is Delivered it says nothing useful. */}
-              {!isDelivered && (
-                <Typography
-                  sx={{
-                    fontSize: "0.48rem",
-                    color: c.mutedColor,
-                    lineHeight: 1,
-                    mt: 0.15,
-                  }}
-                >
-                  Delivery: {deliveryDate}
-                </Typography>
+              {/* The delivery date is a promise while the goods are still in
+                  flight — it only means something on the For Delivery
+                  stage, so it shows there and nowhere else. */}
+              {isForDelivery && (
+                <DeliveryDateLabel
+                  date={tx?.dtDelivery}
+                  sx={{ color: c.mutedColor }}
+                />
               )}
             </Box>
           </Box>
@@ -575,7 +713,7 @@ export default function CartRowPanel({
                 </Typography>
                 <Typography
                   sx={{
-                    fontSize: "0.62rem",
+                    fontSize: "0.72rem",
                     fontWeight: 700,
                     color: c.textSecondary,
                     lineHeight: 1,
@@ -600,22 +738,37 @@ export default function CartRowPanel({
                   >
                     QTY
                   </Typography>
-                  <Typography
+                  {/* QTY — the number with the unit under it. */}
+                  <Box
                     sx={{
-                      fontSize: "0.62rem",
-                      fontWeight: 700,
-                      color: c.textSecondary,
-                      lineHeight: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      gap: 0.1,
                     }}
                   >
-                    {fmtQty(p?.nQuantity)}{" "}
                     <Typography
-                      component="span"
-                      sx={{ fontSize: "0.50rem", color: c.textSecondary }}
+                      sx={{
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        color: c.textSecondary,
+                        lineHeight: 1,
+                      }}
+                    >
+                      {fmtQty(p?.nQuantity)}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: "0.5rem",
+                        color: c.textSecondary,
+                        textTransform: "uppercase",
+                        lineHeight: 1,
+                        whiteSpace: "nowrap",
+                      }}
                     >
                       {p?.strUOM}
                     </Typography>
-                  </Typography>
+                  </Box>
                 </Box>
 
                 <Box sx={{ minWidth: { sm: 70 }, textAlign: "right" }}>
@@ -632,7 +785,7 @@ export default function CartRowPanel({
                   </Typography>
                   <Typography
                     sx={{
-                      fontSize: "0.62rem",
+                      fontSize: "0.72rem",
                       fontWeight: 700,
                       color: c.textSecondary,
                       lineHeight: 1,
@@ -655,7 +808,7 @@ export default function CartRowPanel({
                   </Typography>
                   <Typography
                     sx={{
-                      fontSize: "0.62rem",
+                      fontSize: "0.72rem",
                       fontWeight: 700,
                       color: c.orangeText,
                       lineHeight: 1,

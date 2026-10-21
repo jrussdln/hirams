@@ -3,7 +3,6 @@ import { Box, Typography, IconButton, useTheme } from "@mui/material";
 import {
   EditOutlined,
   DeleteOutlineOutlined,
-  Inventory2Outlined,
 } from "@mui/icons-material";
 import { fmtPHP, fmtQty } from "../../../../utils/formatters/formatter";
 import getThemeColors from "../../../../utils/style/getThemeColors";
@@ -21,8 +20,8 @@ const useColors = (c) => ({
     textSecondary: c.gray.textSecondary,
     textMuted: c.gray.textMuted,
   },
-  blue: { text: c.blue.text },
-  red: { text: c.red.text },
+  blue: { text: c.blue.text, bg: c.blue.bg, border: c.blue.border, hover: c.blue.hover },
+  red: { text: c.red.text, bg: c.red.bg, border: c.red.border },
 });
 
 export default function AssigneeRowPanel({
@@ -56,11 +55,6 @@ export default function AssigneeRowPanel({
   const showEdit = Boolean(onEdit);
   const showDelete = Boolean(isVoucherOpen && onDelete);
 
-  const companyName =
-    voucher?.company?.strCompanyNickName ||
-    assignee?.voucher?.company?.strCompanyNickName ||
-    "—";
-
   return (
     <>
       {/* COLUMN HEADER */}
@@ -79,8 +73,18 @@ export default function AssigneeRowPanel({
             zIndex: 1,
           }}
         >
-          <Box sx={{ width: 16, flexShrink: 0 }} />
-          <Box sx={{ width: 30, flexShrink: 0 }} />
+          <Box sx={{ width: 20, flexShrink: 0, textAlign: "center" }}>
+            <Typography
+              sx={{
+                fontSize: "0.55rem",
+                fontWeight: 700,
+                color: colors.gray.textSecondary,
+                letterSpacing: "0.03em",
+              }}
+            >
+              #
+            </Typography>
+          </Box>
           <Box sx={{ flex: 1, minWidth: 0, textAlign: "left" }}>
             <Typography
               sx={{
@@ -90,7 +94,7 @@ export default function AssigneeRowPanel({
                 letterSpacing: "0.03em",
               }}
             >
-              ITEM
+              ITEMS
             </Typography>
           </Box>
           {/* EWT column only appears once a line actually carries EWT, so the
@@ -146,7 +150,20 @@ export default function AssigneeRowPanel({
               TOTAL
             </Typography>
           </Box>
-          {(showEdit || showDelete) && <Box sx={{ width: 48, flexShrink: 0 }} />}
+          {(showEdit || showDelete) && (
+            <Box sx={{ width: 48, flexShrink: 0, textAlign: "center" }}>
+              <Typography
+                sx={{
+                  fontSize: "0.55rem",
+                  fontWeight: 700,
+                  color: colors.gray.textSecondary,
+                  letterSpacing: "0.03em",
+                }}
+              >
+                ACTION
+              </Typography>
+            </Box>
+          )}
         </Box>
       )}
 
@@ -165,73 +182,46 @@ export default function AssigneeRowPanel({
           "&:hover": { background: colors.hover },
         }}
       >
-        {/* LEFT: Icon + Particulars + Company */}
+        {/* LEFT: the numbering + the assignee block */}
         <Box
           sx={{
             display: "flex",
-            alignItems: "flex-start",
-            gap: 1,
+            alignItems: "center",
+            gap: 0.75,
             flex: { sm: 1 },
             minWidth: 0,
           }}
         >
-          <Box sx={{ position: "relative", flexShrink: 0, mt: 0.25 }}>
-            <Box
+          {/* The numbering — its own narrow column, centred on the row
+              (same as the Purchase Items table). */}
+          <Box
+            sx={{
+              width: 20,
+              flexShrink: 0,
+              textAlign: "center",
+              alignSelf: "center",
+            }}
+          >
+            <Typography
               sx={{
-                width: { xs: 26, sm: 30 },
-                height: { xs: 26, sm: 30 },
-                borderRadius: "7px",
-                background: colors.purple.bg,
-                border: `0.5px solid ${colors.purple.border}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                fontSize: "0.55rem",
+                fontWeight: 700,
+                color: colors.gray.textSecondary,
+                lineHeight: 1,
               }}
             >
-              <Inventory2Outlined
-                sx={{
-                  fontSize: { xs: "0.75rem", sm: "0.85rem" },
-                  color: colors.purple.text,
-                }}
-              />
-            </Box>
-            {/* Number badge */}
-            <Box
-              sx={{
-                position: "absolute",
-                top: -5,
-                left: -5,
-                minWidth: 13,
-                height: 13,
-                px: 0.25,
-                borderRadius: "50px",
-                background: colors.gray.textSecondary,
-                border: `1.5px solid ${colors.outerBg}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 1,
-              }}
-            >
-              <Typography
-                sx={{
-                  fontSize: "0.4rem",
-                  fontWeight: 600,
-                  color: colors.textOnFill,
-                  lineHeight: 1,
-                }}
-              >
-                {idx + 1}
-              </Typography>
-            </Box>
+              {idx + 1}
+            </Typography>
           </Box>
 
           <Box sx={{ flex: 1, minWidth: 0 }}>
+            {/* The particular — the line's own name. */}
             <Typography
               sx={{
-                fontSize: { xs: "0.65rem", sm: "0.72rem" },
-                fontWeight: 400,
+                fontSize: "0.78rem",
+                fontWeight: 600,
                 color: colors.gray.textPrimary,
+                textTransform: "uppercase",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -239,17 +229,6 @@ export default function AssigneeRowPanel({
             >
               {assignee.strParticular ?? "—"}
             </Typography>
-            {companyName && (
-              <Typography
-                sx={{
-                  fontSize: { xs: "0.5rem", sm: "0.56rem" },
-                  color: colors.gray.textMuted,
-                  mt: 0.1,
-                }}
-              >
-                {companyName}
-              </Typography>
-            )}
           </Box>
 
           {/* MOBILE: Action buttons inline */}
@@ -271,9 +250,13 @@ export default function AssigneeRowPanel({
                   sx={{
                     width: 20,
                     height: 20,
+                    borderRadius: "50px",
+                    border: `0.5px solid ${colors.blue.border}`,
+                    background: colors.blue.bg,
                     color: colors.blue.text,
-                    opacity: 0.6,
+                    opacity: 0.85,
                     p: 0,
+                    "&:hover": { background: colors.blue.hover, opacity: 1 },
                   }}
                 >
                   <EditOutlined sx={{ fontSize: "0.75rem" }} />
@@ -287,9 +270,13 @@ export default function AssigneeRowPanel({
                   sx={{
                     width: 20,
                     height: 20,
+                    borderRadius: "50px",
+                    border: `0.5px solid ${colors.red.border}`,
+                    background: colors.red.bg,
                     color: colors.red.text,
-                    opacity: isRemoving ? 1 : 0.6,
+                    opacity: isRemoving ? 0.4 : 0.85,
                     p: 0,
+                    "&:hover": { background: colors.red.bg, opacity: 1 },
                   }}
                 >
                   {isRemoving ? (
@@ -459,9 +446,13 @@ export default function AssigneeRowPanel({
                 sx={{
                   width: 20,
                   height: 20,
+                  borderRadius: "50px",
+                  border: `0.5px solid ${colors.blue.border}`,
+                  background: colors.blue.bg,
                   color: colors.blue.text,
-                  opacity: 0.6,
+                  opacity: 0.85,
                   p: 0,
+                  "&:hover": { background: colors.blue.hover, opacity: 1 },
                 }}
               >
                 <EditOutlined sx={{ fontSize: "0.75rem" }} />
@@ -475,9 +466,13 @@ export default function AssigneeRowPanel({
                 sx={{
                   width: 20,
                   height: 20,
+                  borderRadius: "50px",
+                  border: `0.5px solid ${colors.red.border}`,
+                  background: colors.red.bg,
                   color: colors.red.text,
-                  opacity: isRemoving ? 1 : 0.6,
+                  opacity: isRemoving ? 0.4 : 0.85,
                   p: 0,
+                  "&:hover": { background: colors.red.bg, opacity: 1 },
                 }}
               >
                 {isRemoving ? (

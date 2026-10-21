@@ -21,7 +21,7 @@ const initialFormData = {
   unitPrice: "",
   ewt: "",
   bIncluded: false,
-  bAddOn: false,
+  bAddOn: true,
   nSupplierContactId: "",
 };
 
@@ -373,8 +373,10 @@ function NewOptionModal({
     },
   ];
 
+  // The Add-On is ON and locked: an option added for a purchase is always
+  // an add-on, and it cannot be switched off.
   const switches = [
-    { name: "bAddOn", label: "Add-On?", xs: 12, disabled: isEditForPurchase },
+    { name: "bAddOn", label: "Add-On?", xs: 12, disabled: true },
   ];
 
   if (!open) return null;

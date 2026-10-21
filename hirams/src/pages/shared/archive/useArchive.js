@@ -211,6 +211,13 @@ export default function useArchive() {
             transactionId: txn.strCode || "--",
             transactionName: txn.strTitle || "--",
             date: txn.dtDocSubmission ? fmtDateTime(txn.dtDocSubmission) : "—",
+            // The officer column shows these two. They have to be mapped here
+            // too — the live list maps them, the archive did not, and the
+            // column was falling back to the submission date (or to the
+            // "Open date" placeholder) while still colouring the cell as if
+            // the due date were there.
+            deliveryDate: txn.dtDelivery ? fmtDate(txn.dtDelivery) : "—",
+            aoDueDate: txn.dtAODueDate ? fmtDate(txn.dtAODueDate) : "—",
             status: (archiveStatus || {})[statusCode],
             status_code: statusCode,
             previous_status_code: prevCode,

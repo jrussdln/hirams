@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import PurchaseOrderAPI from "../../../../../api/endpoints/purchase-order.api.js";
 import VoucherAPI from "../../../../../api/endpoints/voucher.api.js";
+import InventoryAPI from "../../../../../api/endpoints/inventory.api.js";
 
 import JevAPI from "../../../../../api/endpoints/jev.api.js";
 import JevEntriesAPI from "../../../../../api/endpoints/jev-entries.api.js";
@@ -12,6 +13,7 @@ import { withSpinner, showSwal } from "../../../../../utils/helpers/swal.jsx";
 import { printRoute } from "../../../../../utils/helpers/printRoute.js";
 import useKeysLabels from "../../../../../hooks/useKeysLabels.js";
 import { toCents, centsLabel } from "../../../../../utils/helpers/money.js";
+import { openForPurchase } from "../../../../../utils/helpers/openForPurchase.js";
 
 export default function useVoucherUpdate() {
   const navigate = useNavigate();
@@ -56,6 +58,33 @@ export default function useVoucherUpdate() {
     forDeliveryKey,
     isFinanceOfficer,
     isManagement,
+    // Everything the For Purchase workspace reads out of its state.
+    isAccountOfficer,
+    isAOTL,
+    isProcurement,
+    forPurchaseKey,
+    forCollectionKey,
+    forApprovalKey,
+    forCanvasKey,
+    canvasFinalizeKey,
+    canvasVerificationKey,
+    itemsManagementKey,
+    forPricingKey,
+    priceVerificationKey,
+    priceApprovalKey,
+    priceSettingKey,
+    priceFinalizeVerificationKey,
+    cartKey,
+    deliveredKey,
+    cancelledPOKey,
+    removedFromCartKey,
+    itemType,
+    procMode,
+    procSource,
+    statusTransaction,
+    archiveStatus,
+    ao_status,
+    transacstatus,
   } = useKeysLabels();
 
   // ── Voucher data ─────────────────────────────────────────────────────
@@ -404,6 +433,135 @@ export default function useVoucherUpdate() {
   const isEligibleForPaid = isClosed; // Mark as Paid → ONLY when Closed
   const isEligibleForUnpaid = isMarkedPaid; // Mark as Unpaid → ONLY when Paid
   const canShowPrintButtons = isClosed || isMarkedPaid;
+
+  // ── Items that already arrived ────────────────────────────────────────
+  // The voucher's own POs come WITHOUT the inventory stats (those are
+  // attached by the PO list query), so the received quantities are asked
+  // for directly: a received row (positive qty) on any of the linked items
+  // means the goods are already in hand and the voucher cannot be unpaid.
+  const linkedItemIds = useMemo(() => {
+    const ids = (voucher?.voucher_suppliers ?? []).flatMap((link) =>
+      (link.purchase_order?.purchase_order_options ?? [])
+        .map((opt) => opt.purchase_option?.nPurchaseItemId)
+        .filter(Boolean)
+        .map(String),
+    );
+    return [...new Set(ids)];
+  }, [voucher]);
+
+  const [arrivedItemIds, setArrivedItemIds] = useState(() => new Set());
+
+  useEffect(() => {
+    if (isAssigneeType || !linkedItemIds.length) {
+      setArrivedItemIds(new Set());
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const res = await InventoryAPI.getHistoryBulk(linkedItemIds);
+        const rows = res?.rows ?? res?.data?.rows ?? {};
+        const arrived = new Set();
+        for (const id of linkedItemIds) {
+          const list = rows?.[id] ?? [];
+          const received = (Array.isArray(list) ? list : []).some(
+            (r) =>
+              Number(r?.nQuantity) > 0 &&
+              ["A", "P"].includes(String(r?.cStatus || "").trim()),
+          );
+          if (received) arrived.add(id);
+        }
+        if (active) setArrivedItemIds(arrived);
+      } catch (err) {
+        console.error("Failed to load the received items:", err);
+        if (active) setArrivedItemIds(new Set());
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [linkedItemIds, isAssigneeType]);
+
+  const hasArrivedItems = arrivedItemIds.size > 0;
+
+  // ── Open a transaction in the For Purchase workspace ──────────────────
+  // The brand · model of a particular is a link — it opens the transaction
+  // the item belongs to, the same workspace the PO detail page opens.
+  const openTransactionForPurchase = useCallback(
+    async (transaction) => {
+      if (!transaction?.nTransactionId) return;
+      await openForPurchase(navigate, {
+        transaction,
+        currentUserId,
+        keys: {
+          isManagement,
+          isAccountOfficer,
+          isAOTL,
+          isProcurement,
+          transacstatus,
+          ao_status,
+          itemType,
+          procMode,
+          procSource,
+          statusTransaction,
+          archiveStatus,
+          forPurchaseKey,
+          forCollectionKey,
+          forCanvasKey,
+          canvasFinalizeKey,
+          canvasVerificationKey,
+          itemsManagementKey,
+          forPricingKey,
+          priceVerificationKey,
+          priceApprovalKey,
+          priceSettingKey,
+          priceFinalizeVerificationKey,
+          cancelledPOKey,
+          cartKey,
+          forApprovalKey,
+          forPaymentKey,
+          pendingReceiptKey,
+          forDeliveryKey,
+          deliveredKey,
+          removedFromCartKey,
+        },
+      });
+    },
+    [
+      navigate,
+      currentUserId,
+      isManagement,
+      isAccountOfficer,
+      isAOTL,
+      isProcurement,
+      transacstatus,
+      ao_status,
+      itemType,
+      procMode,
+      procSource,
+      statusTransaction,
+      archiveStatus,
+      forPurchaseKey,
+      forCollectionKey,
+      forCanvasKey,
+      canvasFinalizeKey,
+      canvasVerificationKey,
+      itemsManagementKey,
+      forPricingKey,
+      priceVerificationKey,
+      priceApprovalKey,
+      priceSettingKey,
+      priceFinalizeVerificationKey,
+      cancelledPOKey,
+      cartKey,
+      forApprovalKey,
+      forPaymentKey,
+      pendingReceiptKey,
+      forDeliveryKey,
+      deliveredKey,
+      removedFromCartKey,
+    ],
+  );
 
   // Supplier-type: payment terms live on the linked Purchase Order.
   // Assignee-type: no PO chain exists, so fall back to the voucher's own column.
@@ -817,7 +975,12 @@ export default function useVoucherUpdate() {
     cPaymentTerms,
     isEligibleForPaid,
     isEligibleForUnpaid,
+    hasArrivedItems,
+    openTransactionForPurchase,
     isMarkedPaid,
+    // The PO status a voucher may pay — only a PO waiting for payment can
+    // be linked to a voucher.
+    forPaymentKey,
     historiesLoading,
     ewtAmount,
     ewtLoading,

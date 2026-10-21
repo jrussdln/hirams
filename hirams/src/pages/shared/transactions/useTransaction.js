@@ -1039,6 +1039,7 @@ export default function useTransaction() {
               selectedStatusCode,
               currentStatusLabel: filterStatus,
               forPurchaseKey,
+              forCollectionKey,
               currentUserId: userId,
 
               isManagement,
@@ -1123,6 +1124,7 @@ export default function useTransaction() {
               currentStatusLabel: filterStatus,
               transactionCode: row.transactionId,
               forPurchaseKey,
+              forCollectionKey,
               currentUserId: userId,
 
               isManagement,
@@ -1214,6 +1216,7 @@ export default function useTransaction() {
             currentStatusLabel: filterStatus,
             transactionCode: row.transactionId,
             forPurchaseKey,
+            forCollectionKey,
             currentUserId: userId,
 
             isManagement,

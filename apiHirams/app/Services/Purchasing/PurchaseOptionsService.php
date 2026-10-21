@@ -10,6 +10,7 @@ use App\Models\TransactionItems;
 use App\Services\CrudService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -175,9 +176,18 @@ class PurchaseOptionsService extends CrudService
     }
 
     /**
-     * @return Collection<int, array>
+     * The purchase options that match a brand / model / item name.
+     *
+     * NOTE the return type: mapping an Eloquent collection to plain arrays
+     * hands back a SUPPORT collection (Eloquent's map() drops to base as
+     * soon as the items are no longer models) — so the signature below is
+     * the support one. Declaring it as the Eloquent collection made every
+     * call throw a TypeError, and the endpoint answered with a 500 — which
+     * the modal reads as "no results found".
+     *
+     * @return \Illuminate\Support\Collection<int, array>
      */
-    public function suggestions(array $validated): Collection
+    public function suggestions(array $validated): SupportCollection
     {
         $search     = trim($validated['search']);
         $supplierId = $validated['supplierId'] ?? null;

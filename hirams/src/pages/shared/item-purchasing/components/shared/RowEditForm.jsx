@@ -1,7 +1,14 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { Box, Typography, Divider } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { PhotoCameraOutlined, SyncOutlined } from "@mui/icons-material";
+import {
+  PhotoCameraOutlined,
+  SyncOutlined,
+  LockOutlined,
+  EditOutlined,
+  CloseRounded,
+} from "@mui/icons-material";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
 import FormGrid from "../../../../../components/ui/form/FormGrid.jsx";
 import ScanSerialNumberModal from "../../modal/ScanSerialNumberModal.jsx";
@@ -47,14 +54,23 @@ export default function RowEditForm({
   // The supplier's nickname — printed before the badge so the line reads
   // "VST  10 Unit/27 Unit".
   supplierName = "",
+  // The item already has an APPROVED inventory row — a JEV was raised for
+  // it, so the record can no longer be touched. The form locks and says so.
+  locked = false,
+  // The journal(s) that closed this line — [{ id, number }]. Their numbers
+  // are printed inside the lock notice and open that very JEV.
+  jevs = [],
 }) {
   const theme = useTheme();
+  const navigate = useNavigate();
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
-  const { slate, gray, blue, red } = base;
+  const { slate, gray, blue, red, amber, green } = base;
 
   // Which row's S/N are being scanned by camera (modal is local to this form).
   const [scanOpen, setScanOpen] = React.useState(false);
+  // The JEV notice can be dismissed — the line stays locked either way.
+  const [noticeClosed, setNoticeClosed] = React.useState(false);
 
   const isDeliver = mode === "deliver";
   const qtyLabel = isDeliver ? "Quantity to Deliver" : "Quantity to Receive";
@@ -93,24 +109,25 @@ export default function RowEditForm({
   const receiptMissing =
     isDeliver && isWhole && target > current && !(form.receiptNo || "").trim();
 
+  // An unchanged line is not an error — the Save button just stays disabled
+  // (see `canSave`), so there is nothing to tell the user about.
   const error = belowMin
     ? min > 0
       ? `Can't be lower than ${min} ${uom} — that quantity is already delivered.`
       : "Quantity can't be negative."
     : aboveMax
       ? `Can't be higher than ${max} ${uom}.`
-      : unchanged
-        ? `Nothing to save — this line already reads ${current} ${uom}.`
-        : tooManySerials
-          ? `A line can't hold more serial numbers than its quantity (${target}).`
-          : serialsOver
-            ? `You can only add serial numbers for the ${capSerials} extra unit(s) — remove the extra S/N.`
-            : receiptMissing
-              ? "Receipt No. is required"
-              : "";
+      : tooManySerials
+        ? `A line can't hold more serial numbers than its quantity (${target}).`
+        : serialsOver
+          ? `You can only add serial numbers for the ${capSerials} extra unit(s) — remove the extra S/N.`
+          : receiptMissing
+            ? "Receipt No. is required"
+            : "";
 
   const canSave =
     !saving &&
+    !locked &&
     isWhole &&
     !belowMin &&
     !aboveMax &&
@@ -168,6 +185,10 @@ export default function RowEditForm({
         .slice(0, Math.min(roomSerials, capSerials))
     : [];
 
+  // A locked line with no serial numbers has nothing to show in the S/N
+  // list — an empty "Serial Numbers (0 of max 5)" box is just noise.
+  const showSerialField = form.showSN && (!locked || serials.length > 0);
+
   return (
     <>
       <Divider sx={{ borderColor: slate.divider }} />
@@ -187,6 +208,7 @@ export default function RowEditForm({
               fontSize: "0.55rem",
               fontWeight: 700,
               color: gray.textPrimary,
+              textTransform: "uppercase",
               lineHeight: 1.4,
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -222,6 +244,112 @@ export default function RowEditForm({
         </Box>
       </Box>
 
+      {/* JEV NOTICE — a JEV was already raised for this item, so the record
+          is closed and every field is disabled. On a line with no JEV yet,
+          the same notice says editing is still open. Either way it can be
+          dismissed with the X. */}
+      {!noticeClosed && (
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 0.5,
+            px: 1,
+            py: 0.6,
+            mt: 0.5,
+            mb: 0.75,
+            borderRadius: "7px",
+            background: locked ? amber.warnBg : green.badgeBg,
+            border: `0.5px solid ${locked ? amber.warnBorder : green.paidBorder}`,
+          }}
+        >
+          {locked ? (
+            <LockOutlined sx={{ fontSize: "0.8rem", color: amber.warnText }} />
+          ) : (
+            <EditOutlined sx={{ fontSize: "0.8rem", color: green.badgeText }} />
+          )}
+          <Typography
+            // A DIV, not the default <p>: the JEV numbers inside are
+            // clickable boxes, and a <div> may not live inside a <p>.
+            component="div"
+            sx={{
+              flex: 1,
+              fontSize: "0.55rem",
+              fontWeight: 700,
+              color: locked ? amber.warnText : green.badgeText,
+              lineHeight: 1.2,
+            }}
+          >
+            {locked ? (
+              <>
+                This item already have a JEV
+                {jevs.length > 0 && (
+                  <>
+                    {" ("}
+                    {jevs.map((j, i) => (
+                      <Box key={j.id ?? j.number} component="span">
+                        {i > 0 && ", "}
+                        <Box
+                          component="span"
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/jev?id=${j.id}`);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              navigate(`/jev?id=${j.id}`);
+                            }
+                          }}
+                          title="Open this JEV"
+                          sx={{
+                            color: blue.text,
+                            cursor: "pointer",
+                            fontWeight: 700,
+                            "&:hover": { textDecoration: "underline" },
+                          }}
+                        >
+                          {j.number}
+                        </Box>
+                      </Box>
+                    ))}
+                    {")"}
+                  </>
+                )}
+                , cannot be edited.
+              </>
+            ) : (
+              "Editing is Available only for Item that still dont have JEV"
+            )}
+          </Typography>
+          <Box
+            component="button"
+            onClick={() => setNoticeClosed(true)}
+            title="Close this notice"
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 16,
+              height: 16,
+              flexShrink: 0,
+              border: "none",
+              background: "transparent",
+              color: locked ? amber.warnText : green.badgeText,
+              cursor: "pointer",
+              p: 0,
+              borderRadius: "4px",
+              "&:hover": { opacity: 0.7 },
+            }}
+          >
+            <CloseRounded sx={{ fontSize: "0.8rem" }} />
+          </Box>
+        </Box>
+      )}
+
       <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
         {/* Labels — laid out exactly like the input row below (same gap, the
             two flex-1 spacers land the labels on their own fields) */}
@@ -233,7 +361,7 @@ export default function RowEditForm({
           >
             {receiptLabel}
           </Typography>
-          <Box sx={{ width: SAVE_W, flexShrink: 0 }} />
+          {!locked && <Box sx={{ width: SAVE_W, flexShrink: 0 }} />}
         </Box>
 
         {/* Qty + S/N + Receipt No. + Save Changes — all in ONE row */}
@@ -244,11 +372,17 @@ export default function RowEditForm({
               type="number"
               value={form.qty}
               onChange={(e) => applyQty(e.target.value)}
+              disabled={locked}
               sx={{
                 ...inputSx,
                 border: belowMin || aboveMax ? `0.5px solid ${red.text}` : inputSx.border,
                 borderRight: "none",
                 borderRadius: "7px 0 0 7px",
+                ...(locked && {
+                  opacity: 0.55,
+                  cursor: "not-allowed",
+                  background: slate.mutedBg,
+                }),
               }}
             />
             <Box
@@ -280,6 +414,7 @@ export default function RowEditForm({
           <Box
             component="button"
             onClick={() => {
+              if (locked) return;
               const open = !form.showSN;
               const list = (form.serials || []).map(String);
               // Opening a delivery form tops the list up with the received
@@ -290,6 +425,7 @@ export default function RowEditForm({
                   : list;
               patch({ showSN: open, serials: next });
             }}
+            disabled={locked}
             title={
               form.showSN
                 ? "Hide serial numbers"
@@ -318,42 +454,51 @@ export default function RowEditForm({
             value={form.receiptNo}
             placeholder="e.g. RR-2025-0001"
             onChange={(e) => patch({ receiptNo: e.target.value })}
+            disabled={locked}
             sx={{
               ...inputSx,
               border: receiptMissing
                 ? `0.5px solid ${red.text}`
                 : inputSx.border,
+              ...(locked && {
+                opacity: 0.55,
+                cursor: "not-allowed",
+                background: slate.mutedBg,
+              }),
             }}
           />
 
-          {/* Save Changes — same row, right after the receipt field */}
-          <Box
-            component="button"
-            onClick={() => canSave && onSave?.()}
-            disabled={!canSave}
-            title={
-              canSave
-                ? `Save this ${isDeliver ? "delivery" : "receipt"} line`
-                : error || "Nothing to save"
-            }
-            sx={{
-              minWidth: SAVE_W,
-              height: 32,
-              px: 0.75,
-              flexShrink: 0,
-              fontSize: "0.6rem",
-              fontWeight: 700,
-              whiteSpace: "nowrap",
-              color: gray.textOnFill,
-              background: blue.textStrong,
-              border: `0.5px solid ${blue.border}`,
-              borderRadius: "7px",
-              cursor: "pointer",
-              "&:disabled": { opacity: 0.45, cursor: "not-allowed" },
-            }}
-          >
-            {saving ? "Saving…" : "Save Changes"}
-          </Box>
+          {/* Save Changes — same row, right after the receipt field. A locked
+              line can never be saved, so the button is not drawn at all. */}
+          {!locked && (
+            <Box
+              component="button"
+              onClick={() => canSave && onSave?.()}
+              disabled={!canSave}
+              title={
+                canSave
+                  ? `Save this ${isDeliver ? "delivery" : "receipt"} line`
+                  : error || undefined
+              }
+              sx={{
+                minWidth: SAVE_W,
+                height: 32,
+                px: 0.75,
+                flexShrink: 0,
+                fontSize: "0.6rem",
+                fontWeight: 700,
+                whiteSpace: "nowrap",
+                color: gray.textOnFill,
+                background: blue.textStrong,
+                border: `0.5px solid ${blue.border}`,
+                borderRadius: "7px",
+                cursor: "pointer",
+                "&:disabled": { opacity: 0.45, cursor: "not-allowed" },
+              }}
+            >
+              {saving ? "Saving…" : "Save Changes"}
+            </Box>
+          )}
         </Box>
 
         {error && (
@@ -370,7 +515,7 @@ export default function RowEditForm({
         )}
       </Box>
 
-      {form.showSN && (
+      {showSerialField && (
         <FormGrid
           fields={[
             {
@@ -380,6 +525,7 @@ export default function RowEditForm({
               }${capSerials > 0 ? ` — ${capSerials} new` : ""})`,
               type: "serialNumber",
               xs: 12,
+              disabled: locked,
               placeholder: "Scan or type S/N and press Enter...",
               // The list carries the S/N on record, so the cap is the line's
               // whole quantity — only units that come in may be added.
@@ -391,10 +537,12 @@ export default function RowEditForm({
                   ),
                   onClick: () => setScanOpen(true),
                   title:
-                    roomSerials > 0
-                      ? "Scan serial numbers with the camera"
-                      : "This line is full — raise the quantity first",
-                  disabled: roomSerials <= 0,
+                    locked
+                      ? "This item already has a JEV — it cannot be edited"
+                      : roomSerials > 0
+                        ? "Scan serial numbers with the camera"
+                        : "This line is full — raise the quantity first",
+                  disabled: locked || roomSerials <= 0,
                 },
                 // Sync fills only exists on the delivery side — the received
                 // list is what can still go out.
@@ -412,10 +560,12 @@ export default function RowEditForm({
                               ...syncableSerials,
                             ],
                           }),
-                        disabled: syncableSerials.length === 0,
-                        title: syncableSerials.length
-                          ? `Add ${syncableSerials.length} received serial number(s) not yet delivered`
-                          : "No received serial numbers left to add",
+                        disabled: locked || syncableSerials.length === 0,
+                        title: locked
+                          ? "This item already has a JEV — it cannot be edited"
+                          : syncableSerials.length
+                            ? `Add ${syncableSerials.length} received serial number(s) not yet delivered`
+                            : "No received serial numbers left to add",
                       },
                     ]
                   : []),

@@ -241,9 +241,31 @@ class PurchaseOrderService extends CrudService
         $po = $this->find((int) $validated['nPurchaseOrderId']);
         $po->strShippingDetails = $validated['strShippingDetails'];
         $po->cPaymentTerms      = $validated['cPaymentTerms'];
+        // The freight charge — null/empty means "none on this PO".
+        $po->dFreight           = isset($validated['dFreight']) && $validated['dFreight'] !== ''
+            ? (float) $validated['dFreight']
+            : null;
         $po->save();
 
         $this->broadcast('payment_updated', $po);
+
+        return $po;
+    }
+
+    /**
+     * The FREIGHT charge on the PO — the one field the Freight / EWT editor
+     * owns on the purchase order itself.
+     */
+    public function updateFreight(array $validated): PurchaseOrder
+    {
+        $po = $this->find((int) $validated['nPurchaseOrderId']);
+        // An empty field means "no freight on this PO" (null, not 0).
+        $po->dFreight = isset($validated['dFreight']) && $validated['dFreight'] !== ''
+            ? (float) $validated['dFreight']
+            : null;
+        $po->save();
+
+        $this->broadcast('updated', $po);
 
         return $po;
     }
@@ -286,6 +308,36 @@ class PurchaseOrderService extends CrudService
         $poOption->purchaseOption->setAttribute('nPendingReceivedQty',   $receivedRows->filter($isStatus('P'))->sum('nQuantity'));
         $poOption->purchaseOption->setAttribute('nApprovedDeliveredQty', abs($deliveredRows->filter($isStatus('A'))->sum('nQuantity')));
         $poOption->purchaseOption->setAttribute('nPendingDeliveredQty',  abs($deliveredRows->filter($isStatus('P'))->sum('nQuantity')));
+
+        // The journals that closed this line — an APPROVED inventory row is
+        // a row a JEV was already raised for, so its JEV is named on the
+        // (locked) edit notice. One list per direction: the receive form
+        // names the Received Purchases JEV, the deliver form the Delivered
+        // Items one.
+        $approvedReceived = $receivedRows->filter($isStatus('A'))->filter(fn($r) => $r->nJEVId != null);
+        $approvedDelivered = $deliveredRows->filter($isStatus('A'))->filter(fn($r) => $r->nJEVId != null);
+        $jevIds = $approvedReceived->pluck('nJEVId')
+            ->merge($approvedDelivered->pluck('nJEVId'))
+            ->filter()
+            ->unique()
+            ->values();
+        $jevNumbers = $jevIds->isNotEmpty()
+            ? Jev::whereIn('nJEVId', $jevIds)->pluck('strJEVNumber', 'nJEVId')
+            : collect();
+
+        $jevList = fn($rows) => $rows->pluck('nJEVId')
+            ->unique()
+            ->values()
+            ->map(fn($id) => [
+                'id' => $id,
+                'number' => (string) ($jevNumbers[$id] ?? ''),
+            ])
+            ->filter(fn($j) => $j['number'] !== '')
+            ->values()
+            ->all();
+
+        $poOption->purchaseOption->setAttribute('approvedReceivedJevs', $jevList($approvedReceived));
+        $poOption->purchaseOption->setAttribute('approvedDeliveredJevs', $jevList($approvedDelivered));
         $receivedSerials = $receivedRows->pluck('nInventoryId')->filter();
         $deliveredSerials = $deliveredRows->pluck('nInventoryId')->filter();
 
