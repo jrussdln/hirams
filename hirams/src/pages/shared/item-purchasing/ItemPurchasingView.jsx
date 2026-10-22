@@ -1,4 +1,4 @@
-import React, { Children, cloneElement, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useTheme } from "@mui/material/styles";
 import { Box, Typography, Collapse } from "@mui/material";
 import {
@@ -34,31 +34,47 @@ const useColors = (c) => ({
   emptyStateIcon: c.skeleton.soft,
 });
 
-function TimePeriodGroup({
+// One section of the single container: a header you click to fold its cards
+// away, and the cards themselves below it. The sections sit inside ONE
+// bordered box (see TimePeriodSections) — a divider separates them, not a
+// gap.
+function TimePeriodSection({
   period,
   count,
   children,
   defaultOpen = true,
   forceOpen,
-  cardsCollapsed,
+  sectionsExpanded,
+  isFirst,
+  c,
 }) {
-  const theme = useTheme();
-  const isDark = theme.palette.mode === "dark";
-  const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
-  const c = React.useMemo(() => useColors(base), [base]);
   const [open, setOpen] = useState(defaultOpen);
 
+  // Three things can open or close a section:
+  //   • a search — every section is forced open so the matches are visible
+  //   • Expand / Collapse All — opens or closes all of them at once
+  //   • the default: the first group open, the rest closed
   useEffect(() => {
-    if (forceOpen !== undefined) setOpen(forceOpen ? defaultOpen : false);
-  }, [forceOpen]);
+    if (forceOpen) {
+      setOpen(true);
+      return;
+    }
+    if (sectionsExpanded === true) {
+      setOpen(true);
+      return;
+    }
+    if (sectionsExpanded === false) {
+      setOpen(false);
+      return;
+    }
+    setOpen(defaultOpen);
+  }, [forceOpen, sectionsExpanded, defaultOpen]);
 
   return (
     <Box
       sx={{
-        mb: 0.75,
-        borderRadius: "7px",
-        border: `0.5px solid ${c.border}`,
-        overflow: "hidden",
+        // The divider BETWEEN sections — the container draws the outer edge.
+        borderTop: isFirst ? "none" : `0.5px solid ${c.borderFaint}`,
       }}
     >
       <Box
@@ -107,12 +123,41 @@ function TimePeriodGroup({
         )}
       </Box>
       <Collapse in={open}>
-        <Box sx={{ p: 0.75 }}>
-          {Children.map(children, (child) =>
-            child ? cloneElement(child, { collapsed: cardsCollapsed }) : child,
-          )}
-        </Box>
+        <Box sx={{ p: 0.75 }}>{children}</Box>
       </Collapse>
+    </Box>
+  );
+}
+
+// The ONE container every time-period section lives in. No gaps between the
+// sections — a divider line separates them, so the whole list reads as a
+// single accordion.
+function TimePeriodSections({ sections, sectionsExpanded, search, c }) {
+  if (!sections.length) return null;
+
+  return (
+    <Box
+      sx={{
+        borderRadius: "7px",
+        border: `0.5px solid ${c.border}`,
+        bgcolor: c.bgCard,
+        overflow: "hidden",
+      }}
+    >
+      {sections.map((s, i) => (
+        <TimePeriodSection
+          key={s.period}
+          period={s.period}
+          count={s.count}
+          defaultOpen={i === 0}
+          forceOpen={search.trim() ? true : undefined}
+          sectionsExpanded={sectionsExpanded}
+          isFirst={i === 0}
+          c={c}
+        >
+          {s.content}
+        </TimePeriodSection>
+      ))}
     </Box>
   );
 }
@@ -173,7 +218,8 @@ export default function ItemPurchasingView({
   search,
   setSearch,
   allCollapsed,
-  setAllCollapsed,
+  toggleAllCollapsed,
+  sectionsExpanded,
   vouchersByPO,
   currentUserId,
   itemPurchasingStatus,
@@ -304,26 +350,22 @@ export default function ItemPurchasingView({
     const renderedPeriods = TIME_PERIOD_ORDER.filter(
       (p) => (groupsByPeriod[p] || []).length > 0,
     );
+    const sections = renderedPeriods.map((period) => {
+      const groups = groupsByPeriod[period] || [];
+      return {
+        period,
+        count: groups.length,
+        content: cards(groups),
+      };
+    });
+
     return (
-      <Box>
-        {TIME_PERIOD_ORDER.map((period) => {
-          const groups = groupsByPeriod[period] || [];
-          if (!groups.length) return null;
-          const isFirstPeriod = period === renderedPeriods[0];
-          return (
-            <TimePeriodGroup
-              key={period}
-              period={period}
-              count={groups.length}
-              defaultOpen={isFirstPeriod}
-              forceOpen={search.trim() ? true : undefined}
-              cardsCollapsed={allCollapsed}
-            >
-              {cards(groups)}
-            </TimePeriodGroup>
-          );
-        })}
-      </Box>
+      <TimePeriodSections
+        sections={sections}
+        sectionsExpanded={sectionsExpanded}
+        search={search}
+        c={c}
+      />
     );
   };
 
@@ -331,26 +373,22 @@ export default function ItemPurchasingView({
     const renderedPeriods = TIME_PERIOD_ORDER.filter(
       (p) => (groupedByPeriod[p] || []).length > 0,
     );
+    const sections = renderedPeriods.map((period) => {
+      const pos = groupedByPeriod[period] || [];
+      return {
+        period,
+        count: pos.length,
+        content: renderTimePeriodCards(pos, sharedCardProps),
+      };
+    });
+
     return (
-      <Box>
-        {TIME_PERIOD_ORDER.map((period) => {
-          const pos = groupedByPeriod[period] || [];
-          if (!pos.length) return null;
-          const isFirstPeriod = period === renderedPeriods[0];
-          return (
-            <TimePeriodGroup
-              key={period}
-              period={period}
-              count={pos.length}
-              defaultOpen={isFirstPeriod}
-              forceOpen={search.trim() ? true : undefined}
-              cardsCollapsed={allCollapsed}
-            >
-              {renderTimePeriodCards(pos, sharedCardProps)}
-            </TimePeriodGroup>
-          );
-        })}
-      </Box>
+      <TimePeriodSections
+        sections={sections}
+        sectionsExpanded={sectionsExpanded}
+        search={search}
+        c={c}
+      />
     );
   };
 
@@ -377,7 +415,7 @@ export default function ItemPurchasingView({
           label={allCollapsed ? "Expand All" : "Collapse All"}
           icon={allCollapsed ? <UnfoldMore /> : <UnfoldLess />}
           actionColor="default"
-          onClick={() => setAllCollapsed((v) => !v)}
+          onClick={toggleAllCollapsed}
         />
       </Box>
       {itemsLoading ? (

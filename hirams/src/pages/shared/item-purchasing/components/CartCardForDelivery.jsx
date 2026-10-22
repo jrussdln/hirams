@@ -11,6 +11,7 @@ import {
 
 import InventoryAPI from "../../../../api/endpoints/inventory.api.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import { ewtOfOption, totalEWT } from "../../../../utils/helpers/calculateEWT.js";
 import {
   fmtDate,
   fmtPHP,
@@ -131,24 +132,34 @@ export default function CartCardForDelivery({
   }, [entries]);
 
   const allOptions = entries.map(({ opt }) => opt);
-  const hasAnyEWT = allOptions.some((o) => o.purchase_option?.dEWT > 0);
+  // The EWT is derived — see utils/helpers/calculateEWT.js
+  const hasAnyEWT = allOptions.some((o) => ewtOfOption(o) > 0);
 
   // ONE ROW PER REQUESTED ITEM: the same item split across two suppliers
   // (two purchase options, possibly two different POs) must show as ONE row
   // with the quantities summed — otherwise it appears twice.
   const itemRows = React.useMemo(() => {
     const byKey = new Map();
-    entries.forEach(({ opt }, i) => {
+    entries.forEach(({ opt, po }, i) => {
       const p = opt?.purchase_option;
       const tiId = p?.transaction_item?.nTransactionItemId;
       const key =
         tiId != null ? `ti-${tiId}` : `oi-${opt?.nPurchaseOrder_ItemId ?? i}`;
+      // The order(s) this row belongs to — a row is one item, but the item
+      // can be bought on more than one PO, so the numbers are collected.
+      const poNo = po?.strPurchaseOrderNo ?? "";
       const row = byKey.get(key);
       if (!row) {
-        byKey.set(key, { key, opt, parts: [p] });
+        byKey.set(key, {
+          key,
+          opt,
+          parts: [p],
+          poNos: poNo ? [poNo] : [],
+        });
         return;
       }
       row.parts.push(p);
+      if (poNo && !row.poNos.includes(poNo)) row.poNos.push(poNo);
       const mp = row.opt.purchase_option;
       row.opt = {
         ...row.opt,
@@ -276,10 +287,7 @@ export default function CartCardForDelivery({
         (o.purchase_option?.dUnitPrice || 0),
     0,
   );
-  const poEwtTotal = allOptions.reduce(
-    (s, o) => s + (Number(o.purchase_option?.dEWT) || 0),
-    0,
-  );
+  const poEwtTotal = totalEWT(allOptions);
   // Card totals for the tab being viewed — the same figures the rows carry
   // (each row is the item's options merged, so nothing is counted twice).
   const toDeliverTotal = itemRows.reduce(
@@ -662,6 +670,10 @@ export default function CartCardForDelivery({
                 totalCount={visibleRows.length}
                 colors={base}
                 tableLayout
+                // The card is one per TRANSACTION, so the row carries the
+                // order it belongs to — the one line that says which PO
+                // this item went out on.
+                poNumber={row.poNos.join(", ")}
                 onRowClick={() => openPO(firstPO)}
                 showRemove={false}
                 hasAnyEWT={hasAnyEWT}
@@ -671,7 +683,6 @@ export default function CartCardForDelivery({
                 arrivedStats={
                   poIsPaidRcvdDvrd ? statsForRow(row) : null
                 }
-                hideRowBadge
               />
             ))}
           </Box>

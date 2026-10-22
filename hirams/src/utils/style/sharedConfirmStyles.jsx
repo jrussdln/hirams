@@ -225,6 +225,30 @@ export const CART_CONFIRM_STYLES = {
     desc: "Cancelling the cart will void all items. This action cannot be undone.",
     confirmLabel: "Yes, Cancel Cart",
   },
+  // Cancelling a PURCHASE ORDER is not the same as cancelling a cart:
+  // whatever the order raised goes down with it. Which copy is used
+  // depends on the stage the order had reached.
+  cancel_po_cart: {
+    variant: "red",
+    Icon: CancelOutlined,
+    title: "Cancel this Purchase Order?",
+    desc: "The purchase order will be cancelled and its items voided. This action cannot be undone.",
+    confirmLabel: "Yes, Cancel PO",
+  },
+  cancel_po: {
+    variant: "red",
+    Icon: CancelOutlined,
+    title: "Cancel this Purchase Order?",
+    desc: "The purchase order will be cancelled. Any voucher raised for it and the JEV behind that voucher are cancelled too. This action cannot be undone.",
+    confirmLabel: "Yes, Cancel PO",
+  },
+  cancel_po_stock: {
+    variant: "red",
+    Icon: CancelOutlined,
+    title: "Cancel this Purchase Order?",
+    desc: "The purchase order will be cancelled. Any voucher raised for it, the JEV behind that voucher and the stock received under it are cancelled too. This action cannot be undone.",
+    confirmLabel: "Yes, Cancel PO",
+  },
   approve: {
     variant: "green",
     Icon: LockOutlined,

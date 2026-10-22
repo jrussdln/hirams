@@ -14,6 +14,11 @@ import DirectCostOptionAPI from "../../../../api/endpoints/direct-cost-option.ap
 import ExportAPI from "../../../../api/endpoints/export.api.js";
 import ExportSpinnerContent from "../../../../components/ui/content/ExportSpinnerContent.jsx";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import { totalEWT } from "../../../../utils/helpers/calculateEWT.js";
+import {
+  calculateItemTax,
+  purchaseTotalOf,
+} from "../../../../utils/helpers/calculateTax.js";
 
 const PESO_WIDTH = 16;
 const VALUE_WIDTH = 100;
@@ -576,29 +581,29 @@ function CostBreakdownModal({
         abcDivePercent: null,
       };
     let totalPurchases = 0,
-      totalSellingPrice = 0;
+      totalSellingPrice = 0,
+      totalTax = 0;
     items.forEach((item) => {
-      const includedTotal = item.purchaseOptions
-        .filter((opt) => opt.bIncluded)
-        .reduce(
-          (sum, opt) =>
-            sum + Number(opt.nQuantity || 0) * Number(opt.dUnitPrice || 0),
-          0,
-        );
+      const includedTotal = purchaseTotalOf(item.purchaseOptions);
       totalPurchases += includedTotal;
-      totalSellingPrice +=
-        Number(unitSellingPrices[item.id] || 0) * Number(item.qty || 0);
+      const selling = Number(unitSellingPrices[item.id] || 0);
+      totalSellingPrice += selling * Number(item.qty || 0);
+      // The tax of each item, worked out the same way as the pricing table
+      // (see utils/helpers/calculateTax.js) — so the two always agree.
+      totalTax += calculateItemTax({
+        unitSellingPrice: selling,
+        qty: item.qty,
+        purchaseTotal: includedTotal,
+      });
     });
-    const totalTax =
-      ((totalSellingPrice - totalPurchases) / 1.12) * (0.12 + 0.3);
+    totalTax = Math.round(totalTax * 100) / 100;
     // round only once, here, instead of summing per-item taxes
     const budget = totalSellingPrice;
+    // The EWT is derived per option — see utils/helpers/calculateEWT.js
     const ewt = items.reduce(
       (sum, item) =>
         sum +
-        item.purchaseOptions
-          .filter((opt) => opt.bIncluded)
-          .reduce((s, opt) => s + Number(opt.dEWT || 0), 0),
+        totalEWT(item.purchaseOptions.filter((opt) => opt.bIncluded)),
       0,
     );
     let retention = 0,

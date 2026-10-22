@@ -28,11 +28,10 @@ class PurchaseOrderOption extends Model
         return $this->belongsTo(PurchaseOptions::class, 'nPurchaseItemId', 'nPurchaseItemId');
     }
 
-    public function latestHistory()
-    {
-        return $this->hasOne(PurchaseItemHistory::class, 'nPurchaseOrder_ItemId', 'nPurchaseOrder_ItemId')
-            ->latestOfMany('dtOccur');
-    }
+    // NOTE: there is no `latestHistory()` relation here on purpose. The
+    // PurchaseItemHistory model was removed — the history is read from the
+    // `tblpurchaseitemhistories` table by
+    // PurchaseOptionsService::latestHistories() (PurchaseOrderOptionsController).
     public function purchaseOrder()
     {
         return $this->belongsTo(PurchaseOrder::class, 'nPurchaseOrderId', 'nPurchaseOrderId');

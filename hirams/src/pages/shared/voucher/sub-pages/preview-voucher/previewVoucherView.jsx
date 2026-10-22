@@ -231,7 +231,13 @@ function VoucherItemsTable({ items }) {
               <EditableCell
                 id={`item-${rowId}-particular`}
                 colSpan={3}
-                style={{ ...cellSx, backgroundColor: DOC.rowGray }}
+                style={{
+                  ...cellSx,
+                  // The particulars read a little heavier than the rest of
+                  // the row - they are the point of the line.
+                  fontWeight: 600,
+                  backgroundColor: DOC.rowGray,
+                }}
                 align="left"
                 initialValue={item.particular}
               />
@@ -355,10 +361,23 @@ function VoucherFooterTable({
     "ewtDiscountOverride" in values
       ? toNum(values.ewtDiscountOverride)
       : ewtDiscount;
+  // FREIGHT - a typed value wins over the original, same as the others.
+  const freightVal =
+    "freightOverride" in values
+      ? toNum(values.freightOverride)
+      : Number(freight || 0);
   // AMOUNT PAYABLE = SUB-TOTAL + FREIGHT − Less: EWT/DISC, recomputed after
   // any edit. (The cell stays editable — its own typed value wins until
   // reset.)
-  const payableVal = subtotalVal + Number(freight || 0) - ewtVal;
+  const payableVal = subtotalVal + freightVal - ewtVal;
+
+  // An empty FREIGHT or a zero EWT has nothing to show, so its row is
+  // dropped entirely. When BOTH are gone there is nothing left to break
+  // down: the SUB-TOTAL and the three-cell TOTAL row go away too, and
+  // only the full-width AMOUNT PAYABLE row is left.
+  const showFreightRow = freightVal !== 0;
+  const showEwtRow = ewtVal !== 0;
+  const showTotalCells = showFreightRow || showEwtRow;
 
   const paidTerm = String(cPaymentTerms ?? "");
   const isOnline = !!onlineKey && paidTerm === String(onlineKey);
@@ -372,109 +391,151 @@ function VoucherFooterTable({
     <table style={TABLE_STYLE}>
       {COLGROUP}
       <tbody>
-        <tr>
-          <td
-            colSpan={7}
-            style={{
-              ...cellSx,
-              fontWeight: 500,
-              textAlign: "right",
-              fontSize: "0.6rem",
-              fontStyle: "italic",
-            }}
-          >
-            SUB-TOTAL
-          </td>
-          <EditableCell
-            id="subtotalOverride"
-            colSpan={2}
-            style={{ ...cellSx, textAlign: "right" }}
-            align="right"
-            initialValue={subtotalVal}
-            formatDisplay={(v) => fmtPHP(toNum(v))}
-          />
-        </tr>
-        <tr>
-          <td
-            colSpan={7}
-            style={{
-              ...cellSx,
-              fontWeight: 500,
-              textAlign: "right",
-              fontSize: "0.6rem",
-              fontStyle: "italic",
-            }}
-          >
-            FREIGHT
-          </td>
-          <EditableCell
-            id="freightOverride"
-            colSpan={2}
-            style={{ ...cellSx, textAlign: "right" }}
-            align="right"
-            initialValue={Number(freight || 0)}
-            formatDisplay={(v) => fmtPHP(toNum(v))}
-          />
-        </tr>
-        <tr>
-          <td
-            colSpan={7}
-            style={{
-              ...cellSx,
-              fontWeight: 500,
-              textAlign: "right",
-              fontSize: "0.6rem",
-              fontStyle: "italic",
-            }}
-          >
-            Less: EWT/DISC
-          </td>
-          <EditableCell
-            id="ewtDiscountOverride"
-            colSpan={2}
-            style={{ ...cellSx, textAlign: "right" }}
-            align="right"
-            initialValue={ewtVal}
-            formatDisplay={(v) => fmtPHP(toNum(v))}
-          />
-        </tr>
-        <tr>
-          <td
-            colSpan={5}
-            style={{
-              ...cellSx,
-              backgroundColor: DOC.fillBg,
-              fontWeight: 700,
-              textAlign: "center",
-            }}
-          >
-            TOTAL
-          </td>
-          <td
-            colSpan={2}
-            style={{
-              ...cellSx,
-              backgroundColor: DOC.fillBg,
-              fontWeight: 700,
-              textAlign: "right",
-            }}
-          >
-            AMOUNT PAYABLE
-          </td>
-          <EditableCell
-            id="payableOverride"
-            colSpan={2}
-            style={{
-              ...cellSx,
-              backgroundColor: DOC.fillBg,
-              fontWeight: 700,
-              textAlign: "right",
-            }}
-            align="right"
-            initialValue={payableVal}
-            formatDisplay={(v) => fmtPHP(toNum(v))}
-          />
-        </tr>
+        {/* SUB-TOTAL - only when there is a FREIGHT or an EWT row under
+            it; with neither, the AMOUNT PAYABLE row stands alone. */}
+        {showTotalCells && (
+          <tr>
+            <td
+              colSpan={7}
+              style={{
+                ...cellSx,
+                fontWeight: 500,
+                textAlign: "right",
+                fontSize: "0.6rem",
+                fontStyle: "italic",
+              }}
+            >
+              SUB-TOTAL
+            </td>
+            <EditableCell
+              id="subtotalOverride"
+              colSpan={2}
+              style={{ ...cellSx, textAlign: "right" }}
+              align="right"
+              initialValue={subtotalVal}
+              formatDisplay={(v) => fmtPHP(toNum(v))}
+            />
+          </tr>
+        )}
+        {/* FREIGHT - only when there is freight to show */}
+        {showFreightRow && (
+          <tr>
+            <td
+              colSpan={7}
+              style={{
+                ...cellSx,
+                fontWeight: 500,
+                textAlign: "right",
+                fontSize: "0.6rem",
+                fontStyle: "italic",
+              }}
+            >
+              FREIGHT
+            </td>
+            <EditableCell
+              id="freightOverride"
+              colSpan={2}
+              style={{ ...cellSx, textAlign: "right" }}
+              align="right"
+              initialValue={freightVal}
+              formatDisplay={(v) => fmtPHP(toNum(v))}
+            />
+          </tr>
+        )}
+        {/* Less: EWT/DISC - only when there is an EWT to show */}
+        {showEwtRow && (
+          <tr>
+            <td
+              colSpan={7}
+              style={{
+                ...cellSx,
+                fontWeight: 500,
+                textAlign: "right",
+                fontSize: "0.6rem",
+                fontStyle: "italic",
+              }}
+            >
+              Less: EWT/DISC
+            </td>
+            <EditableCell
+              id="ewtDiscountOverride"
+              colSpan={2}
+              style={{ ...cellSx, textAlign: "right" }}
+              align="right"
+              initialValue={ewtVal}
+              formatDisplay={(v) => fmtPHP(toNum(v))}
+            />
+          </tr>
+        )}
+        {/* AMOUNT PAYABLE - the three-cell TOTAL layout only makes sense
+            when a FREIGHT or an EWT row is above it to balance against;
+            otherwise it is one full-width row. */}
+        {showTotalCells ? (
+          <tr>
+            <td
+              colSpan={5}
+              style={{
+                ...cellSx,
+                backgroundColor: DOC.fillBg,
+                fontWeight: 700,
+                textAlign: "center",
+              }}
+            >
+              TOTAL
+            </td>
+            <td
+              colSpan={2}
+              style={{
+                ...cellSx,
+                backgroundColor: DOC.fillBg,
+                fontWeight: 700,
+                textAlign: "right",
+              }}
+            >
+              AMOUNT PAYABLE
+            </td>
+            <EditableCell
+              id="payableOverride"
+              colSpan={2}
+              style={{
+                ...cellSx,
+                backgroundColor: DOC.fillBg,
+                fontWeight: 700,
+                textAlign: "right",
+              }}
+              align="right"
+              initialValue={payableVal}
+              formatDisplay={(v) => fmtPHP(toNum(v))}
+            />
+          </tr>
+        ) : (
+          <tr>
+            <td
+              colSpan={7}
+              style={{
+                ...cellSx,
+                backgroundColor: DOC.fillBg,
+                fontWeight: 700,
+                textAlign: "right",
+              }}
+            >
+              AMOUNT PAYABLE
+            </td>
+            <EditableCell
+              id="payableOverride"
+              colSpan={2}
+              style={{
+                ...cellSx,
+                backgroundColor: DOC.fillBg,
+                fontWeight: 700,
+                textAlign: "right",
+              }}
+              align="right"
+              initialValue={payableVal}
+              formatDisplay={(v) => fmtPHP(toNum(v))}
+            />
+          </tr>
+        )}
         {/* spacer row */}
         <tr>
           <td

@@ -131,8 +131,8 @@ export default function VoucherUpdateView() {
   const c = useMemo(() => useColors(base), [base]);
   // Dismiss is remembered per message: a new balance figure re-shows it.
   const [dismissedBalanceMsg, setDismissedBalanceMsg] = useState(null);
-  // The paid banner can be dismissed for good.
-  const [dismissedPaidBanner, setDismissedPaidBanner] = useState(false);
+  // The voucher's headline banner can be dismissed for good.
+  const [dismissedVoucherBanner, setDismissedVoucherBanner] = useState(false);
 
   const { voucher, loading, handleBack, confirmLoading, saving } = vu;
   const goBack = handleBack;
@@ -219,7 +219,6 @@ export default function VoucherUpdateView() {
     jevPendingKey,
     jevCancelledKey,
     canShowPrintButtons,
-    getAnyOptionArrived,
     payeeName,
     company,
   } = vu;
@@ -237,6 +236,9 @@ export default function VoucherUpdateView() {
     !isMarkedPaid &&
     (isFinanceOfficer || isManagement);
   const showMarkUnpaid = showFooterPrint && isEligibleForUnpaid;
+  // Only the people who can settle a voucher may call it off — the same
+  // people who can mark it as paid.
+  const canCancelVoucher = isFinanceOfficer || isManagement;
   const isClosedOrPaid =
     String(voucher.cStatus) === String(voucherClosedKey) ||
     String(voucher.cStatus) === String(voucherPaidKey);
@@ -345,13 +347,18 @@ export default function VoucherUpdateView() {
     >
       {String(voucher.cStatus) === String(voucherActiveKey) && (
         <>
-          <BaseButton
-            label="Cancel"
-            icon={icons.cancel}
-            onClick={() => setConfirmAction("cancel")}
-            actionColor="delete"
-            disabled={confirmLoading || saving}
-          />
+          {/* Cancelling a voucher whose items already arrived is not
+              offered at all — the goods are in hand and the receipts are
+              posted. */}
+          {!hasArrivedItems && canCancelVoucher && (
+            <BaseButton
+              label="Cancel"
+              icon={icons.cancel}
+              onClick={() => setConfirmAction("cancel")}
+              actionColor="delete"
+              disabled={confirmLoading || saving}
+            />
+          )}
           <BaseButton
             label="Close"
             icon={icons.close}
@@ -363,13 +370,15 @@ export default function VoucherUpdateView() {
       )}
       {isClosedOrPaid && (
         <>
-          <BaseButton
-            label="Cancel"
-            icon={icons.cancel}
-            onClick={() => setConfirmAction("cancel")}
-            actionColor="delete"
-            disabled={confirmLoading || saving}
-          />
+          {!hasArrivedItems && canCancelVoucher && (
+            <BaseButton
+              label="Cancel"
+              icon={icons.cancel}
+              onClick={() => setConfirmAction("cancel")}
+              actionColor="delete"
+              disabled={confirmLoading || saving}
+            />
+          )}
 
           {!isMarkedPaid &&
             String(voucher.cStatus) === String(voucherClosedKey) &&
@@ -461,18 +470,15 @@ export default function VoucherUpdateView() {
           />
           {/* Preview Cheque moved out of the footer — it now sits on the Fund
               account line inside the JEV panel (see JevViewPanel). */}
-          {showMarkUnpaid && (
+          {/* Marking a voucher unpaid pulls the stock back out, so it is not
+              offered once the items have arrived. */}
+          {showMarkUnpaid && !hasArrivedItems && (
             <BaseButton
               label="Mark as Unpaid"
               icon={<RemoveCircleOutline sx={{ fontSize: "1rem" }} />}
               onClick={() => setConfirmAction("unpaid")}
               actionColor="cancel"
-              disabled={confirmLoading || saving || hasArrivedItems}
-              tooltip={
-                hasArrivedItems
-                  ? "These Items already arrived and received."
-                  : ""
-              }
+              disabled={confirmLoading || saving}
             />
           )}
           {showMarkPaid && (
@@ -496,15 +502,54 @@ export default function VoucherUpdateView() {
     </Box>
   );
 
+  // ── The voucher's headline banner ────────────────────────────────────
+  // ONE banner, two looks:
+  //   • green — the voucher was paid successfully
+  //   • amber — the arrival rule blocks Cancel / Mark as Unpaid, so say
+  //     why the buttons are not there
   // The supplier and the DV number now ride in each PO row (see
-  // PORowPanel), so the card header is gone. What is left is the green
-  // banner that says the voucher was paid — the JEV balance banner's
-  // shape, in green.
-  const showPaidBanner =
-    String(voucher.cStatus) === String(voucherPaidKey) &&
-    isMarkedPaid &&
-    !dismissedPaidBanner;
-  const VoucherHeader = showPaidBanner ? (
+  // PORowPanel), so the card header is gone — this banner is what is left.
+  const voucherBlocked = hasArrivedItems && !isCancelled;
+  const bannerTone = voucherBlocked
+    ? "blocked"
+    : String(voucher.cStatus) === String(voucherPaidKey) && isMarkedPaid
+      ? "paid"
+      : null;
+
+  const BANNER_TONES = {
+    paid: {
+      bg: c.green.bg,
+      border: c.green.border,
+      text: c.green.text,
+      Icon: CheckCircleOutline,
+      message: (
+        <>
+          <strong>This voucher is paid successfully.</strong>
+        </>
+      ),
+    },
+    blocked: {
+      bg: c.amber.warnBg,
+      border: c.amber.warnBorder,
+      text: c.amber.warnText,
+      Icon: WarningAmberOutlined,
+      message: (
+        <>
+          <strong>
+            This voucher cannot be cancelled or marked as unpaid.
+          </strong>{" "}
+          Some of the items on its Purchase Order already arrived and
+          received, so the receipts and the journal behind them are already
+          posted.
+        </>
+      ),
+    },
+  };
+
+  const tone = bannerTone ? BANNER_TONES[bannerTone] : null;
+  const BannerIcon = tone?.Icon;
+
+  const VoucherHeader = tone && !dismissedVoucherBanner ? (
     <Box
       sx={{
         position: "relative",
@@ -516,26 +561,26 @@ export default function VoucherUpdateView() {
         px: 2,
         py: 0.75,
         borderRadius: "8px",
-        bgcolor: c.green.bg,
-        border: `1px dashed ${c.green.border}`,
+        bgcolor: tone.bg,
+        border: `1px dashed ${tone.border}`,
       }}
     >
-      <CheckCircleOutline
-        sx={{ fontSize: "1rem", color: c.green.text, flexShrink: 0 }}
+      <BannerIcon
+        sx={{ fontSize: "1rem", color: tone.text, flexShrink: 0 }}
       />
       <Box
         sx={{
           fontSize: "0.72rem",
-          color: c.green.text,
+          color: tone.text,
           lineHeight: 1.4,
           pr: 3,
         }}
       >
-        <strong>This voucher is paid successfully.</strong>
+        {tone.message}
       </Box>
       <Box
         component="button"
-        onClick={() => setDismissedPaidBanner(true)}
+        onClick={() => setDismissedVoucherBanner(true)}
         aria-label="Dismiss banner"
         sx={{
           position: "absolute",
@@ -547,7 +592,7 @@ export default function VoucherUpdateView() {
           border: "none",
           background: "transparent",
           cursor: "pointer",
-          color: c.green.text,
+          color: tone.text,
         }}
       >
         <CloseOutlined sx={{ fontSize: "0.9rem" }} />

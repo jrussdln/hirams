@@ -7,12 +7,15 @@ import {
 } from "@mui/icons-material";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer.jsx";
 import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
+import EwtTypeField from "../../../../components/ui/form/EwtTypeField.jsx";
 import PurchaseOrderAPI from "../../../../api/endpoints/purchase-order.api.js";
 import PurchaseOptionAPI from "../../../../api/endpoints/purchase-option.api.js";
 import { fmtPHP } from "../../../../utils/formatters/formatter.js";
+import { ewtOfOption } from "../../../../utils/helpers/calculateEWT.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import useMapping from "../../../../hooks/useMapping.js";
 
-const useColors = (c) => ({
+const buildColors = (c) => ({
   primary: c.green.paid,
   primaryDark: c.green.textDark,
   hoverBg: c.green.badgeBg,
@@ -47,14 +50,17 @@ export default function FreightEWTUpdateModal({
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
-  const c = React.useMemo(() => useColors(base), [base]);
+  const c = React.useMemo(() => buildColors(base), [base]);
+  const { ewtBypassType } = useMapping();
 
   // Each card edits on its own.
   const [editingFreight, setEditingFreight] = useState(false);
   const [editingEwt, setEditingEwt] = useState(false);
   const [freight, setFreight] = useState("");
-  // nPurchaseItemId -> the EWT on that line.
+  // nPurchaseItemId -> the EWT on that line (the derived amount).
   const [ewtValues, setEwtValues] = useState({});
+  // nPurchaseItemId -> the EWT TYPE of that line ("" = Default, A, B, C).
+  const [ewtTypes, setEwtTypes] = useState({});
   const [saving, setSaving] = useState(false);
   // The EWT sync - the line it is running for.
   const [syncingId, setSyncingId] = useState(null);
@@ -79,12 +85,16 @@ export default function FreightEWTUpdateModal({
       po?.dFreight != null && po?.dFreight !== "" ? String(po.dFreight) : "",
     );
     const map = {};
+    const types = {};
     (options || []).forEach((opt) => {
       const p = opt?.purchase_option;
       if (!p?.nPurchaseItemId) return;
-      map[p.nPurchaseItemId] = p.dEWT != null ? String(p.dEWT) : "";
+      // The EWT is derived — the value comes from the helper, not a column.
+      map[p.nPurchaseItemId] = String(ewtOfOption(p));
+      types[p.nPurchaseItemId] = p.cEWTType || "";
     });
     setEwtValues(map);
+    setEwtTypes(types);
   }, [open, po, options]);
 
   const poId = po?.nPurchaseOrderId;
@@ -93,9 +103,16 @@ export default function FreightEWTUpdateModal({
   const ewtLines = (options || [])
     .map((opt) => opt?.purchase_option)
     .filter((p) => p?.nPurchaseItemId);
-  // The EWT the PO carries - the sum of the EWT on its lines.
+  // The EWT the PO carries - the sum of the EWT on its lines. The amount
+  // is DERIVED (see utils/helpers/calculateEWT.js), so the lines' own
+  // values are used; while the editor is open the previewed amounts win
+  // (they already include a type the user just picked).
   const ewtTotal = ewtLines.reduce(
-    (sum, p) => sum + (Number(p.dEWT) || 0),
+    (sum, p) =>
+      sum +
+      (ewtValues[p.nPurchaseItemId] !== undefined
+        ? Number(ewtValues[p.nPurchaseItemId]) || 0
+        : ewtOfOption(p)),
     0,
   );
 
@@ -110,15 +127,16 @@ export default function FreightEWTUpdateModal({
         dFreight: freight === "" ? null : Number(freight),
       });
 
-      // The EWT lives on the lines - only the ones that changed are
-      // written, so a line nobody touched keeps its own value.
+      // The EWT lives on the lines - but the amount itself is DERIVED from
+      // the line's EWT type, so only the TYPE is written. Only the lines
+      // whose type changed are touched.
       await Promise.all(
         ewtLines.map(async (p) => {
-          const next = ewtValues[p.nPurchaseItemId] ?? "";
-          const current = p.dEWT != null ? String(p.dEWT) : "";
+          const next = ewtTypes[p.nPurchaseItemId] ?? "";
+          const current = p.cEWTType || "";
           if (next === current) return;
           await PurchaseOptionAPI.updateOption(p.nPurchaseItemId, {
-            ewt: next === "" ? 0 : Number(next),
+            cEWTType: next === "" ? null : next,
           });
         }),
       );
@@ -147,6 +165,8 @@ export default function FreightEWTUpdateModal({
         unitPrice: p.dUnitPrice,
         // 'G' goods (1%) / 'S' service (2%) - the line's own item type.
         cItemType: p.transaction_item?.transaction?.cItemType ?? "G",
+        // The line's own EWT type - the bypass wins over the default.
+        cEWTType: ewtTypes[p.nPurchaseItemId] || null,
       });
       setEwtValues((prev) => ({
         ...prev,
@@ -154,6 +174,30 @@ export default function FreightEWTUpdateModal({
       }));
     } catch (err) {
       console.error("Failed to sync the EWT:", err);
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
+  // The type was picked on a line: remember it and re-derive that line's
+  // amount with the new formula.
+  const handleEwtTypeChange = async (p, type) => {
+    setEwtTypes((prev) => ({ ...prev, [p.nPurchaseItemId]: type }));
+    setSyncingId(p.nPurchaseItemId);
+    try {
+      const res = await PurchaseOptionAPI.calculateEWT({
+        nSupplierId: p.nSupplierId,
+        quantity: p.nQuantity,
+        unitPrice: p.dUnitPrice,
+        cItemType: p.transaction_item?.transaction?.cItemType ?? "G",
+        cEWTType: type || null,
+      });
+      setEwtValues((prev) => ({
+        ...prev,
+        [p.nPurchaseItemId]: String(res?.calculatedEWT ?? ""),
+      }));
+    } catch (err) {
+      console.error("Failed to re-derive the EWT:", err);
     } finally {
       setSyncingId(null);
     }
@@ -356,7 +400,12 @@ export default function FreightEWTUpdateModal({
                     This purchase order has no items yet.
                   </Typography>
                 ) : (
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  /* The lines - the EWT field of every one of them, each
+                     with its own Sync button on the right. The gap is
+                     wide enough for the field's floating label to sit
+                     above its own border without crowding the line
+                     above it. */
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
                     {ewtLines.map((p) => (
                       <Box
                         key={p.nPurchaseItemId}
@@ -367,36 +416,24 @@ export default function FreightEWTUpdateModal({
                         }}
                       >
                         <Box sx={{ flex: 1, minWidth: 0, px: 1 }}>
-                          <FormGrid
-                            fields={[
-                              {
-                                name: `ewt-${p.nPurchaseItemId}`,
-                                label: [p.strBrand, p.strModel]
-                                  .filter(Boolean)
-                                  .join(" \u00b7 "),
-                                type: "peso",
-                                xs: 12,
-                                placeholder: "0.00",
-                                sx: {
-                                  "& .MuiInputBase-root": {
-                                    backgroundColor: c.inputBg,
-                                    borderRadius: 2,
-                                    fontSize: "0.75rem",
-                                  },
-                                },
-                              },
-                            ]}
-                            formData={{
-                              [`ewt-${p.nPurchaseItemId}`]:
-                                ewtValues[p.nPurchaseItemId] ?? "",
-                            }}
-                            handleChange={(e) =>
-                              setEwtValues((prev) => ({
-                                ...prev,
-                                [p.nPurchaseItemId]: e.target.value,
-                              }))
+                          {/* THE LINE - the EWT amount is derived from the
+                              line's EWT type, so the field shows the amount
+                              and lets the user pick the type. */}
+                          <EwtTypeField
+                            compact
+                            label={[p.strBrand, p.strModel]
+                              .filter(Boolean)
+                              .join(" \u00b7 ")}
+                            value={ewtTypes[p.nPurchaseItemId] ?? ""}
+                            amount={
+                              ewtValues[p.nPurchaseItemId] === undefined ||
+                              ewtValues[p.nPurchaseItemId] === ""
+                                ? null
+                                : Number(ewtValues[p.nPurchaseItemId])
                             }
-                            errors={{}}
+                            loading={syncingId === p.nPurchaseItemId}
+                            labels={ewtBypassType}
+                            onChange={(type) => handleEwtTypeChange(p, type)}
                           />
                         </Box>
 
@@ -407,7 +444,9 @@ export default function FreightEWTUpdateModal({
                           icon: <SyncOutlined sx={{ fontSize: "0.9rem" }} />,
                           onClick: () => handleSyncEwt(p),
                           disabled: syncingId === p.nPurchaseItemId,
-                          // The field's own height (MUI's small input).
+                          // The field's own height - the EWT field is a
+                          // standard small TextField (40px), so the button
+                          // lines up with it exactly.
                           height: 40,
                           title:
                             syncingId === p.nPurchaseItemId

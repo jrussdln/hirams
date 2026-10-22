@@ -79,6 +79,12 @@ export default function useItemPurchasing() {
   const [purchaseOrders, setPurchaseOrders] = useState([]);
   const [search, setSearch] = useState("");
   const [allCollapsed, setAllCollapsed] = useState(true);
+  // The time-period sections (Today / This Week / …):
+  //   null → the default: the first group is open, the rest are closed
+  //   true → every group is open
+  //   false → every group is closed
+  // The Expand / Collapse All button drives this together with the cards.
+  const [sectionsExpanded, setSectionsExpanded] = useState(null);
   const [vouchersByPO, setVouchersByPO] = useState({});
   const [aoGmDirectory, setAoGmDirectory] = useState({
     checkByOtherAOName: "—",
@@ -486,6 +492,16 @@ export default function useItemPurchasing() {
     navigate(`/item-purchasing-update?id=${po.nPurchaseOrderId}${status}`);
   };
 
+  // Expand All / Collapse All — the CARDS and the time-period SECTIONS move
+  // together, so one press folds the whole list away (or opens it up).
+  const toggleAllCollapsed = useCallback(() => {
+    // allCollapsed === true means "collapsed" right now, so this press
+    // EXPANDS.
+    const expanding = allCollapsed;
+    setAllCollapsed(!expanding);
+    setSectionsExpanded(expanding);
+  }, [allCollapsed]);
+
   return {
     itemsLoading,
     purchaseOrders,
@@ -495,6 +511,8 @@ export default function useItemPurchasing() {
     setSearch,
     allCollapsed,
     setAllCollapsed,
+    toggleAllCollapsed,
+    sectionsExpanded,
     vouchersByPO,
     aoGmDirectory,
     currentUserId,

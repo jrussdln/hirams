@@ -1,5 +1,12 @@
 import React, { useState, useMemo } from "react";
-import { Box, Typography, IconButton, Paper, useTheme } from "@mui/material";
+import {
+  Box,
+  Typography,
+  IconButton,
+  Paper,
+  useTheme,
+  Tooltip,
+} from "@mui/material";
 import {
   ExpandLess,
   ExpandMore,
@@ -19,6 +26,7 @@ import { TransactionItemsTableSkeleton } from "./Skeleton";
 import CollectionPaymentDetails from "../../collection/components/CollectionPaymentDetails";
 import MiniBaseButton from "../../../../components/ui/form/MiniBaseButton";
 import useKeysLabels from "../../../../hooks/useKeysLabels";
+import useMapping from "../../../../hooks/useMapping";
 import {
   getOptionStep,
   MAX_STEP,
@@ -37,13 +45,6 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useNavigate } from "react-router-dom";
-import {
-  Business,
-  MonetizationOnOutlined,
-  ReceiptLongOutlined,
-  EventOutlined,
-  CalendarTodayOutlined,
-} from "@mui/icons-material";
 import ContentHeaderStructure from "../../../../components/ui/structure/ContentHeaderStructure";
 import CardStructure from "../../../../components/ui/structure/CardStructure";
 import {
@@ -53,6 +54,10 @@ import {
 } from "../../../../utils/formatters/formatter";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import ProgressBar from "../../../../components/ui/form/ProgressBar";
+import {
+  NO_TRANSACTION_ABC,
+  OPEN_DATE,
+} from "../../../../constants/tableDataFallbacks";
 // ─────────────────────────────────────────────────────────────────
 // INLINE COLOR MAP — per-file useColors pattern (PROMPT 1)
 // ─────────────────────────────────────────────────────────────────
@@ -476,6 +481,31 @@ function TransactionItemsTable({
   const colors = useMemo(() => useColors(c), [c]);
   const navigate = useNavigate();
   const isPurchase = mode === "purchase";
+
+  // ── Assigned Account Officer (badge beside the transaction code) ─────────
+  const aoUser = transaction?.user;
+  const aoNickName = (
+    aoUser?.strNickName ||
+    transaction?.aoName ||
+    ""
+  )
+    .toString()
+    .trim();
+  const aoFullName = (
+    aoUser?.strFName ||
+    aoUser?.strLName ||
+    aoNickName ||
+    ""
+  )
+    .toString()
+    .trim();
+
+  // ── Client label — nickname only ("6105D") ───────────────────────────────
+  const clientLabel = (
+    transaction?.client?.strClientNickName ||
+    transaction?.clientName ||
+    ""
+  ).trim();
   const {
     cartKey,
     forApprovalKey,
@@ -486,6 +516,16 @@ function TransactionItemsTable({
     cancelledPOKey,
     removedFromCartKey,
   } = useKeysLabels();
+  // The EWT TYPES (the per-line bypass of the default EWT formula) — the
+  // rows print the type under the EWT amount.
+  const { ewtBypassType, unitPriceStatus } = useMapping();
+
+  // The letter that means "Pending" in the purchase price status — a
+  // price request that does not count yet. The option rows need it.
+  const pendingStatusLetter =
+    Object.entries(unitPriceStatus || {}).find(
+      ([, label]) => label === "Pending",
+    )?.[0] ?? "P";
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -554,9 +594,6 @@ function TransactionItemsTable({
           minWidth: 0,
         }}
       >
-        <Inventory2Outlined
-          sx={{ fontSize: "1rem", color: colors.textSecondary, flexShrink: 0 }}
-        />
         <Typography
           fontWeight={500}
           sx={{
@@ -565,7 +602,6 @@ function TransactionItemsTable({
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            ml: 1,
             flexGrow: 1,
           }}
         >
@@ -1321,20 +1357,19 @@ function TransactionItemsTable({
                 {(isPurchase
                   ? [
                       ["Supplier", 2],
-                      ["Brand | Model", 2],
+                      ["Brand/Model", 2],
                       ["Quantity", 1],
                       ["Unit Price", 2],
-                      ["Price Updated", 1.5],
                       ["Total", 2],
+                      ["EWT", 1.5],
                     ]
                   : [
                       ["Supplier", 2.5],
-                      ["Brand | Model", 2],
+                      ["Brand/Model", 2],
                       ["Quantity", 1],
                       ["Unit Price", 1.5],
-                      ["Price Updated", 1.5],
-                      ["EWT", 1.5],
                       ["Total", 1.5],
+                      ["EWT", 1.5],
                     ]
                 ).map(([h, flex]) => (
                   <Box key={h} sx={{ flex, textAlign: "center" }}>
@@ -1414,6 +1449,8 @@ function TransactionItemsTable({
                       key={option.id}
                       mode={mode}
                       option={option}
+                      ewtTypeLabels={ewtBypassType}
+                      pendingStatusLetter={pendingStatusLetter}
                       index={index}
                       displayIndex={displayIndex}
                       isLastOption={index === item.purchaseOptions.length - 1}
@@ -1427,6 +1464,11 @@ function TransactionItemsTable({
                       onEditOption={(opt) => {
                         setEditingOption(opt);
                         setOptionModalItemId(opt.nTransactionItemId);
+                        // The item comes along too — the modal needs to know
+                        // whether the item's quantity is already filled by
+                        // its selection (then the option can only be an
+                        // add-on).
+                        setOptionModalItem(item);
                       }}
                       onDeleteOption={(_id, opt) =>
                         setEntityToDelete({ type: "option", data: opt })
@@ -1493,25 +1535,6 @@ function TransactionItemsTable({
                     minWidth: 0,
                   }}
                 >
-                  <Box
-                    sx={{
-                      background: colors.primaryMain,
-                      borderRadius: "7px",
-                      width: 30,
-                      height: 30,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Business
-                      sx={{
-                        color: colors.primaryContrastText,
-                        fontSize: "1rem",
-                      }}
-                    />
-                  </Box>
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Box
                       sx={{
@@ -1521,62 +1544,92 @@ function TransactionItemsTable({
                         mb: 0.2,
                       }}
                     >
-                      <Box
+                      <Typography
                         sx={{
-                          fontSize: "0.65rem",
-                          background: colors.infoBadgeBg,
-                          color: colors.infoBadgeText,
-                          border: `0.5px solid ${colors.infoBadgeBorder}`,
-                          borderRadius: "5px",
-                          px: 1,
-                          py: 0.3,
+                          fontSize: "0.7rem",
+                          fontWeight: 600,
+                          color: colors.textSecondary,
+                          textTransform: "uppercase",
                           whiteSpace: "nowrap",
                           flexShrink: 0,
                         }}
                       >
-                        #{" "}
                         {transaction.strCode ||
                           transactionCode ||
                           transaction.transactionId ||
                           "—"}
-                      </Box>
+                      </Typography>
+                      {aoNickName && (
+                        <Box
+                          component="span"
+                          sx={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 0.3,
+                            px: 0.8,
+                            py: 0.15,
+                            borderRadius: "50px",
+                            background: colors.badgeBg,
+                            border: `0.5px solid ${colors.badgeBorder}`,
+                            flexShrink: 0,
+                            minWidth: 0,
+                          }}
+                        >
+                          <Tooltip
+                            title={
+                              aoFullName
+                                ? `Account Officer: ${aoFullName}`
+                                : "Account Officer"
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <Typography
+                              sx={{
+                                fontSize: "0.6rem",
+                                fontWeight: 600,
+                                color: colors.badgeText,
+                                textTransform: "uppercase",
+                                lineHeight: 1,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                            >
+                              {aoNickName}
+                            </Typography>
+                          </Tooltip>
+                        </Box>
+                      )}
                     </Box>
                     <Typography
                       sx={{
                         textAlign: "left",
-                        fontSize: "0.7rem",
-                        fontStyle: "italic",
-                        color: colors.primaryMain,
-                        lineHeight: 1.25,
+                        fontSize: "0.95rem",
+                        fontWeight: 700,
+                        color: colors.textPrimary,
+                        lineHeight: 1,
+                        textTransform: "uppercase",
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                       }}
                     >
-                      <Box
-                        component="span"
-                        sx={{
-                          fontWeight: 700,
-                          fontStyle: "normal",
-                          color: colors.textPrimary,
-                        }}
-                      >
-                        {transaction.clientName ||
-                          transaction.client?.strClientNickName ||
-                          transaction.client?.strClientName ||
-                          "—"}
-                      </Box>
-                      <Box
-                        component="span"
-                        sx={{
-                          mx: 0.5,
-                          color: colors.primaryMain,
-                          opacity: 0.6,
-                          fontStyle: "normal",
-                        }}
-                      >
-                        :
-                      </Box>{" "}
+                      {clientLabel || "—"}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        textAlign: "left",
+                        fontSize: "0.7rem",
+                        fontStyle: "italic",
+                        color: colors.textPrimary,
+                        lineHeight: 1,
+                        mt: 0.15,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
                       {transaction.strTitle ||
                         transaction.transactionName ||
                         "—"}
@@ -1605,20 +1658,18 @@ function TransactionItemsTable({
                   }}
                 >
                   <CardStructure
-                    icon={<MonetizationOnOutlined />}
                     label={
                       transactionHasABC
                         ? "Total ABC (per item)"
                         : "Transaction ABC"
                     }
-                    value={abcValue}
+                    value={abcValue || NO_TRANSACTION_ABC}
                     sub={abcSub}
-                    variant={abcValidation ? "danger" : "info"}
+                    variant={abcValidation ? "danger" : "default"}
                     dense
                   />
                   {showPurchaseOptions && (
                     <CardStructure
-                      icon={<ReceiptLongOutlined />}
                       label="Total Canvas"
                       value={`₱ ${fmtPHP(totalCanvas)}`}
                       sub={
@@ -1627,28 +1678,26 @@ function TransactionItemsTable({
                           ? `Balance: ₱ ${fmtPHP(totalABC - totalCanvas)}`
                           : null
                       }
-                      variant={abcValidation ? "danger" : "info"}
+                      variant={abcValidation ? "danger" : "default"}
                       dense
                     />
                   )}
                   <CardStructure
-                    icon={<EventOutlined />}
                     label="AO Due Date"
                     value={
                       transaction.dtAODueDate
                         ? fmtDate(transaction.dtAODueDate)
-                        : "—"
+                        : OPEN_DATE
                     }
                     variant={getDueDateVariant(transaction.dtAODueDate)}
                     dense
                   />
                   <CardStructure
-                    icon={<CalendarTodayOutlined />}
                     label="Document Submission"
                     value={
                       transaction.dtDocSubmission
                         ? fmtDate(transaction.dtDocSubmission)
-                        : "No Date Attached."
+                        : OPEN_DATE
                     }
                     variant={getDueDateVariant(transaction.dtDocSubmission)}
                     dense

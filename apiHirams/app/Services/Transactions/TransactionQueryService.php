@@ -63,10 +63,9 @@ class TransactionQueryService
             ->map(function ($txn) use ($statusCodes) {
                 $latest = $txn->latestHistory;
 
-                $createdHistory = $txn->histories
-                    ->where('nStatus', $statusCodes[0])
-                    ->sortByDesc('nTransactionHistoryId')
-                    ->first();
+                // The FIRST history row - the one the Activity Log marks "Start" -
+                // is when the transaction was raised, and by whom.
+                $createdHistory = $txn->histories->sortBy('dtOccur')->first();
 
                 $createdBy = $createdHistory?->user
                     ? $createdHistory->user->strNickName
@@ -99,6 +98,7 @@ class TransactionQueryService
                     'current_status'         => $latest?->nStatus ?? null,
                     'latest_history'         => $latest,
                     'created_by'             => $createdBy,
+                    'created_at'             => $createdHistory?->dtOccur,
                     'created_by_id'          => $createdHistory?->user?->nUserId ?? null,
                 ];
             });
@@ -170,10 +170,9 @@ class TransactionQueryService
                 $latest = $txn->latestHistory;
 
                 // Determine the creator of this transaction (the user who first created it at status 100)
-                $createdHistory = $txn->histories
-                    ->where('nStatus', $draftCode)
-                    ->sortByDesc('nTransactionHistoryId')
-                    ->first();
+                // The FIRST history row - the one the Activity Log marks "Start" -
+                // is when the transaction was raised, and by whom.
+                $createdHistory = $txn->histories->sortBy('dtOccur')->first();
 
                 $createdBy = $createdHistory?->user
                     ? $createdHistory->user->strNickName
@@ -229,6 +228,7 @@ class TransactionQueryService
                     'current_status'         => $displayStatus,
                     'latest_history'         => $latest,
                     'created_by'             => $createdBy,
+                    'created_at'             => $createdHistory?->dtOccur,
                     'creator_id'             => $creatorId,
                 ];
             });
@@ -319,10 +319,9 @@ class TransactionQueryService
 
                 // ── ADD: resolve creator from the first status (100 = Draft) ─────
                 $statusCodes    = array_keys(config('mappings.status_transaction'));
-                $createdHistory = $txn->histories
-                    ->where('nStatus', $statusCodes[0])
-                    ->sortByDesc('nTransactionHistoryId')
-                    ->first();
+                // The FIRST history row - the one the Activity Log marks "Start" -
+                // is when the transaction was raised, and by whom.
+                $createdHistory = $txn->histories->sortBy('dtOccur')->first();
 
                 $createdBy = $createdHistory?->user
                     ? $createdHistory->user->strNickName
@@ -368,6 +367,7 @@ class TransactionQueryService
                     'current_status'         => $displayStatus,
                     'latest_history'         => $latest,
                     'created_by'             => $createdBy, // ← ADD
+                    'created_at'             => $createdHistory?->dtOccur,
                 ];
             });
         return $transactions;
@@ -412,10 +412,9 @@ class TransactionQueryService
                     ->sortByDesc('nTransactionHistoryId')
                     ->skip(1)
                     ->first();
-                $createdHistory = $txn->histories
-                    ->where('nStatus', $statusCodes[0])
-                    ->sortByDesc('nTransactionHistoryId')
-                    ->first();
+                // The FIRST history row - the one the Activity Log marks "Start" -
+                // is when the transaction was raised, and by whom.
+                $createdHistory = $txn->histories->sortBy('dtOccur')->first();
 
                 $createdBy = $createdHistory?->user
                     ? $createdHistory->user->strNickName
@@ -449,6 +448,7 @@ class TransactionQueryService
                     'previous_status' => $preArchiveHistory?->nStatus ?? null, // ← ADD
                     'latest_history'         => $latest,
                     'created_by'             => $createdBy,
+                    'created_at'             => $createdHistory?->dtOccur,
                     'created_by_id'          => $createdHistory?->user?->nUserId ?? null,
                 ];
             });
@@ -530,10 +530,9 @@ class TransactionQueryService
                     ->first();
 
                 $statusCodes    = array_keys(config('mappings.status_transaction'));
-                $createdHistory = $txn->histories
-                    ->where('nStatus', $statusCodes[0])
-                    ->sortByDesc('nTransactionHistoryId')
-                    ->first();
+                // The FIRST history row - the one the Activity Log marks "Start" -
+                // is when the transaction was raised, and by whom.
+                $createdHistory = $txn->histories->sortBy('dtOccur')->first();
 
                 $createdBy = $createdHistory?->user
                     ? $createdHistory->user->strNickName
@@ -566,6 +565,7 @@ class TransactionQueryService
                     'previous_status' => $preArchiveHistory?->nStatus ?? null, // ← ADD
                     'latest_history'         => $latest,
                     'created_by'             => $createdBy,
+                    'created_at'             => $createdHistory?->dtOccur,
                 ];
             });
         return $transactions;
@@ -652,10 +652,9 @@ class TransactionQueryService
                     ->sortByDesc('nTransactionHistoryId')
                     ->skip(1)
                     ->first();
-                $createdHistory = $txn->histories
-                    ->where('nStatus', $draftCode)
-                    ->sortByDesc('nTransactionHistoryId')
-                    ->first();
+                // The FIRST history row - the one the Activity Log marks "Start" -
+                // is when the transaction was raised, and by whom.
+                $createdHistory = $txn->histories->sortBy('dtOccur')->first();
 
                 $createdBy = $createdHistory?->user
                     ? $createdHistory->user->strNickName
@@ -689,6 +688,7 @@ class TransactionQueryService
                     'previous_status' => $preArchiveHistory?->nStatus ?? null, // ← ADD
                     'latest_history'         => $latest,
                     'created_by'             => $createdBy,
+                    'created_at'             => $createdHistory?->dtOccur,
                     'creator_id'             => $creatorId,
                 ];
             });
@@ -727,10 +727,9 @@ class TransactionQueryService
             ->map(function ($txn) {
                 $latest = $txn->latestHistory;
                 $statusCodes = array_keys(config('mappings.status_transaction'));
-                $createdHistory = $txn->histories
-                    ->where('nStatus', $statusCodes[0])
-                    ->sortByDesc('nTransactionHistoryId')
-                    ->first();
+                // The FIRST history row - the one the Activity Log marks "Start" -
+                // is when the transaction was raised, and by whom.
+                $createdHistory = $txn->histories->sortBy('dtOccur')->first();
                 $createdBy = $createdHistory?->user
                     ? $createdHistory->user->strNickName
                     : null;
@@ -752,6 +751,7 @@ class TransactionQueryService
                     'current_status'         => $latest?->nStatus ?? null,
                     'latest_history'         => $latest,
                     'created_by'             => $createdBy,
+                    'created_at'             => $createdHistory?->dtOccur,
                     'created_by_id'          => $createdHistory?->user?->nUserId ?? null,
                 ];
             });

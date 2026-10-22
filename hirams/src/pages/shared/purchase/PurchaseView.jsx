@@ -617,7 +617,7 @@ export default function PurchaseView(props) {
         onSuccess={() => fetchItems({ restoreScroll: true })}
         suppliers={suppliers}
         cItemType={cItemType}
-        isForPurchase={true}
+        stage={forPurchaseKey.includes(statusCode) ? "purchase" : ""}
       />
       <TransactionActionModal
         open={Boolean(actionModal)}
@@ -646,6 +646,7 @@ export default function PurchaseView(props) {
         itemId={suggestionsItem?.id}
         suppliers={suppliers}
         cItemType={cItemType}
+        stage={forPurchaseKey.includes(statusCode) ? "purchase" : ""}
         onSuccess={() => fetchItems({ restoreScroll: true })}
       />
       <UpdateDeliveryInfoModal

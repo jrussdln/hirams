@@ -207,6 +207,8 @@ class TransactionItemsController extends ApiController
                 'purchaseOptions.purchaseOrderOption.purchaseOrder', // ⬅ add .purchaseOrder
                 'purchaseOptions.supplier',
                 'purchaseOptions.inventories.serialNumbers',
+                // The EWT is derived from the transaction's item type
+                'purchaseOptions.transactionItem.transaction',
             ])
                 ->where('nTransactionId', $transactionId)
                 ->orderBy('nItemNumber')
@@ -223,7 +225,7 @@ class TransactionItemsController extends ApiController
                     'purchaseOptions'    => $item->purchaseOptions  // add options to each item
                         ->sortBy([['bAddOn', 'asc'], ['bIncluded', 'desc']])
                         ->values()
-                        ->map(fn($option) => $this->formatOption($option)),
+                        ->map(fn($option) => $this->formatOption($option, $transaction->cItemType)),
                 ]);
 
             return response()->json([
@@ -240,7 +242,7 @@ class TransactionItemsController extends ApiController
             return $this->handleException($e, 'retrieve_failed', 'Transaction items');
         }
     }
-    private function formatOption($option): array
+    private function formatOption($option, ?string $cItemType = null): array
     {
         // Only ACTIVE rows (cStatus = 'A') count toward received/delivered totals.
         // Cancelled rows (cStatus = 'C') are excluded from qty/percentage/stamp.
@@ -276,7 +278,18 @@ class TransactionItemsController extends ApiController
             'strModel'              => $option->strModel,
             'strSpecs'              => $option->strSpecs,
             'dUnitPrice'            => $option->dUnitPrice,
+            // The PURCHASE price — the price agreed at the purchase stage.
+            // It only counts while its status is 'A' (Active); 'dUnitPrice'
+            // above already reflects that (see PurchaseOptions).
+            'dPurchaseUnitPrice'       => $option->dPurchaseUnitPrice,
+            'cPurchaseUnitPriceStatus' => $option->cPurchaseUnitPriceStatus,
             'dEWT'                  => $option->dEWT,
+            'cEWTType'              => $option->cEWTType,
+            // The EWT is derived — the frontend needs these to work it out
+            // on its own (see src/utils/helpers/calculateEWT.js).
+            'bEWT'                  => $option->supplier?->bEWT,
+            'bVAT'                  => $option->supplier?->bVAT,
+            'cItemType'             => $cItemType,
             'strProductCode'        => $option->strProductCode,
             'bIncluded'             => (bool) $option->bIncluded,
             'bPurchaseIncluded'     => (bool) $option->bPurchaseIncluded,

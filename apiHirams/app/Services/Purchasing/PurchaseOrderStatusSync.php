@@ -11,6 +11,19 @@ class PurchaseOrderStatusSync
     {
         $po = PurchaseOrder::with('purchaseOrderOptions.purchaseOption')->findOrFail($poId);
 
+        // A CANCELLED purchase order stays cancelled. This routine re-derives
+        // the status from the stock, so without the guard a receipt or a
+        // delivery booked against a cancelled order would bring it back to
+        // life (and the status it was cancelled from).
+        $cancelled = (string) (array_search(
+            'Cancelled',
+            config('mappings.item_purchasing_status', []),
+            true
+        ) ?: '');
+        if ($cancelled !== '' && (string) $po->nStatus === $cancelled) {
+            return;
+        }
+
         $items = $po->purchaseOrderOptions->pluck('purchaseOption')->filter();
         if ($items->isEmpty()) return;
 

@@ -34,6 +34,8 @@ const parseData = (data, setters) => {
     setJevStatus,
     setItemPurchasingStatus,
     setItemPurchasingStatusFinance,
+    setEwtBypassType,
+    setUnitPriceStatus,
 
     setRemovedFromCartStatus,
   } = setters;
@@ -68,6 +70,11 @@ const parseData = (data, setters) => {
   setJevStatus(data.jev_status || {});
   setItemPurchasingStatus(data.item_purchasing_status || {});
   setItemPurchasingStatusFinance(data.item_purchasing_status_finance);
+  // The EWT types (the per-line bypass of the default EWT formula).
+  setEwtBypassType(data.ewt_bypass_type || {});
+  // The purchase price status: A = Active (it counts), P = Pending,
+  // C = Cancelled (it does not count).
+  setUnitPriceStatus(data.unit_price_status || {});
   setRemovedFromCartStatus(data.removed_from_cart_status || {});
 };
 
@@ -103,6 +110,12 @@ export default function useMapping() {
   const [jev_status, setJevStatus] = useState({});
   const [itemPurchasingStatus, setItemPurchasingStatus] = useState({});
   const [itemPurchasingStatusFinance, setItemPurchasingStatusFinance] = useState({});
+  // The EWT types: A = 0% of Q, B = 1% of Q, C = 1% of Q / 1.12 (VAT net)
+  const [ewtBypassType, setEwtBypassType] = useState({});
+
+  // The purchase price status — A = Active (the price counts),
+  // P = Pending (proposed, does not count yet), C = Cancelled.
+  const [unitPriceStatus, setUnitPriceStatus] = useState({});
 
   const [removedFromCartStatus, setRemovedFromCartStatus] = useState({});
 
@@ -137,6 +150,8 @@ export default function useMapping() {
     setJevStatus,
     setItemPurchasingStatus,
     setItemPurchasingStatusFinance,
+    setEwtBypassType,
+    setUnitPriceStatus,
 
     setRemovedFromCartStatus,
   };
@@ -198,6 +213,8 @@ export default function useMapping() {
     jev_status,
     itemPurchasingStatus,
     itemPurchasingStatusFinance,
+    ewtBypassType,
+    unitPriceStatus,
     removedFromCartStatus,
   };
 }

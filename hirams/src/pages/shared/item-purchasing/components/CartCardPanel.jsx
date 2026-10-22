@@ -13,6 +13,7 @@ import PurchaseOrderAPI from "../../../../api/endpoints/purchase-order.api.js";
 import InventoryAPI from "../../../../api/endpoints/inventory.api.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import { fmtDate, fmtPHP, fmtQty } from "../../../../utils/formatters/formatter.js";
+import { ewtOfOption, totalEWT } from "../../../../utils/helpers/calculateEWT.js";
 import { CART_STATUS_STYLES } from "../../../../utils/style/sharedConfirmStyles.jsx";
 import CartRowPanel from "./shared/CartRowPanel.jsx";
 import { BadgeCycler } from "./shared/Stamp.jsx";
@@ -105,7 +106,8 @@ export default function CartCardPanel({
   }, [collapsed]);
 
   const options = po.purchase_order_options || [];
-  const hasAnyEWT = options.some((o) => o.purchase_option?.dEWT > 0);
+  // The EWT is derived — see utils/helpers/calculateEWT.js
+  const hasAnyEWT = options.some((o) => ewtOfOption(o) > 0);
 
   // The tab being viewed drives the row labels and which rows are hidden:
   // a PO can be listed under For Delivery while its status is still Pending
@@ -114,6 +116,8 @@ export default function CartCardPanel({
   const isPendingReceiptPO = String(listStatus) === String(pendingReceiptKey);
   const isForDeliveryPO = String(listStatus) === String(forDeliveryKey);
   const isDeliveredPO = String(listStatus) === String(deliveredKey);
+  // A called-off order — the card says WHEN it went down.
+  const isCancelledPO = String(po.nStatus) === String(cancelledPOKey);
 
   // Same card in multiple tabs — only the hidden row differs:
   //   Pending Receipt : hide fully received rows (0 left to receive)
@@ -205,10 +209,7 @@ export default function CartCardPanel({
         (o.purchase_option?.dUnitPrice || 0),
     0,
   );
-  const poEwtTotal = options.reduce(
-    (s, o) => s + (Number(o.purchase_option?.dEWT) || 0),
-    0,
-  );
+  const poEwtTotal = totalEWT(options);
   // The PO's own freight charge — printed above the EWT on the card.
   const poFreight = Number(po?.dFreight) || 0;
   // Everything this card still has to take in — the sum of the "To Receive"
@@ -581,6 +582,10 @@ export default function CartCardPanel({
                 totalCount={visibleOptions.length}
                 colors={base}
                 tableLayout
+                // Pending Receipt: nothing above the brand · model — the
+                // goods are still on the supplier's side, so the order's
+                // number would only be noise.
+                hideRowBadge={isPendingReceiptPO}
                 onRowClick={() =>
                   onUpdateClick({ po, statusLabel, viewStatus: listStatus })
                 }
@@ -629,9 +634,28 @@ export default function CartCardPanel({
                   {fmtDate(po.dtPurchaseOrderCreated)}
                 </Typography>
               </Box>
+              {/* WHEN the order was called off — under the date it was
+                  raised on, so the two read as one story. */}
+              {isCancelledPO && po.dtCancelled && (
+                <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
+                  <CancelOutlined
+                    sx={{ fontSize: "0.6rem", color: c.redText }}
+                  />
+                  <Typography
+                    sx={{
+                      fontSize: "0.55rem",
+                      color: c.redText,
+                      fontWeight: 600,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {fmtDate(po.dtCancelled)}
+                  </Typography>
+                </Box>
+              )}
             </Box>
 
-            {String(po.nStatus) === String(cancelledPOKey) ? (
+            {isCancelledPO ? (
               <Box
                 sx={{
                   display: "flex",

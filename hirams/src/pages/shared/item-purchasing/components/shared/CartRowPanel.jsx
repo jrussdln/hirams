@@ -9,6 +9,7 @@ import {
   fmtPHP,
   fmtQty,
 } from "../../../../../utils/formatters/formatter.js";
+import { ewtOfOption } from "../../../../../utils/helpers/calculateEWT.js";
 import { IconBox } from "../LineItems.jsx";
 import DeliveryDateLabel from "./DeliveryDateLabel.jsx";
 
@@ -161,6 +162,9 @@ export default function CartRowPanel({
   isDelivered = false,
   arrivedStats = null,
   hideRowBadge = false,
+  // The PO the row belongs to. Where the row shows the order's number, it
+  // stands on its own — the company's own code is not printed beside it.
+  poNumber = "",
   // Clicking the row opens the PO — the same thing the card's VIEW button
   // does. The card passes it in; the table (PO detail page) does not.
   onRowClick,
@@ -278,7 +282,12 @@ export default function CartRowPanel({
   const tx = p?.transaction_item?.transaction;
   const lineTotal = (p?.nQuantity || 0) * (p?.dUnitPrice || 0);
   const txnCode = tx?.strCode ?? "—";
-  const ewtValue = p?.dEWT;
+  // The code line — the PO number, then the company's own code in brackets.
+  const codeLine =
+    poNumber && poNumber !== "—"
+      ? poNumber
+      : txnCode;
+  const ewtValue = ewtOfOption(p);
   // Pending ("P") rows count as received/delivered too — the goods are
   // already in hand, they only await approval. This matches the backend's
   // nInventoryQty / nDeliveredQty, which are approved (A) + pending (P).
@@ -593,7 +602,7 @@ export default function CartRowPanel({
                     textOverflow: "ellipsis",
                   }}
                 >
-                  {txnCode}
+                  {codeLine}
                 </Typography>
               )}
               <Box

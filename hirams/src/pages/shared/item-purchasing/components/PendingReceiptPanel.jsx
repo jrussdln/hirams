@@ -210,6 +210,10 @@ export default function PendingReceiptPanel({
                     p={p}
                     tx={tx}
                     idx={idx}
+                    // Nothing above the brand · model here: the goods are
+                    // still on the supplier's side, so the order's code
+                    // would only be noise.
+                    showCode={false}
                     onBrandClick={onBrandClick}
                   />
                 </Box>

@@ -6,6 +6,7 @@ import {
   DeleteOutlineOutlined,
 } from "@mui/icons-material";
 import { fmtPHP, fmtQty } from "../../../../utils/formatters/formatter";
+import { ewtOfOption, totalEWT } from "../../../../utils/helpers/calculateEWT.js";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import PickableValue from "../../jev/components/AmountPick.jsx";
 import AddItemButton from "./AddItemButton.jsx";
@@ -107,10 +108,8 @@ export default function PORowPanel({
     0,
   );
 
-  const poEwtTotal = options.reduce(
-    (sum, opt) => sum + Number(opt.purchase_option?.dEWT || 0),
-    0,
-  );
+  // The EWT is derived per line — see utils/helpers/calculateEWT.js
+  const poEwtTotal = totalEWT(options);
 
   // The supplier's address and TIN — the shared fallbacks fill in whatever
   // is not on file.
@@ -596,7 +595,7 @@ export default function PORowPanel({
             {options.map((opt, i) => {
               const p = opt.purchase_option;
               const lineTotal = (p?.nQuantity || 0) * (p?.dUnitPrice || 0);
-              const ewtAmount = Number(p?.dEWT || 0);
+              const ewtAmount = ewtOfOption(p);
 
               return (
                 <Box

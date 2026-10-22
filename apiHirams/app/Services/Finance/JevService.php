@@ -5,8 +5,10 @@ namespace App\Services\Finance;
 use App\Events\JevUpdated;
 use App\Models\Jev;
 use App\Models\JevEntries;
+use App\Models\PurchaseOrderOption;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * JEV queries, transactions and broadcasts, plus the company/payee metadata
@@ -31,13 +33,23 @@ class JevService
             // one — both hang off the batch's purchase option.
             'inventories.purchaseOption.supplier',
             'inventories.purchaseOption.transactionItem.transaction.client',
+            // A Collection JEV hangs off the transaction — its latest history
+            // says whether that transaction has been completed.
+            'transactions.latestHistory',
         ];
     }
 
     public function index()
     {
-        return Jev::with($this->withCompanyRelations())->get()
-            ->map(fn($jev) => $this->attachCompanyMeta($jev));
+        $jevs = Jev::with($this->withCompanyRelations())->get();
+
+        // ONE query for the whole list: the purchase items that are still
+        // held by a live Purchase Order. Asking per JEV would be N+1.
+        $liveItemIds = $this->livePurchaseItemIds(
+            $jevs->flatMap(fn($jev) => $jev->inventories->pluck('nPurchaseItemId'))
+        );
+
+        return $jevs->map(fn($jev) => $this->attachCompanyMeta($jev, $liveItemIds));
     }
 
     /**
@@ -136,6 +148,20 @@ class JevService
         $jev = Jev::find($id);
         if (!$jev) return false;
 
+        // The same rule the list's disabled button shows — enforced here so
+        // the API cannot be used to delete a journal that is still on the
+        // books (a paid voucher's, a live Purchase Order's, a completed
+        // transaction's).
+        [$deletable, $reason] = $this->resolveDeletability(
+            $jev->loadMissing($this->withCompanyRelations())
+        );
+
+        if (!$deletable) {
+            throw ValidationException::withMessages([
+                'jev' => $reason,
+            ]);
+        }
+
         JevEntries::where('nJEVId', $id)->delete();
         $jev->delete();
 
@@ -145,6 +171,139 @@ class JevService
         broadcast(new JevUpdated('deleted', (int) $id, (string) $jev->cJEVLinkType))->toOthers();
 
         return true;
+    }
+
+    /**
+     * The status codes this flow reacts to, pulled straight from
+     * config/mappings.php — the file /mappings serves to the frontend, so the
+     * API and the UI can never disagree about what a code means.
+     */
+    private function deletabilityCodes(): array
+    {
+        $jevStatus    = config('mappings.jev_status', []);
+        $voucherStatus = config('mappings.voucher_status', []);
+        $jevTypes     = config('mappings.jev_types', []);
+        $archiveStatus = config('mappings.archive_status', []);
+
+        return [
+            'jevActive'    => (string) (array_search('Active', $jevStatus, true) ?: ''),
+            'voucherPaid'  => (string) (array_search('Paid', $voucherStatus, true) ?: ''),
+            'txnCompleted' => (string) (array_search('Transaction Completed', $archiveStatus, true) ?: ''),
+            'typeReceived' => (string) (array_search('Received Purchases', $jevTypes, true) ?: ''),
+            'typeDelivered' => (string) (array_search('Delivered Items', $jevTypes, true) ?: ''),
+            'typeCollection' => (string) (array_search('Collection', $jevTypes, true) ?: ''),
+        ];
+    }
+
+    /**
+     * May this JEV be deleted?
+     *
+     * A journal is only a draft until the things it was raised for are
+     * settled, so the delete is blocked while any of them is still open:
+     *
+     *   • an ACTIVE (finalized) journal is on the books — it can only be
+     *     cancelled, never deleted;
+     *   • a voucher that has been PAID cannot be undone by throwing its
+     *     journal away;
+     *   • a Received / Delivered journal belongs to a Purchase Order — it
+     *     can only go once that order is cancelled;
+     *   • a Collection journal belongs to a transaction — it can only go
+     *     once that transaction has been completed.
+     *
+     * Returns [bool $deletable, string $reason]. The reason is what the
+     * list shows on the disabled button, so the user knows WHY.
+     */
+    private function resolveDeletability(Jev $jev, ?array $liveItemIds = null): array
+    {
+        $codes = $this->deletabilityCodes();
+        $linkType = (string) $jev->cJEVLinkType;
+
+        // ── An Active journal is finalized: it is on the books. ──
+        if ($codes['jevActive'] !== '' && (string) $jev->cStatus === $codes['jevActive']) {
+            return [false, 'This JEV is already finalized. Cancel it instead.'];
+        }
+
+        // ── A paid voucher cannot be undone by deleting its journal. ──
+        if ($codes['voucherPaid'] !== '') {
+            $paidVoucher = $jev->vouchers->first(
+                fn($v) => (string) $v->cStatus === $codes['voucherPaid']
+            );
+            if ($paidVoucher) {
+                return [false, 'The voucher for this JEV is already paid.'];
+            }
+        }
+
+        // ── Received / Delivered: the Purchase Order must be cancelled. ──
+        if (in_array($linkType, [$codes['typeReceived'], $codes['typeDelivered']], true)) {
+            $itemIds = $jev->inventories
+                ->pluck('nPurchaseItemId')
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            $live = $liveItemIds ?? $this->livePurchaseItemIds($itemIds);
+
+            if (array_intersect($itemIds, $live)) {
+                return [false, 'The Purchase Order for this JEV is not cancelled yet.'];
+            }
+        }
+
+        // ── Collection: the transaction must be completed. ──
+        if ($codes['typeCollection'] !== '' && $linkType === $codes['typeCollection']) {
+            $transaction = $jev->transactions->first();
+            $latest = $transaction?->latestHistory;
+
+            if (
+                $codes['txnCompleted'] !== ''
+                && $latest
+                && (string) $latest->nStatus === $codes['txnCompleted']
+            ) {
+                return [false, 'The transaction for this JEV is already completed.'];
+            }
+        }
+
+        return [true, ''];
+    }
+
+    /**
+     * Which of these purchase items are still held by a LIVE Purchase Order?
+     *
+     * One purchase item can sit on several POs, and the stock behind it is
+     * only cancelled once EVERY one of them is cancelled (see
+     * PurchaseOrderService::cancelInventoryForPOs). The mirror image of
+     * that rule lives here: while any PO holding the item is still open,
+     * the journal that carried its stock cannot be deleted.
+     *
+     * Takes the item ids, returns the subset that is still live. The list
+     * asks once for the whole batch — asking per JEV would be N+1.
+     *
+     * @param  iterable<int, mixed> $itemIds
+     * @return array<int, int>
+     */
+    private function livePurchaseItemIds($itemIds): array
+    {
+        $itemIds = collect($itemIds)->filter()->unique()->values();
+        if ($itemIds->isEmpty()) {
+            return [];
+        }
+
+        $poCancelled = (string) (array_search(
+            'Cancelled',
+            config('mappings.item_purchasing_status', []),
+            true
+        ) ?: '');
+
+        if ($poCancelled === '') {
+            return [];
+        }
+
+        return PurchaseOrderOption::whereIn('nPurchaseItemId', $itemIds)
+            ->whereHas('purchaseOrder', fn($q) => $q->where('nStatus', '!=', $poCancelled))
+            ->pluck('nPurchaseItemId')
+            ->unique()
+            ->values()
+            ->all();
     }
 
     /**
@@ -198,7 +357,7 @@ class JevService
             ?: $voucher->supplier?->strSupplierName;
     }
 
-    private function attachCompanyMeta(Jev $jev): Jev
+    private function attachCompanyMeta(Jev $jev, ?array $liveItemIds = null): Jev
     {
         $voucher = $jev->vouchers->first(); // adjust if a Jev can ever have >1 voucher
 
@@ -206,6 +365,13 @@ class JevService
         // The list reads this so R / D rows get a name without the API
         // pretending the JEV itself was given one.
         $jev->strDisplayTitle = $this->resolveDisplayTitle($jev);
+
+        // Whether this JEV may be deleted, and why not when it may not.
+        // The list reads this straight off the row, so the disabled button
+        // and the API can never disagree.
+        [$deletable, $reason] = $this->resolveDeletability($jev, $liveItemIds);
+        $jev->bDeletable = $deletable;
+        $jev->strDeleteBlockReason = $reason;
 
         if (!$voucher) {
             $meta = [

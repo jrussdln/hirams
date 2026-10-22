@@ -59,6 +59,10 @@ export function ItemInfoColumn({
   tx,
   idx,
   showCode = true,
+  // The PO the row belongs to. Where a row can be reached from several
+  // orders (For Delivery / Delivered), the code line carries that order's
+  // number.
+  poNumber,
   onBrandClick,
   children,
 }) {
@@ -72,6 +76,11 @@ export function ItemInfoColumn({
     onBrandClick && (p?.strBrand || p?.strModel),
   );
   const nameClickable = Boolean(onBrandClick && !brandClickable);
+
+  // The code line — the PO the row belongs to. The company's own code is
+  // not printed beside it: the order already says which row this is.
+  const codeLine =
+    poNumber && poNumber !== "—" ? poNumber : (tx?.strCode ?? "—");
 
   return (
     <>
@@ -112,7 +121,7 @@ export function ItemInfoColumn({
               textOverflow: "ellipsis",
             }}
           >
-            {tx?.strCode ?? "—"}
+            {codeLine}
           </Typography>
         )}
 

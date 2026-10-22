@@ -2,6 +2,7 @@
 
 namespace App\Services\Purchasing;
 
+use App\Helpers\FormulaHelper;
 use App\Models\DirectCost;
 use App\Models\PurchaseOptions;
 use App\Services\CrudService;
@@ -38,11 +39,19 @@ class DirectCostService extends CrudService
 
         $totalEWT = 0;
         if ($withEWT) {
-            $totalEWT = (float) PurchaseOptions::whereHas('transactionItem', function ($q) use ($nTransactionID) {
+            // The EWT is DERIVED (the dEWT column is gone), so it cannot be
+            // summed in SQL — the options are loaded with the relations the
+            // formula needs and the amounts are worked out one by one.
+            $options = PurchaseOptions::with(['supplier', 'transactionItem.transaction'])
+                ->whereHas('transactionItem', function ($q) use ($nTransactionID) {
                     $q->where('nTransactionId', $nTransactionID);
                 })
                 ->where('bIncluded', 1)
-                ->sum('dEWT');
+                ->get();
+
+            $totalEWT = (float) $options->sum(
+                fn ($option) => FormulaHelper::calculateEWTForOption($option)
+            );
         }
 
         return ['directCosts' => $costs, 'totalEWT' => $totalEWT];

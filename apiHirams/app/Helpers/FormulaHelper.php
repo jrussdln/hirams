@@ -120,37 +120,150 @@ class FormulaHelper
             ->value('total') ?? 0.0;
     }
     /**
-     * Compute EWT (Expanded Withholding Tax)
-     * - If supplier is not EWT-applicable (bEWT != 1) → return 0
-     * - If cItemType === 'G' (Goods) → rate = 0.01 (1%)
-     * - If cItemType === 'S' (Service) → rate = 0.02 (2%)
-     * - If supplier has VAT (bVAT = 1) → base = totalCost / 1.12
-     * - If supplier has no VAT → base = totalCost
-     * - EWT = base * rate
+     * EWT (Expanded Withholding Tax) — the DEFAULT matrix.
+     *
+     *   #  Supplier           Item      Formula             Result
+     *   1  EWT, NON-VAT       Goods     Q x 1%              Q x 0.01
+     *   2  EWT, NON-VAT       Service   Q x 2%              Q x 0.02
+     *   3  NON-EWT, VAT       Goods     -                   0.00
+     *   4  NON-EWT, VAT       Service   -                   0.00
+     *   5  EWT, VAT           Goods     (Q / 1.12) x 1%     Q x 0.008928...
+     *   6  EWT, VAT           Service   (Q / 1.12) x 2%     Q x 0.017857...
+     *   7  NON-EWT, NON-VAT   Goods     -                   0.00
+     *   8  NON-EWT, NON-VAT   Service   -                   0.00
+     *
+     * Q = quantity x unitPrice.
+     *
+     * The three ingredients, in the order they are applied:
+     *   1. bEWT  - the supplier's EWT flag. Not an EWT supplier → nothing
+     *               to withhold, so the whole line is 0 (cases 3, 4, 7, 8).
+     *   2. cItemType - 'G' goods → 1%, 'S' service → 2%. This is the
+     *               TRANSACTION's item type (tbltransactions.cItemType),
+     *               so every line of a PO carries the same rate.
+     *   3. bVAT  - the supplier's VAT flag. A VAT-registered supplier bills
+     *               VAT on top, and VAT is not the payee's income, so the
+     *               base is the VAT-exclusive amount (Q / 1.12). A non-VAT
+     *               supplier has no VAT to strip, so the base is Q itself.
+     *
+     * NOTE: the 1.12 gross-down assumes the price is VAT-INCLUSIVE. If the
+     * price in the system is the VAT-exclusive amount (VAT added later by
+     * the supplier's invoice), the base must be Q with no division - that
+     * is a business decision, so it is kept in one place here.
      */
+    public const EWT_RATE_GOODS   = 0.01;
+    public const EWT_RATE_SERVICE = 0.02;
+    public const EWT_VAT_FACTOR   = 1.12;
+
+    /**
+     * The EWT TYPES (the per-line override of the default matrix).
+     *
+     *   null → DEFAULT — the matrix above decides
+     *   'A'  → 0% of Q
+     *   'B'  → 1% of Q
+     *   'C'  → 1% of Q / 1.12 (VAT net)
+     *
+     * A type OVERRIDES the supplier's bEWT / bVAT flags entirely: 'A' is
+     * no EWT even for an EWT supplier, and 'B' / 'C' are 1% even for a
+     * non-EWT or non-vattable one.
+     */
+    public const EWT_TYPE_DEFAULT   = null;
+    public const EWT_TYPE_BYPASS_0  = 'A';
+    public const EWT_TYPE_BYPASS_1  = 'B';
+    public const EWT_TYPE_BYPASS_VAT = 'C';
+
+    /**
+     * The EWT types the API accepts on the wire.
+     *
+     * @return array<int, string>
+     */
+    public static function ewtTypes(): array
+    {
+        return [
+            self::EWT_TYPE_BYPASS_0,
+            self::EWT_TYPE_BYPASS_1,
+            self::EWT_TYPE_BYPASS_VAT,
+        ];
+    }
+
     public static function calculateEWT(
         float $quantity,
         float $unitPrice,
-        Supplier $supplier,
-        string $cItemType
+        ?Supplier $supplier,
+        string $cItemType,
+        ?string $cEWTType = self::EWT_TYPE_DEFAULT
     ): float {
         $totalCost = $quantity * $unitPrice;
 
-        // If supplier is not EWT-applicable → no computation needed
-        if ((int) $supplier->bEWT !== 1) return 0;
+        // ── The EWT TYPE wins over everything else ──────────────────────
+        // A bypass is the line's own instruction: it does not look at the
+        // supplier's flags at all.
+        switch ($cEWTType) {
+            case self::EWT_TYPE_BYPASS_0:
+                return 0.0;
+            case self::EWT_TYPE_BYPASS_1:
+                return round($totalCost * self::EWT_RATE_GOODS, 2);
+            case self::EWT_TYPE_BYPASS_VAT:
+                return round(
+                    ($totalCost / self::EWT_VAT_FACTOR) * self::EWT_RATE_GOODS,
+                    2
+                );
+        }
 
-        // Determine rate based on item type
-        // G = Goods → 1% (0.01), S = Service → 2% (0.02)
-        $rate = $cItemType === 'G' ? 0.01 : 0.02;
+        // ── DEFAULT — the matrix above ────────────────────────────────
+        // 1. Not an EWT supplier → no computation needed (cases 3, 4, 7, 8)
+        if (!$supplier || (int) $supplier->bEWT !== 1) return 0;
 
-        // Determine base amount
-        // If supplier has VAT → compute on net amount (gross / 1.12)
-        // If supplier has no VAT → compute on full gross amount
-        $baseAmount = (int) $supplier->bVAT === 1 ? $totalCost / 1.12 : $totalCost;
+        // 2. Rate from the item type: G = Goods → 1%, S = Service → 2%
+        $rate = $cItemType === 'G' ? self::EWT_RATE_GOODS : self::EWT_RATE_SERVICE;
+
+        // 3. Base: VAT-registered → net of VAT (cases 5, 6); otherwise gross
+        $baseAmount = (int) $supplier->bVAT === 1
+            ? $totalCost / self::EWT_VAT_FACTOR
+            : $totalCost;
 
         // Final EWT calculation
         $calculatedEWT = $baseAmount * $rate;
 
         return round($calculatedEWT, 2);
+    }
+
+    /**
+     * The EWT of a saved purchase option, derived from its EWT TYPE.
+     *
+     * The line's own type wins; with no type the supplier's flags and the
+     * transaction's item type decide. A missing supplier (the line has
+     * none yet) or a missing item type falls back to the same defaults
+     * the rest of the app uses.
+     */
+    public static function calculateEWTForOption(
+        PurchaseOptions $option,
+        ?string $cItemType = null
+    ): float {
+        $supplier = null;
+        if ($option->nSupplierId) {
+            $supplier = $option->relationLoaded('supplier')
+                ? $option->supplier
+                : Supplier::find($option->nSupplierId);
+        }
+
+        // The item type lives on the TRANSACTION (tbltransactions.cItemType),
+        // so every line of a PO carries the same rate.
+        if ($cItemType === null) {
+            $cItemType = 'G';
+            if ($option->relationLoaded('transactionItem')) {
+                $cItemType = $option->transactionItem?->transaction?->cItemType ?? 'G';
+            } elseif ($option->nTransactionItemId) {
+                $cItemType = TransactionItems::find($option->nTransactionItemId)
+                    ?->transaction?->cItemType ?? 'G';
+            }
+        }
+
+        return self::calculateEWT(
+            (float) $option->nQuantity,
+            (float) $option->dUnitPrice,
+            $supplier,
+            $cItemType,
+            $option->cEWTType
+        );
     }
 }

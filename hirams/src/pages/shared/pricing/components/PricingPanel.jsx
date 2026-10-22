@@ -12,10 +12,7 @@ import {
   Save,
   Lock,
   LockOpen,
-  MonetizationOnOutlined,
-  EventOutlined,
   ListAlt,
-  Business,
 } from "@mui/icons-material";
 import ContentHeaderStructure from "../../../../components/ui/structure/ContentHeaderStructure.jsx";
 import DataTable from "../../../../components/ui/form/DataTable.jsx";
@@ -27,8 +24,13 @@ import TransactionAPI from "../../../../api/endpoints/transaction.api.js";
 import echo from "../../../../lib/echo.js";
 import { showSwal, withSpinner } from "../../../../utils/helpers/swal.jsx";
 import { fmtPHP, fmtQty } from "../../../../utils/formatters/formatter.js";
+import { calculateItemTax } from "../../../../utils/helpers/calculateTax.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import CardStructure from "../../../../components/ui/structure/CardStructure.jsx";
+import {
+  NO_TRANSACTION_ABC,
+  OPEN_DATE,
+} from "../../../../constants/tableDataFallbacks.js";
 /* ──────────────────────────────────────────────────────────── */
 /* 🔧 LOCAL COLOR MAP — Prompt 1 pattern, only used tokens       */
 /* ──────────────────────────────────────────────────────────── */
@@ -547,16 +549,22 @@ const PricingPanel = React.forwardRef(function PricingPanel(
   const [savedPrices, setSavedPrices] = useState({});
   const [existingPricings, setExistingPricings] = useState({});
   const [lockedPricings, setLockedPricings] = useState({});
-  const [serverTax, setServerTax] = useState({});
   const [serverSuggestive, setServerSuggestive] = useState({});
   const [costModalOpen, setCostModalOpen] = useState(false);
   const localActionRef = React.useRef(false);
-  const taxDebounceRef = React.useRef(null);
   const statusChangedTooltip = statusChangedAlert
     ? "This transaction has been moved to a different status by another user. All actions are disabled."
     : "";
   const transactionHasABC = !!(
     transaction?.dTotalABC && Number(transaction.dTotalABC) > 0
+  );
+  // The BUDGET group (ABC + Difference) only means something when the
+  // ITEMS carry an ABC of their own — the transaction's total ABC is not
+  // enough: the columns read the item's own ABC, so without it every cell
+  // would be a dash. The whole group is hidden in that case.
+  const showBudgetGroup = useMemo(
+    () => items.some((i) => Number(i.abc || 0) > 0),
+    [items],
   );
   const hasUnsavedChanges = useMemo(() => {
     const k = new Set([
@@ -568,38 +576,75 @@ const PricingPanel = React.forwardRef(function PricingPanel(
     return false;
   }, [unitSellingPrices, savedPrices]);
 
-  /* ── Column groups — tokenized ── */
-  const COLUMN_GROUPS = [
-    { label: "", span: 2.5 },
-    { label: "", span: 1 },
-    {
-      label: "Selling",
-      span: 3,
-      color: colors.blueText,
-      bgColor: colors.blueBgSoft,
-      borderLeft: colors.blueBorder,
-      borderRight: colors.blueBorder,
-    },
-    {
-      label: "Budget",
-      span: 2,
-      color: colors.tealText,
-      bgColor: colors.tealBg,
-      borderRight: colors.tealBorder,
-    },
-    {
-      label: "Cost & Return",
-      span: 2,
-      color: colors.amberWarnText,
-      bgColor: colors.amberWarnBg,
-      borderRight: colors.amberWarnBorder,
-    },
-    { label: "", span: 1.5 },
-  ];
-  const infoBadgeBg = colors.cyanBg;
-  const infoBadgeBorder = colors.cyanBorder;
-  const infoBadgeText = colors.cyanStrong;
+  /* ── Column groups — tokenized ──
+     The "Budget" group (the ABC and the Difference) is dropped when there
+     is no ABC at all — the columns it heads would be empty. */
+  const COLUMN_GROUPS = useMemo(
+    () =>
+      [
+        {
+          // The width the BUDGET group would have taken goes to the
+          // description when that group is hidden.
+          label: "",
+          span: showBudgetGroup ? 2.5 : 4.5,
+        },
+        { label: "", span: 1 },
+        {
+          label: "Selling",
+          span: 3,
+          color: colors.blueText,
+          bgColor: colors.blueBgSoft,
+          borderLeft: colors.blueBorder,
+          borderRight: colors.blueBorder,
+        },
+        {
+          label: "Budget",
+          span: 2,
+          color: colors.tealText,
+          bgColor: colors.tealBg,
+          borderRight: colors.tealBorder,
+        },
+        {
+          label: "Cost & Return",
+          span: 2,
+          color: colors.amberWarnText,
+          bgColor: colors.amberWarnBg,
+          borderRight: colors.amberWarnBorder,
+        },
+        { label: "", span: 1.5 },
+      ].filter((g) => showBudgetGroup || g.label !== "Budget"),
+    [showBudgetGroup, colors],
+  );
   const primaryMain = colors.blueStrong;
+
+  // ── Assigned Account Officer (badge beside the transaction code) ─────────
+  const aoUser = transaction?.user;
+  const aoNickName = (aoUser?.strNickName || transaction?.aoName || "")
+    .toString()
+    .trim();
+  const aoFullName = (
+    aoUser?.strFName ||
+    aoUser?.strLName ||
+    aoNickName ||
+    ""
+  )
+    .toString()
+    .trim();
+
+  // ── Client label — nickname only ("6105D") ───────────────────────────────
+  const clientLabel = (
+    transaction?.client?.strClientNickName ||
+    clientNickName ||
+    ""
+  ).trim();
+
+  // ── Code + pricing set — "ABC-123 - SET NAME" ───────────────────────────
+  const codeLabel = [
+    (transaction?.strCode || "").trim(),
+    (selectedSet?.name || "").trim(),
+  ]
+    .filter(Boolean)
+    .join(" - ");
 
   const fetchChosenSet = useCallback(async () => {
     if (!transaction?.nTransactionId) return;
@@ -679,7 +724,6 @@ const PricingPanel = React.forwardRef(function PricingPanel(
         const res = await PricingAPI.getItemPricings(pricingSetId);
         const pmap = {},
           xmap = {},
-          tmap = {},
           smap = {},
           lmap = {};
         (res.itemPricings || []).forEach((p) => {
@@ -687,7 +731,6 @@ const PricingPanel = React.forwardRef(function PricingPanel(
             pmap[p.nTransactionItemId] = p.dUnitSellingPrice;
           if (p.nItemPriceId !== null)
             xmap[p.nTransactionItemId] = p.nItemPriceId;
-          tmap[p.nTransactionItemId] = p.tax ?? 0;
           if (p.suggestivePrice !== null && p.suggestivePrice !== 0)
             smap[p.nTransactionItemId] = p.suggestivePrice;
           lmap[p.nTransactionItemId] =
@@ -696,7 +739,6 @@ const PricingPanel = React.forwardRef(function PricingPanel(
         setUnitSellingPrices(pmap);
         setSavedPrices(pmap);
         setExistingPricings(xmap);
-        setServerTax(tmap);
         setServerSuggestive(smap);
         setLockedPricings(lmap);
       } catch {
@@ -743,39 +785,11 @@ const PricingPanel = React.forwardRef(function PricingPanel(
     fetchChosenSet,
   ]);
 
-  /* ── Debounced tax refresh ── */
-  useEffect(() => {
-    if (!selectedSet?.id || !Object.keys(unitSellingPrices).length) return;
-    const chgd = Object.entries(unitSellingPrices).filter(
-      ([id, v]) =>
-        v !== undefined &&
-        v !== "" &&
-        Number(v) > 0 &&
-        isItemDirty(id, unitSellingPrices, savedPrices),
-    );
-    if (!chgd.length) return;
-    clearTimeout(taxDebounceRef.current);
-    taxDebounceRef.current = setTimeout(async () => {
-      try {
-        const res = await Promise.all(
-          chgd.map(([id, val]) =>
-            PricingAPI.getItemPricingTax(
-              `transaction_item_id=${id}&pricing_set_id=${selectedSet.id}&unit_selling_price=${Number(val)}`,
-            )
-              .then((r) => ({ id, tax: r.tax ?? 0 }))
-              .catch(() => ({ id, tax: serverTax[id] ?? 0 })),
-          ),
-        );
-        setServerTax((p) => {
-          const u = { ...p };
-          res.forEach(({ id, tax }) => (u[id] = tax));
-          return u;
-        });
-      } catch {}
-    }, 600);
-    return () => clearTimeout(taxDebounceRef.current);
-  }, [unitSellingPrices, savedPrices, selectedSet?.id]);
-  useEffect(() => () => clearTimeout(taxDebounceRef.current), []);
+  /* ── The tax is worked out on the spot ──
+     It used to be fetched from the server (debounced, 600ms) so the column
+     lagged behind the price and showed 0 for a price that was never saved.
+     getTaxForItem() now derives it from the price on screen, so the column
+     moves with the price and the rows add up to the total. */
 
   /* ── Derived totals ── */
   const getEffectiveABC = useCallback(
@@ -813,6 +827,18 @@ const PricingPanel = React.forwardRef(function PricingPanel(
     },
     [unitSellingPrices, getEffectiveABC],
   );
+  // The tax of an item, worked out from the price ON SCREEN — so the Tax
+  // column follows every change of the unit selling price (the server's
+  // saved tax is only the value of the last save).
+  const getTaxForItem = useCallback(
+    (item) =>
+      calculateItemTax({
+        unitSellingPrice: getUSP(item),
+        qty: item.qty,
+        purchaseTotal: getIncludedTotal(item),
+      }),
+    [getUSP, getIncludedTotal],
+  );
   const getTxABCBalance = useCallback(
     (target) => {
       if (!transactionHasABC) return null;
@@ -832,9 +858,9 @@ const PricingPanel = React.forwardRef(function PricingPanel(
     (item) => {
       const qty = Number(item.qty || 0);
       const capital = qty ? getIncludedTotal(item) / qty : 0;
-      return (getUSP(item) - capital) * qty - (serverTax[item.id] ?? 0);
+      return (getUSP(item) - capital) * qty - getTaxForItem(item);
     },
-    [getUSP, getIncludedTotal, serverTax],
+    [getUSP, getIncludedTotal, getTaxForItem],
   );
   const totals = useMemo(() => {
     const totalSellingAll = items.reduce(
@@ -842,10 +868,11 @@ const PricingPanel = React.forwardRef(function PricingPanel(
       0,
     );
     const totalPurchaseAll = items.reduce((s, i) => s + getIncludedTotal(i), 0);
-    const totalTaxAll =
-      Math.round(
-        ((totalSellingAll - totalPurchaseAll) / 1.12) * (0.12 + 0.3) * 100,
-      ) / 100;
+    // The tax is worked out per item (the same way the server does) so the
+    // column and this total always agree — and both follow the price.
+    const totalTaxAll = Math.round(
+      items.reduce((s, i) => s + getTaxForItem(i), 0) * 100,
+    ) / 100;
 
     return {
       totalSellingAll,
@@ -858,7 +885,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
       totalProfitAll: totalSellingAll - totalPurchaseAll - totalTaxAll,
       totalTaxAll,
     };
-  }, [items, getUSP, getEffectiveABC, getIncludedTotal]);
+  }, [items, getUSP, getEffectiveABC, getIncludedTotal, getTaxForItem]);
   const allItemsHavePrices = useMemo(
     () =>
       items.length > 0 &&
@@ -998,13 +1025,18 @@ const PricingPanel = React.forwardRef(function PricingPanel(
     onStateChange,
   ]);
 
-  /* ── Table columns ── */
+  /* ── Table columns ──
+     The BUDGET columns (the ABC and the Difference) are dropped together
+     with their header group when there is no ABC to budget against. */
   const pricingColumns = useMemo(
-    () => [
+    () =>
+      [
       {
         key: "desc",
         label: "Description",
-        xs: 2.5,
+        // The width the BUDGET group would have taken goes to the
+        // description when that group is hidden — the table keeps its size.
+        xs: showBudgetGroup ? 2.5 : 4.5,
         rowSpan: true,
         headerAlign: "center",
         summaryColSpan: 2,
@@ -1333,7 +1365,8 @@ const PricingPanel = React.forwardRef(function PricingPanel(
         align: "right",
         cellSxExtra: { borderLeft: `1px solid ${colors.slateBorderLight}` },
         render: (item) => {
-          const t = serverTax[item.id] ?? 0;
+          // Live: worked out from the price on screen, so it moves with it.
+          const t = getTaxForItem(item);
           return (
             <Typography
               sx={{
@@ -1360,20 +1393,20 @@ const PricingPanel = React.forwardRef(function PricingPanel(
           </Typography>
         ),
       },
-    ],
+    ].filter((col) => showBudgetGroup || col.band !== "budget"),
     [
       unitSellingPrices,
       savedPrices,
       lockedPricings,
       existingPricings,
       serverSuggestive,
-      serverTax,
       totals,
       transactionHasABC,
       transaction,
       getUSP,
       getEffectiveABC,
       getIncludedTotal,
+      getTaxForItem,
       getProfitForItem,
       getTxABCBalance,
       isPricingSetting,
@@ -1382,6 +1415,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
       isManagement,
       colors,
       isDark,
+      showBudgetGroup,
     ],
   );
 
@@ -1426,25 +1460,6 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                   mb: 1.25,
                 }}
               >
-                <Box
-                  sx={{
-                    background: primaryMain,
-                    borderRadius: "7px",
-                    width: 30,
-                    height: 30,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  <Business
-                    sx={{
-                      color: colors.slateOuterBg,
-                      fontSize: "1rem",
-                    }}
-                  />
-                </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Box
                     sx={{
@@ -1454,49 +1469,91 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                       mb: 0.2,
                     }}
                   >
-                    <Box
+                    <Typography
                       sx={{
-                        fontSize: "0.65rem",
-                        background: infoBadgeBg,
-                        color: infoBadgeText,
-                        border: `0.5px solid ${infoBadgeBorder}`,
-                        borderRadius: "5px",
-                        px: 1,
-                        py: 0.3,
+                        fontSize: "0.7rem",
+                        fontWeight: 600,
+                        color: colors.textSecondary,
+                        textTransform: "uppercase",
                         whiteSpace: "nowrap",
                         flexShrink: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
                       }}
                     >
-                      # {transaction?.strCode || "—"} —{" "}
-                      {selectedSet?.name || "—"}
-                    </Box>
+                      {codeLabel || "—"}
+                    </Typography>
+                    {aoNickName && (
+                      <Box
+                        component="span"
+                        sx={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 0.3,
+                          px: 0.8,
+                          py: 0.15,
+                          borderRadius: "50px",
+                          background: colors.blueBgSoft,
+                          border: `0.5px solid ${colors.blueBorder}`,
+                          flexShrink: 0,
+                          minWidth: 0,
+                        }}
+                      >
+                        <Tooltip
+                          title={
+                            aoFullName
+                              ? `Account Officer: ${aoFullName}`
+                              : "Account Officer"
+                          }
+                          arrow
+                          placement="top"
+                        >
+                          <Typography
+                            sx={{
+                              fontSize: "0.6rem",
+                              fontWeight: 600,
+                              color: colors.blueText,
+                              textTransform: "uppercase",
+                              lineHeight: 1,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {aoNickName}
+                          </Typography>
+                        </Tooltip>
+                      </Box>
+                    )}
                   </Box>
                   <Typography
                     sx={{
                       textAlign: "left",
-                      fontSize: "0.7rem",
-                      mt: 0.5,
+                      fontSize: "0.95rem",
+                      fontWeight: 700,
                       color: colors.textPrimary,
-                      lineHeight: 1.25,
+                      lineHeight: 1,
+                      textTransform: "uppercase",
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                     }}
                   >
-                    <Box
-                      component="span"
-                      sx={{ fontWeight: 700, color: colors.blueStrong }}
-                    >
-                      {transaction?.client?.strClientNickName ||
-                        clientNickName ||
-                        "—"}
-                    </Box>
-                    <Box
-                      component="span"
-                      sx={{ mx: 0.5, color: colors.tealText }}
-                    >
-                      :
-                    </Box>{" "}
+                    {clientLabel || "—"}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      textAlign: "left",
+                      fontSize: "0.7rem",
+                      fontStyle: "italic",
+                      color: colors.textPrimary,
+                      lineHeight: 1,
+                      mt: 0.15,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
                     {transaction?.strTitle ||
                       transaction?.transactionName ||
                       "—"}
@@ -1515,13 +1572,12 @@ const PricingPanel = React.forwardRef(function PricingPanel(
               >
                 <CardStructure
                   orientation="row"
-                  icon={<MonetizationOnOutlined />}
                   label={
                     transaction?.dTotalABC
                       ? "Transaction ABC"
                       : "Total ABC (per item)"
                   }
-                  variant="info"
+                  variant="default"
                   value={
                     transaction?.dTotalABC && totals.totalABCAll > 0 ? (
                       <>
@@ -1543,13 +1599,12 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                     ) : totals.totalABCAll > 0 ? (
                       `₱ ${fmtPHP(totals.totalABCAll)}`
                     ) : (
-                      "—"
+                      NO_TRANSACTION_ABC
                     )
                   }
                 />
                 <CardStructure
                   orientation="row"
-                  icon={<EventOutlined />}
                   label="Document Submission"
                   variant={
                     isUrgentDate(transaction?.dtDocSubmission)
@@ -1559,7 +1614,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                   value={
                     transaction?.dtDocSubmission
                       ? `${new Date(transaction.dtDocSubmission).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })} — ${new Date(transaction.dtDocSubmission).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`
-                      : "—"
+                      : OPEN_DATE
                   }
                 />
               </Box>

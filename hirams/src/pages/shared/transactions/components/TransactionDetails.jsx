@@ -13,14 +13,6 @@ import CalendarTodayOutlinedIcon from "@mui/icons-material/CalendarTodayOutlined
 import BadgeOutlinedIcon from "@mui/icons-material/BadgeOutlined";
 import FlagOutlinedIcon from "@mui/icons-material/FlagOutlined";
 import EventOutlinedIcon from "@mui/icons-material/EventOutlined";
-import TitleOutlinedIcon from "@mui/icons-material/TitleOutlined";
-import TagOutlinedIcon from "@mui/icons-material/TagOutlined";
-import ApartmentOutlinedIcon from "@mui/icons-material/ApartmentOutlined";
-import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
-import CategoryOutlinedIcon from "@mui/icons-material/CategoryOutlined";
-import GavelOutlinedIcon from "@mui/icons-material/GavelOutlined";
-import AccountBalanceOutlinedIcon from "@mui/icons-material/AccountBalanceOutlined";
-import MonetizationOnOutlinedIcon from "@mui/icons-material/MonetizationOnOutlined";
 import PlaceOutlinedIcon from "@mui/icons-material/PlaceOutlined";
 import AccessTimeOutlinedIcon from "@mui/icons-material/AccessTimeOutlined";
 import CardStructure from "../../../../components/ui/structure/CardStructure";
@@ -41,7 +33,10 @@ const scheduleKeys = ["PreBid", "DocIssuance", "DocSubmission", "DocOpening"];
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function formatDateTime(dateString) {
   if (!dateString) return null;
-  const date = new Date(dateString);
+  // The API sends MySQL datetimes ("2026-10-21 17:08:30"). Only Chrome
+  // reads that as a date on its own — the space becomes the "T" so every
+  // browser parses it, and it stays LOCAL time (no Z, no offset).
+  const date = new Date(String(dateString).replace(" ", "T"));
   return isNaN(date)
     ? null
     : date.toLocaleString("en-US", {
@@ -79,10 +74,19 @@ function SectionHeader({ icon: Icon, label, showTopDivider = true }) {
   );
 }
 
-function FieldItem({ label, icon: Icon, children, xs = 12, sm = 6 }) {
+function FieldItem({
+  label,
+  icon: Icon,
+  children,
+  xs = 12,
+  sm = 6,
+  // The label in CAPS — the sections that carry no icons lean on it to
+  // separate the label from the value.
+  uppercase = false,
+}) {
   return (
     <Grid item xs={xs} sm={sm}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, mb: 0.5 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, mb: 0.35 }}>
         {Icon && (
           <Icon
             sx={{
@@ -96,10 +100,14 @@ function FieldItem({ label, icon: Icon, children, xs = 12, sm = 6 }) {
         <Typography
           variant="caption"
           sx={{
+            // The label is a caption, not a headline — it names the value
+            // below it, so it stays small.
+            fontSize: "0.65rem",
             fontWeight: 600,
             color: "text.secondary",
             letterSpacing: "0.04em",
             lineHeight: 1,
+            textTransform: uppercase ? "uppercase" : "none",
           }}
         >
           {label}
@@ -108,7 +116,17 @@ function FieldItem({ label, icon: Icon, children, xs = 12, sm = 6 }) {
       <Typography
         component="div"
         variant="body2"
-        sx={{ color: "text.primary", lineHeight: 1.5, ml: 2 }}
+        sx={{
+          color: "text.primary",
+          // The value is the thing being read — it carries the size the
+          // label gave up.
+          fontSize: "1rem",
+          fontWeight: 400,
+          lineHeight: 1.35,
+          // The value sits under the label — indented only when an icon
+          // pushed the label to the right in the first place.
+          ml: Icon ? 2 : 0,
+        }}
       >
         {children ?? "—"}
       </Typography>
@@ -237,6 +255,15 @@ const TransactionDetails = ({
     "Not Assigned";
   const aoDueDateColor = getDueDateColor(details?.dtAODueDate);
 
+  // WHO raised the transaction, and WHEN. The list hands the creator over
+  // as a nickname ("--" when there is none) and the API sends the moment
+  // the transaction was raised as `created_at`.
+  const rawCreator = details?.created_by || details?.createdBy || "";
+  const creatorName = !rawCreator || rawCreator === "--" ? "—" : rawCreator;
+  const createdOn = details?.created_at
+    ? formatDateTime(details.created_at)
+    : null;
+
   return (
     <Box sx={{ "& .MuiGrid-item": { pt: 1.5 } }}>
       {/* ── Transaction ──────────────────────────────────────────── */}
@@ -287,98 +314,98 @@ const TransactionDetails = ({
         </Box>
       )}
 
-      {/* ── Basic Information ────────────────────────────────────── */}
+      {/* ── Basic Information + Procurement ───────────────────────── */}
+      {/* Two columns side by side: the basics on the left, the procurement
+          facts on the right — each one stacked in its own column, so the
+          rows line up across the two. */}
       <Box sx={{ mb: 3 }}>
-        <SectionHeader
-          showTopDivider={false}
-          icon={PersonOutlineIcon}
-          label="Basic Information"
-        />
-        <Grid container spacing={0}>
-          <FieldItem label="Title" icon={TitleOutlinedIcon} xs={12} sm={12}>
-            <Typography variant="body2" sx={{ fontWeight: 500 }}>
-              {details?.strTitle || details?.transactionName || "—"}
-            </Typography>
-          </FieldItem>
-          <FieldItem
-            label="Transaction Code"
-            icon={TagOutlinedIcon}
-            xs={12}
-            sm={4}
-          >
-            {details?.strCode || details?.transactionId || "—"}
-          </FieldItem>
-          <FieldItem
-            label="Company"
-            icon={ApartmentOutlinedIcon}
-            xs={12}
-            sm={4}
-          >
-            {details?.company?.strCompanyNickName ||
-              details?.companyNickName ||
-              "—"}
-          </FieldItem>
-          <FieldItem label="Client" icon={GroupOutlinedIcon} xs={12} sm={4}>
-            {details?.client?.strClientNickName ||
-              details?.clientNickName ||
-              "—"}
-          </FieldItem>
-        </Grid>
-      </Box>
-
-      {/* ── Procurement ──────────────────────────────────────────── */}
-      <Box sx={{ mb: 3 }}>
-        <SectionHeader icon={ShoppingCartOutlinedIcon} label="Procurement" />
-        <Grid container spacing={0}>
-          <FieldItem
-            label="Item Type"
-            icon={CategoryOutlinedIcon}
-            xs={12}
-            sm={3}
-          >
-            {itemType?.[details?.cItemType] || details?.cItemType || "—"}
-          </FieldItem>
-          <FieldItem
-            label="Procurement Mode"
-            icon={GavelOutlinedIcon}
-            xs={12}
-            sm={3}
-          >
-            {procMode?.[details?.cProcMode] || details?.cProcMode || "—"}
-          </FieldItem>
-          <FieldItem
-            label="Procurement Source"
-            icon={AccountBalanceOutlinedIcon}
-            xs={12}
-            sm={3}
-          >
-            {procSourceLabel || "—"}
-          </FieldItem>
-          <FieldItem
-            label="Total ABC"
-            icon={MonetizationOnOutlinedIcon}
-            xs={12}
-            sm={3}
-          >
-            {details?.dTotalABC ? (
-              <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5 }}>
-                <Typography
-                  component="span"
-                  variant="body2"
-                  sx={{ fontWeight: 600 }}
-                >
-                  ₱{" "}
-                  {Number(details.dTotalABC).toLocaleString("en-US", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            gap: { xs: 2, sm: 3 },
+          }}
+        >
+          {/* ── Basic Information ────────────────────────────────── */}
+          <Box sx={{ flex: 1, minWidth: 0 }}>            <SectionHeader
+              showTopDivider={false}
+              icon={PersonOutlineIcon}
+              label="Basic Information"
+            />
+            <Grid container spacing={0}>
+              <FieldItem label="Title" uppercase xs={12} sm={12}>
+                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                  {details?.strTitle || details?.transactionName || "—"}
                 </Typography>
-              </Box>
-            ) : (
-              "—"
-            )}
-          </FieldItem>
-        </Grid>
+              </FieldItem>
+              <FieldItem label="Transaction Code" uppercase xs={12} sm={12}>
+                {details?.strCode || details?.transactionId || "—"}
+              </FieldItem>
+              <FieldItem label="Company" uppercase xs={12} sm={12}>
+                {details?.company?.strCompanyNickName ||
+                  details?.companyNickName ||
+                  "—"}
+              </FieldItem>
+              <FieldItem label="Client" uppercase xs={12} sm={12}>
+                {details?.client?.strClientNickName ||
+                  details?.clientNickName ||
+                  "—"}
+              </FieldItem>
+            </Grid>
+          </Box>
+
+          {/* THE SEPARATOR between the two columns */}
+          <Divider
+            orientation="vertical"
+            flexItem
+            sx={{ alignSelf: "stretch", mx: 0 }}
+          />
+
+          {/* ── Procurement ──────────────────────────────────────── */}
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <SectionHeader
+              showTopDivider={false}
+              icon={ShoppingCartOutlinedIcon}
+              label="Procurement"
+            />
+            <Grid container spacing={0}>
+              <FieldItem label="Item Type" uppercase xs={12} sm={12}>
+                {String(
+                  itemType?.[details?.cItemType] || details?.cItemType || "—",
+                ).toUpperCase()}
+              </FieldItem>
+              <FieldItem label="Mode" uppercase xs={12} sm={12}>
+                {String(
+                  procMode?.[details?.cProcMode] || details?.cProcMode || "—",
+                ).toUpperCase()}
+              </FieldItem>
+              <FieldItem label="Source" uppercase xs={12} sm={12}>
+                {String(procSourceLabel || "—").toUpperCase()}
+              </FieldItem>
+              <FieldItem label="Total ABC" uppercase xs={12} sm={12}>
+                {details?.dTotalABC ? (
+                  <Box
+                    sx={{ display: "flex", alignItems: "baseline", gap: 0.5 }}
+                  >
+                    <Typography
+                      component="span"
+                      variant="body2"
+                      sx={{ fontWeight: 600 }}
+                    >
+                      ₱{" "}
+                      {Number(details.dTotalABC).toLocaleString("en-US", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </Typography>
+                  </Box>
+                ) : (
+                  "—"
+                )}
+              </FieldItem>
+            </Grid>
+          </Box>
+        </Box>
       </Box>
 
       {/* ── Schedule ─────────────────────────────────────────────── */}
@@ -408,11 +435,72 @@ const TransactionDetails = ({
       </Box>
 
       {/* ── Created By ───────────────────────────────────────────── */}
+      {/* WHO raised it, and WHEN — no label, the row says it. */}
       <Box sx={{ mt: 3 }}>
-        <SectionHeader
-          icon={PersonOutlineIcon}
-          label={`Created By: ${details?.created_by || details?.createdBy || "—"}`}
-        />
+        <Divider sx={{ mb: 1 }} />
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            // The creator on the left, the moment on the right — the row
+            // spreads them apart instead of stacking them.
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 1,
+            rowGap: 0.5,
+            // The same breathing room the other sections leave under their
+            // header row — the divider must not sit on the text.
+            mb: 1,
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+            <PersonOutlineIcon
+              sx={{
+                fontSize: 15,
+                color: "text.secondary",
+                opacity: 0.7,
+                flexShrink: 0,
+              }}
+            />
+            <Typography
+              sx={{
+                // The name and the date wear the LABEL's type: small, bold,
+                // letter-spaced and in caps.
+                fontSize: "0.65rem",
+                fontWeight: 600,
+                color: "text.primary",
+                letterSpacing: "0.04em",
+                lineHeight: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              {creatorName}
+            </Typography>
+          </Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+            <CalendarTodayOutlinedIcon
+              sx={{
+                fontSize: 15,
+                color: "text.secondary",
+                opacity: 0.7,
+                flexShrink: 0,
+              }}
+            />
+            <Typography
+              sx={{
+                fontSize: "0.65rem",
+                fontWeight: 600,
+                color: "text.secondary",
+                letterSpacing: "0.04em",
+                lineHeight: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              {createdOn || "—"}
+            </Typography>
+          </Box>
+        </Box>
+        <Divider sx={{ mb: 1.75 }} />
       </Box>
     </Box>
   );

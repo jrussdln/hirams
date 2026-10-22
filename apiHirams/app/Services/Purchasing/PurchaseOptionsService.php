@@ -8,7 +8,6 @@ use App\Models\PurchaseOptions;
 use App\Models\Supplier;
 use App\Models\TransactionItems;
 use App\Services\CrudService;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
@@ -64,7 +63,10 @@ class PurchaseOptionsService extends CrudService
             'strModel'                => $data['model'] ?? null,
             'strSpecs'                => $data['specs'] ?? null,
             'dUnitPrice'              => $data['unitPrice'],
-            'dEWT'                    => $data['ewt'] ?? 0,
+            // The EWT is DERIVED from the line's EWT type (and from the
+            // supplier's flags when the type is the default) — it is not
+            // stored, the model computes it.
+            'cEWTType'                => $data['cEWTType'] ?? null,
             'bIncluded'               => $data['bIncluded'] ?? 1,
             'bAddOn'                  => $data['bAddOn'] ?? 0,
             'dtCanvass'               => now(),
@@ -86,6 +88,34 @@ class PurchaseOptionsService extends CrudService
     {
         $purchaseOption = $this->find($id);
 
+        // cEWTType is special: NULL is a MEANINGFUL value (it means
+        // "Default"), so "present but null" must reset the line back to the
+        // default formula — only an absent key keeps the current type.
+        $ewtType = array_key_exists('cEWTType', $data)
+            ? $data['cEWTType']
+            : $purchaseOption->cEWTType;
+
+        // ── The FOR PURCHASE stage: an INCLUDED option's price is LOCKED ──
+        // dUnitPrice is the CANVASSED price — the one the transaction was
+        // priced with — so it must not move behind the transaction's back.
+        // The new price is recorded as a PENDING purchase price instead
+        // (dPurchaseUnitPrice + cPurchaseUnitPriceStatus = 'P'); it only
+        // counts once it is approved ('A').
+        // The canvass date (dtCanvass) is left exactly as it is — for now.
+        if ($this->locksUnitPrice($purchaseOption) && array_key_exists('unitPrice', $data)) {
+            $newPrice = $data['unitPrice'];
+
+            if ($newPrice !== null && (float) $newPrice !== (float) $purchaseOption->getRawOriginal('dUnitPrice')) {
+                $purchaseOption->update([
+                    'dPurchaseUnitPrice'       => $newPrice,
+                    'cPurchaseUnitPriceStatus' => PurchaseOptions::purchasePriceStatus()['pending'],
+                ]);
+            }
+
+            // dUnitPrice stays exactly as it was canvassed.
+            unset($data['unitPrice']);
+        }
+
         $purchaseOption->update([
             'nSupplierId'        => $data['nSupplierId']        ?? $purchaseOption->nSupplierId,
             'nQuantity'          => $data['quantity']            ?? $purchaseOption->nQuantity,
@@ -93,8 +123,12 @@ class PurchaseOptionsService extends CrudService
             'strBrand'           => $data['brand']               ?? $purchaseOption->strBrand,
             'strModel'           => $data['model']               ?? $purchaseOption->strModel,
             'strSpecs'           => $data['specs']               ?? $purchaseOption->strSpecs,
-            'dUnitPrice'         => $data['unitPrice']           ?? $purchaseOption->dUnitPrice,
-            'dEWT'               => $data['ewt']                 ?? $purchaseOption->dEWT,
+            // The RAW canvassed price — never the effective one, or a
+            // pending purchase price would be written over it.
+            'dUnitPrice'         => $data['unitPrice']           ?? $purchaseOption->getRawOriginal('dUnitPrice'),
+            // The EWT itself is derived (the model computes it) — only the
+            // TYPE is stored.
+            'cEWTType'           => $ewtType,
             'bIncluded'          => $data['bIncluded']           ?? $purchaseOption->bIncluded,
             'bAddOn'             => $data['bAddOn']               ?? $purchaseOption->bAddOn,
             'nSupplierContactId' => $data['nSupplierContactId']  ?? $purchaseOption->nSupplierContactId, // ← fixed
@@ -104,6 +138,48 @@ class PurchaseOptionsService extends CrudService
         $this->broadcast('updated', $purchaseOption);
 
         return $purchaseOption;
+    }
+
+    /**
+     * TRUE when the option's unit price must NOT move: the transaction is
+     * at the FOR PURCHASE stage and the option is part of the item's
+     * selection (bIncluded).
+     *
+     * The canvassed price is what the transaction was priced with — at the
+     * purchase stage the price is renegotiated, but the old one stays on
+     * the record (see update()).
+     */
+    private function locksUnitPrice(PurchaseOptions $option): bool
+    {
+        // Only an option that is part of the item's selection is locked.
+        if ((int) $option->bIncluded !== 1) {
+            return false;
+        }
+
+        $forPurchase = $this->transactionStatusCode('For Purchase/Delivery');
+        if ($forPurchase === '') {
+            return false;
+        }
+
+        $transaction = $option->transactionItem?->transaction;
+        if (!$transaction) {
+            return false;
+        }
+
+        // The transaction's current status lives on its LATEST history row.
+        $currentStatus = $transaction->latestHistory?->nStatus;
+
+        return (string) $currentStatus === $forPurchase;
+    }
+
+    /**
+     * A transaction status code, looked up BY NAME in config/mappings.php.
+     */
+    private function transactionStatusCode(string $label): string
+    {
+        $map = config('mappings.status_transaction', []);
+
+        return (string) (array_search($label, $map, true) ?: '');
     }
 
     /**
@@ -135,11 +211,14 @@ class PurchaseOptionsService extends CrudService
     }
 
     /**
-     * @return Collection<int, array>
+     * @return SupportCollection<int, array>
      */
-    public function byItem(int $itemId): Collection
+    public function byItem(int $itemId): SupportCollection
     {
-        return $this->newQuery()->with('supplier')
+        return $this->newQuery()
+            // The EWT is derived from the supplier and the transaction's
+            // item type — load both, or every row costs two queries.
+            ->with(['supplier', 'transactionItem.transaction'])
             ->where('nTransactionItemId', $itemId)
             ->orderBy('bAddOn', 'asc')
             ->orderBy('bIncluded', 'desc')
@@ -148,11 +227,14 @@ class PurchaseOptionsService extends CrudService
     }
 
     /**
-     * @return Collection<int, array>
+     * @return SupportCollection<int, array>
      */
-    public function addOnsByItem(int $itemId): Collection
+    public function addOnsByItem(int $itemId): SupportCollection
     {
-        return $this->newQuery()->with('supplier')
+        return $this->newQuery()
+            // The EWT is derived from the supplier and the transaction's
+            // item type — load both, or every row costs two queries.
+            ->with(['supplier', 'transactionItem.transaction'])
             ->where('nTransactionItemId', $itemId)
             ->where('bAddOn', 1)
             ->get()
@@ -162,6 +244,9 @@ class PurchaseOptionsService extends CrudService
     /**
      * EWT depends on the supplier's VAT / EWT flags, so the supplier row is
      * loaded here before delegating to the formula helper.
+     *
+     * The line's EWT TYPE (cEWTType) wins over the supplier's flags: it is
+     * the per-line bypass of the default matrix.
      */
     public function calculateEWT(array $validated): float
     {
@@ -171,7 +256,8 @@ class PurchaseOptionsService extends CrudService
             $validated['quantity'],
             $validated['unitPrice'],
             $supplier,
-            $validated['cItemType']
+            $validated['cItemType'],
+            $validated['cEWTType'] ?? null
         );
     }
 
@@ -192,7 +278,10 @@ class PurchaseOptionsService extends CrudService
         $search     = trim($validated['search']);
         $supplierId = $validated['supplierId'] ?? null;
 
-        $query = $this->newQuery()->with('supplier')
+        $query = $this->newQuery()
+            // The EWT is derived from the supplier and the transaction's
+            // item type — load both, or every row costs two queries.
+            ->with(['supplier', 'transactionItem.transaction'])
             ->where(function ($q) use ($search) {
                 $q->where('strBrand', 'LIKE', "%{$search}%")
                     ->orWhere('strModel', 'LIKE', "%{$search}%");
@@ -217,6 +306,7 @@ class PurchaseOptionsService extends CrudService
                 'uom'          => $option->strUOM,
                 'unitPrice'    => $option->dUnitPrice,
                 'ewt'          => $option->dEWT,
+                'cEWTType'     => $option->cEWTType,
                 'specs'        => $option->strSpecs,
                 'dtCanvass'    => $option->dtCanvass,
             ])
@@ -245,6 +335,7 @@ class PurchaseOptionsService extends CrudService
             'strSpecs'           => $option->strSpecs,
             'dUnitPrice'         => $option->dUnitPrice,
             'dEWT'               => $option->dEWT,
+            'cEWTType'           => $option->cEWTType,
             'strProductCode'     => $option->strProductCode,
             'bIncluded'          => (bool) $option->bIncluded,
             'bPurchaseIncluded'  => (bool) $option->bPurchaseIncluded,  // ← ADD

@@ -15,6 +15,8 @@ import { ArrowBack } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import PurchaseOptionAPI from "../../../../api/endpoints/purchase-option.api.js";
 import SupplierContactField from "./SupplierContactField.jsx";
+import EwtTypeField from "../../../../components/ui/form/EwtTypeField.jsx";
+import useMapping from "../../../../hooks/useMapping.js";
 import { withSpinner, showSwal } from "../../../../utils/helpers/swal.jsx";
 import { validateFormData } from "../../../../utils/form/validation.js";
 import uiMessages from "../../../../utils/helpers/uiMessages.js";
@@ -73,9 +75,14 @@ const initialFormData = {
   model: "",
   specs: "",
   unitPrice: "",
-  ewt: "",
-  bIncluded: false,
-  bAddOn: true,
+  // The EWT TYPE — which formula the line's EWT is built from.
+  // "" = Default, "A" = 0% of Q, "B" = 1% of Q, "C" = 1% of Q / 1.12.
+  cEWTType: "",
+  bIncluded: true,
+  // A new option joins the item's SELECTION. The Add-On switch moves it
+  // to the extra list instead — the two are the same choice, so they never
+  // sit in neither list.
+  bAddOn: false,
   nSupplierContactId: "",
 };
 
@@ -363,6 +370,10 @@ function GetSuggestionsModal({
   suppliers,
   cItemType,
   onSuccess,
+  // The stage the modal was opened from — "canvas" (For Canvass),
+  // "purchase" (For Purchase) or anything else. The Add-On rule only
+  // bites in the first two.
+  stage = "",
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -371,6 +382,7 @@ function GetSuggestionsModal({
   // ✅ Wire up centralized theme colors (Prompt 1)
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useColors(base);
+  const { ewtBypassType } = useMapping();
 
   /* ── Search state ── */
   const [query, setQuery] = useState("");
@@ -390,6 +402,44 @@ function GetSuggestionsModal({
 
   const hasQuery = query.trim().length > 0;
   const isEmpty = !loading && suggestions.length === 0;
+
+  // The Add-On rule is enforced in the FOR CANVASS and FOR PURCHASE
+  // stages only — the two where an item's quantity is being covered by
+  // its selection. In every other stage (For Collection and the rest)
+  // the switch is the user's to flip.
+  const stageLocksAddOn = stage === "canvas" || stage === "purchase";
+
+  // WHAT "the item's quantity is filled" means DEPENDS on the stage:
+  // the CANVASS stage measures the SELECTION (the options included in
+  // the item's requirement — the "3 / 3" in the Quantity column), the
+  // PURCHASE stage measures what has actually been ORDERED (the "0 / 3"
+  // on the options badge). Measuring the wrong one locks the switch
+  // while the stage still says the item is short.
+  const measurePurchased = stage === "purchase";
+
+  // The Add-On switch is locked ON only when the item's quantity is
+  // already filled — there is nothing left of that item for the new
+  // line to be part of, so it can only be an extra.
+  // (Add-ons never count towards the cover, so an item whose only option
+  // is an add-on is NOT full and the switch stays free there.)
+  const selectionFillsItem = (() => {
+    const itemQty = Number(item?.qty || 0);
+    if (!(itemQty > 0)) return false;
+    const covered = (item?.purchaseOptions || [])
+      .filter(
+        (o) =>
+          // An add-on is an EXTRA — it never covers the item.
+          Number(o.bAddOn) !== 1 &&
+          // CANVASS counts the selection, PURCHASE counts the orders.
+          (measurePurchased
+            ? Number(o.bPurchaseIncluded) === 1
+            : !!o.bIncluded),
+      )
+      .reduce((s, o) => s + Number(o.nQuantity || 0), 0);
+    return covered >= itemQty;
+  })();
+
+  const isAddOnLocked = stageLocksAddOn && selectionFillsItem;
 
   /* ── Fetch suggestions ── */
   const fetchSuggestions = useCallback(async (search) => {
@@ -446,7 +496,6 @@ function GetSuggestionsModal({
     ) {
       clearTimeout(ewtDebounceRef.current);
       setCalculatedEWT("");
-      setFormData((prev) => ({ ...prev, ewt: "" }));
       setEwtLoading(false);
       return;
     }
@@ -462,16 +511,16 @@ function GetSuggestionsModal({
           quantity,
           unitPrice,
           cItemType,
+          // The line's EWT type — the server picks the formula.
+          cEWTType: formData.cEWTType || null,
         });
         if (!cancelled) {
           const ewt = response.calculatedEWT;
           setCalculatedEWT(ewt);
-          setFormData((prev) => ({ ...prev, ewt }));
         }
       } catch {
         if (!cancelled) {
           setCalculatedEWT("");
-          setFormData((prev) => ({ ...prev, ewt: "" }));
         }
       } finally {
         if (!cancelled) setEwtLoading(false);
@@ -488,6 +537,7 @@ function GetSuggestionsModal({
     Number(formData.quantity),
     Number(formData.unitPrice),
     cItemType,
+    formData.cEWTType,
   ]);
 
   /* ── Handlers: search view ── */
@@ -519,6 +569,12 @@ function GetSuggestionsModal({
       nSupplierId: suggestion.nSupplierId ?? "",
       unitPrice:
         suggestion.unitPrice != null ? String(suggestion.unitPrice) : "",
+      // The suggested line keeps its own EWT type.
+      cEWTType: suggestion.cEWTType || "",
+      // Locked ON (the item's quantity is already filled) — the switch
+      // reads ON and the line is an add-on.
+      bAddOn: isAddOnLocked,
+      bIncluded: !isAddOnLocked,
     });
     setCalculatedEWT("");
     setErrors({});
@@ -546,7 +602,16 @@ function GetSuggestionsModal({
 
   const handleSwitchChange = (e) => {
     const { name, checked } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: checked }));
+    setFormData((prev) => {
+      // The Add-On switch is the ONE choice: an option either joins the
+      // item's selection (bIncluded) or rides along as an extra (bAddOn).
+      // It can never be neither — an option in neither list shows up
+      // nowhere at all.
+      if (name === "bAddOn") {
+        return { ...prev, bAddOn: checked, bIncluded: !checked };
+      }
+      return { ...prev, [name]: checked };
+    });
   };
 
   const validate = () => {
@@ -576,7 +641,9 @@ function GetSuggestionsModal({
       model: formData.model || null,
       specs: formData.specs || null,
       unitPrice: Number(formData.unitPrice),
-      ewt: Number(formData.ewt) || 0,
+      // The EWT itself is derived by the server from this type — the
+      // amount is never sent by the client.
+      cEWTType: formData.cEWTType || null,
       bIncluded: formData.bIncluded ? 1 : 0,
       bAddOn: formData.bAddOn ? 1 : 0,
       nSupplierContactId: formData.nSupplierContactId || null,
@@ -672,20 +739,22 @@ function GetSuggestionsModal({
       numberOnly: true,
     },
     {
-      name: "ewt",
-      label: ewtLoading ? "EWT (calculating...)" : "EWT",
-      type: "peso",
+      // The EWT amount is DERIVED (server-side) from the line's EWT type —
+      // the field only shows it and lets the user pick the type.
+      name: "_ewtType",
+      type: "custom",
       xs: 4,
-      numberOnly: true,
-      value: calculatedEWT ? Number(calculatedEWT) : "",
-      onChange: (e) =>
-        setFormData((prev) => ({ ...prev, ewt: e.target.value })),
-      placeholder: calculatedEWT
-        ? Number(calculatedEWT).toLocaleString("en-PH", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })
-        : "0.00",
+      render: () => (
+        <EwtTypeField
+          value={formData.cEWTType}
+          amount={calculatedEWT === "" ? null : Number(calculatedEWT)}
+          loading={ewtLoading}
+          labels={ewtBypassType}
+          onChange={(type) =>
+            setFormData((prev) => ({ ...prev, cEWTType: type }))
+          }
+        />
+      ),
     },
     {
       name: "specs",
@@ -707,10 +776,12 @@ function GetSuggestionsModal({
     },
   ];
 
-  // The Add-On is ON and locked: an option suggested for a purchase is
-  // always an add-on, and it cannot be switched off.
+  // The Add-On is ON and locked whenever the item's quantity is already
+  // filled by its selection (there is nothing left of the item for this
+  // line to be part of) — and only in the For Canvass / For Purchase
+  // stages. In every other stage the switch is the user's to flip.
   const switches = [
-    { name: "bAddOn", label: "Add-On?", xs: 12, disabled: true },
+    { name: "bAddOn", label: "Add-On?", xs: 12, disabled: isAddOnLocked },
   ];
 
   /* ── Render ── */

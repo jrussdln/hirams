@@ -14,6 +14,7 @@ import { printRoute } from "../../../../../utils/helpers/printRoute.js";
 import useKeysLabels from "../../../../../hooks/useKeysLabels.js";
 import { toCents, centsLabel } from "../../../../../utils/helpers/money.js";
 import { openForPurchase } from "../../../../../utils/helpers/openForPurchase.js";
+import { totalEWT } from "../../../../../utils/helpers/calculateEWT.js";
 
 export default function useVoucherUpdate() {
   const navigate = useNavigate();
@@ -188,10 +189,11 @@ export default function useVoucherUpdate() {
     !!voucher?.nJEVId && String(voucher?.jev?.cStatus) === "A";
 
   // ── EWT (derived) ────────────────────────────────────────────────────
-  // Mirrors POListPanel/PORowPanel exactly: sum of dEWT on each
-  // purchase_option. Previously this was recomputed via a separate
-  // DirectCost API call, which could disagree with what's shown in the
-  // PO list/rows. Deriving it the same way keeps every view consistent.
+  // Mirrors POListPanel/PORowPanel exactly: the EWT of each purchase
+  // option, worked out by utils/helpers/calculateEWT.js. Previously this
+  // was recomputed via a separate DirectCost API call, which could
+  // disagree with what's shown in the PO list/rows. Deriving it the same
+  // way keeps every view consistent.
   // Assignee-type vouchers carry no POs — their EWT lives on each
   // particular's own dEWT line instead, summed the same way.
   const ewtAmount = useMemo(() => {
@@ -203,10 +205,7 @@ export default function useVoucherUpdate() {
       );
     return supplierLinks.reduce((sum, link) => {
       const opts = link.purchase_order?.purchase_order_options ?? [];
-      return (
-        sum +
-        opts.reduce((s, opt) => s + Number(opt.purchase_option?.dEWT || 0), 0)
-      );
+      return sum + totalEWT(opts);
     }, 0);
   }, [voucher, isAssigneeType, supplierLinks]);
 
@@ -438,7 +437,9 @@ export default function useVoucherUpdate() {
   // The voucher's own POs come WITHOUT the inventory stats (those are
   // attached by the PO list query), so the received quantities are asked
   // for directly: a received row (positive qty) on any of the linked items
-  // means the goods are already in hand and the voucher cannot be unpaid.
+  // means the goods are already in hand and the voucher cannot be unpaid or
+  // cancelled. A delivered row (negative qty) counts too — the goods are
+  // already gone out. This mirrors the API's own guard exactly.
   const linkedItemIds = useMemo(() => {
     const ids = (voucher?.voucher_suppliers ?? []).flatMap((link) =>
       (link.purchase_order?.purchase_order_options ?? [])
@@ -466,7 +467,7 @@ export default function useVoucherUpdate() {
           const list = rows?.[id] ?? [];
           const received = (Array.isArray(list) ? list : []).some(
             (r) =>
-              Number(r?.nQuantity) > 0 &&
+              Number(r?.nQuantity) !== 0 &&
               ["A", "P"].includes(String(r?.cStatus || "").trim()),
           );
           if (received) arrived.add(id);
@@ -941,7 +942,13 @@ export default function useVoucherUpdate() {
       }
     } catch (err) {
       console.error(`Failed to ${action} voucher:`, err);
-      await showSwal("ERROR", {}, { entity });
+      // The API explains WHY it refused (items already arrived, …) — show
+      // that instead of a bare "something went wrong".
+      await showSwal(
+        "ERROR",
+        err?.message ? { text: err.message } : {},
+        { entity },
+      );
     }
   };
 

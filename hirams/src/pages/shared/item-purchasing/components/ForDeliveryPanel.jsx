@@ -27,6 +27,8 @@ export default function ForDeliveryPanel({
   forms,
   setForms,
   txnTotals,
+  // The PO the rows belong to — it rides on the code line of every row.
+  poNumber = "",
   // One number for the whole card, pre-filled on every row — a delivery
   // cannot be submitted without it.
   suggestedReceiptNo = "",
@@ -418,6 +420,7 @@ export default function ForDeliveryPanel({
                     p={p}
                     tx={tx}
                     idx={idx}
+                    poNumber={poNumber}
                     onBrandClick={onBrandClick}
                   >
                     <DeliveryDateLabel

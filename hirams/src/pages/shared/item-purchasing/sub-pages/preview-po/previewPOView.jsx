@@ -49,6 +49,22 @@ const COLGROUP = (
   </colgroup>
 );
 
+// The HEADER table has its own, 7-column grid: the "No." column is
+// split in two so the PO number value can span two columns and get the
+// room it needs for a bigger font. Columns 1+2 keep the same combined
+// width (55%) as the items table, so the left block still lines up.
+const HEADER_COLGROUP = (
+  <colgroup>
+    <col style={{ width: "5%" }} />
+    <col style={{ width: "50%" }} />
+    <col style={{ width: "6%" }} />
+    <col style={{ width: "4%" }} />
+    <col style={{ width: "12%" }} />
+    <col style={{ width: "10%" }} />
+    <col style={{ width: "13%" }} />
+  </colgroup>
+);
+
 // Fallback so the page doesn't crash if opened directly with no nav state.
 const DEFAULTS = {
   companyName: "—",
@@ -105,12 +121,12 @@ function POHeaderTable({
     <>
       <style>{QUILL_CONTENT_STYLE}</style>
       <table style={TABLE_STYLE}>
-        {COLGROUP}
+        {HEADER_COLGROUP}
         <tbody>
           <tr>
             {companyLogo && logoSrc && (
               <td
-                colSpan={6}
+                colSpan={7}
                 style={{
                   ...cellSx,
                   border: "none",
@@ -137,7 +153,7 @@ function POHeaderTable({
             )}
           </tr>
           <tr>
-            <td colSpan={5} style={{ ...cellSx, border: "none" }}>
+            <td colSpan={6} style={{ ...cellSx, border: "none" }}>
               {!(companyLogo && logoSrc) && (
                 <div
                   style={{
@@ -165,7 +181,7 @@ function POHeaderTable({
               </div>
             </td>
             <td
-              colSpan={4}
+              colSpan={5}
               rowSpan={2}
               style={{ ...headerCellSx, fontSize: "1.2rem" }}
             >
@@ -197,19 +213,24 @@ function POHeaderTable({
                 ...cellSx,
                 fontStyle: "italic",
                 fontWeight: 500,
+                fontSize: "0.62rem",
+                whiteSpace: "nowrap",
                 backgroundColor: DOC.fillBg,
               }}
             >
               No.
             </td>
-            {/* PO number is document-specific — editable */}
+            {/* PO number is document-specific — editable. It spans the
+                split "No." column + the next one, so the number has room
+                for a bigger font. */}
             <EditableCell
               id="poNo"
+              colSpan={2}
               style={{
                 ...cellSx,
                 fontStyle: "italic",
-                fontWeight: 600,
-                fontSize: "0.55rem",
+                fontWeight: 800,
+                fontSize: "0.78rem",
               }}
               align="left"
               initialValue={poNo}
@@ -241,10 +262,11 @@ function POHeaderTable({
               TIN: {companyTIN}
             </td>
             <td
-              colSpan={2}
+              colSpan={3}
               style={{
                 ...cellSx,
                 fontWeight: 700,
+                whiteSpace: "nowrap",
                 backgroundColor: DOC.fillBg,
               }}
             >
@@ -264,7 +286,7 @@ function POHeaderTable({
             <td colSpan={2} style={headerCellSx}>
               SUPPLIER
             </td>
-            <td colSpan={4} style={headerCellSx}>
+            <td colSpan={5} style={headerCellSx}>
               SHIPPING
             </td>
           </tr>
@@ -284,7 +306,7 @@ function POHeaderTable({
             />
             <EditableCell.RichText
               id="shippingDetails"
-              colSpan={4}
+              colSpan={5}
               rowSpan={4}
               style={{
                 ...cellSx,
@@ -337,7 +359,7 @@ function POHeaderTable({
               />
             </td>
             <td
-              colSpan={4}
+              colSpan={5}
               style={{ ...cellSx, backgroundColor: DOC.fillBg }}
             />
           </tr>

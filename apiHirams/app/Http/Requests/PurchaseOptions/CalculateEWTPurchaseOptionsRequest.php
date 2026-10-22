@@ -16,6 +16,9 @@ class CalculateEWTPurchaseOptionsRequest extends ApiRequest
             'quantity'    => 'required|numeric|min:0',
             'unitPrice'   => 'required|numeric|min:0',
             'cItemType'   => 'required|string|in:G,S',
+            // The line's EWT type — the per-line bypass of the default
+            // matrix. Absent (or null) = the default formula.
+            'cEWTType'    => 'nullable|string|in:A,B,C',
         ];
     }
 }

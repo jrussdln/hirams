@@ -229,6 +229,15 @@ class VoucherService extends CrudService
         $voucher   = Voucher::findOrFail($id);
         $voucherId = $voucher->nVoucherId;
 
+        // ✅ Deleting a voucher is a cancellation in disguise — it takes the
+        // journal and the stock with it. Same rule: once the goods have
+        // arrived, the voucher is a closed record.
+        if ($this->hasArrivedItems($voucher)) {
+            throw ValidationException::withMessages([
+                'inventory' => 'Cannot delete this voucher: some of the items already arrived and received.',
+            ]);
+        }
+
         $this->deleteJevForVoucher(
             $voucher,
             (string) $this->statusCodes()['voucherCancelled']
@@ -324,6 +333,16 @@ class VoucherService extends CrudService
             if ($codes['voucherCancelled'] !== false
                 && (string) $request->cStatus === (string) $codes['voucherCancelled']
             ) {
+                // ✅ A voucher whose goods already arrived cannot be cancelled:
+                // the items are in hand, the receipts are posted and the
+                // journal behind them is on the books. Checked BEFORE anything
+                // is written so a rejected cancellation leaves no trace.
+                if ($this->hasArrivedItems($voucher)) {
+                    throw ValidationException::withMessages([
+                        'inventory' => 'Cannot cancel this voucher: some of the items already arrived and received.',
+                    ]);
+                }
+
                 $jevCancelled = $this->cancelJevForVoucher(
                     $voucher,
                     (string) $codes['voucherCancelled'],
@@ -397,6 +416,51 @@ class VoucherService extends CrudService
     /* Inventory / JEV / PO side effects (moved verbatim from the controller) */
     /* --------------------------------------------------------------------- */
 
+    /**
+     * The purchase items this voucher pays for.
+     *
+     * @return \Illuminate\Support\Collection<int, int>
+     */
+    private function voucherItemIds(Voucher $voucher)
+    {
+        $voucher->loadMissing(
+            'voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption'
+        );
+
+        return $voucher->voucher_suppliers
+            ->flatMap(fn($vs) => $vs->purchase_order?->purchaseOrderOptions ?? [])
+            ->map(fn($o) => $o->purchaseOption?->nPurchaseItemId)
+            ->filter()
+            ->unique()
+            ->values();
+    }
+
+    /**
+     * Did any of this voucher's items already arrive (received into stock) or
+     * go out again?
+     *
+     * A receipt is a real movement: the goods are in hand and the journal
+     * behind them is on the books. Once that has happened the voucher cannot
+     * be cancelled, and it cannot be marked unpaid either — the stock it paid
+     * for is already on the books.
+     *
+     * Positive quantities are receipts, negative ones are deliveries; both
+     * count. 'A' = approved (already on a journal), 'P' = pending journal.
+     */
+    private function hasArrivedItems(Voucher $voucher): bool
+    {
+        $itemIds = $this->voucherItemIds($voucher);
+
+        if ($itemIds->isEmpty()) {
+            return false;
+        }
+
+        return Inventory::whereIn('nPurchaseItemId', $itemIds)
+            ->where('nQuantity', '!=', 0)
+            ->whereIn('cStatus', ['A', 'P'])
+            ->exists();
+    }
+
     private function receiveInventoryForVoucher(Voucher $voucher): void
     {
         $voucher->loadMissing('voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption');
@@ -427,6 +491,16 @@ class VoucherService extends CrudService
 
     private function removeInventoryForVoucher(Voucher $voucher): void
     {
+        // Don't pull stock out from under items that already arrived or went
+        // out: the goods are in hand (or already gone out), so the voucher
+        // cannot be marked unpaid. This is the same rule the Cancel path
+        // uses, and the same one the frontend enforces.
+        if ($this->hasArrivedItems($voucher)) {
+            throw ValidationException::withMessages([
+                'inventory' => 'Cannot mark as unpaid: some of the items already arrived and received.',
+            ]);
+        }
+
         if (!$voucher->nJEVId) return;
 
         $rows = Inventory::where('nJEVId', $voucher->nJEVId)
@@ -435,18 +509,6 @@ class VoucherService extends CrudService
             ->get(['nInventoryId', 'nPurchaseItemId']);
 
         if ($rows->isEmpty()) return;
-
-        // Don't pull stock out from under items that were already delivered
-        $alreadyDelivered = Inventory::whereIn('nPurchaseItemId', $rows->pluck('nPurchaseItemId')->unique())
-            ->where('nQuantity', '<', 0)
-            ->whereIn('cStatus', ['A', 'P'])
-            ->exists();
-
-        if ($alreadyDelivered) {
-            throw ValidationException::withMessages([
-                'inventory' => 'Cannot mark as unpaid: some of this stock was already delivered.',
-            ]);
-        }
 
         Inventory::whereIn('nInventoryId', $rows->pluck('nInventoryId'))->delete();
     }

@@ -6,6 +6,7 @@ import InventoryAPI from "../../../../api/endpoints/inventory.api.js";
 import PurchaseOrderAPI from "../../../../api/endpoints/purchase-order.api.js";
 
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import { ewtOfOption, totalEWT } from "../../../../utils/helpers/calculateEWT.js";
 import {
   getToReceive,
   getToDeliver,
@@ -146,11 +147,9 @@ export default function LineItems({
         (o.purchase_option?.dUnitPrice || 0),
     0,
   );
-  const localEwtTotal = options.reduce(
-    (sum, o) => sum + Number(o.purchase_option?.dEWT || 0),
-    0,
-  );
-  const hasAnyEWT = options.some((o) => o.purchase_option?.dEWT);
+  // The EWT is derived — see utils/helpers/calculateEWT.js
+  const localEwtTotal = totalEWT(options);
+  const hasAnyEWT = options.some((o) => ewtOfOption(o) > 0);
 
   // Same rule as the cards:
   //   Pending Receipt : hide fully received rows (0 left to receive)

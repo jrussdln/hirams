@@ -20,6 +20,7 @@ import {
 } from "../../../../../utils/helpers/purchaseProgress.js";
 import { splitDeliveryAcrossItems } from "../../../../../utils/helpers/deliverySplit.js";
 import { poLatestStatus } from "../../../../../utils/helpers/poLatestStatus.js";
+import { totalEWT } from "../../../../../utils/helpers/calculateEWT.js";
 import { DEFAULT_SHIPPING_DETAILS } from "../../modal/PODetailsUpdateModal.jsx";
 
 const num = (v) => Number(v) || 0;
@@ -686,6 +687,7 @@ export default function useItemPurchasingUpdateView() {
   const [aoGmDirectory, setAoGmDirectory] = useState({
     checkByOtherAOName: "—",
     generalManagerName: "—",
+    aotlName: "—",
   });
   const aoGmFetchedRef = useRef(false);
 
@@ -701,7 +703,7 @@ export default function useItemPurchasingUpdateView() {
     UserAPI.getAllUsers()
       .then((res) => {
         const users = res.users ?? [];
-        const { accountOfficerKey, generalManagerKey } =
+        const { accountOfficerKey, generalManagerKey, aotlKey } =
           buildRoleGroups(userTypes);
         const buildName = (u) =>
           [
@@ -715,11 +717,17 @@ export default function useItemPurchasingUpdateView() {
         const gm = users.find((u) =>
           generalManagerKey.includes(String(u.cUserType)),
         );
+        // The Account Officer Team Leader — the one who signs off above the
+        // Account Officer. Shown on the PO so the chain is visible.
+        const aotl = users.find(
+          (u) => String(u.cUserType) === String(aotlKey),
+        );
         setAoGmDirectory({
           _users: users,
           _accountOfficerKey: accountOfficerKey,
           checkByOtherAOName: "—",
           generalManagerName: gm ? buildName(gm) || "—" : "—",
+          aotlName: aotl ? buildName(aotl) || "—" : "—",
         });
       })
       .catch((err) =>
@@ -746,6 +754,7 @@ export default function useItemPurchasingUpdateView() {
   }, [aoGmDirectory, assignedAOUserId]);
 
   const generalManagerName = aoGmDirectory?.generalManagerName ?? "—";
+  const aotlName = aoGmDirectory?.aotlName ?? "—";
   const isLoadingPage = loading || mappingLoading || !po;
 
   const total = options.reduce(
@@ -755,14 +764,11 @@ export default function useItemPurchasingUpdateView() {
         (o.purchase_option?.dUnitPrice || 0),
     0,
   );
-  // The preview/print sheet takes ONE PO-level EWT, but it is stored per line
-  // (purchase_option.dEWT) — total it up here. Derived from the same array the
-  // preview receives so locally-edited lines stay in sync.
+  // The preview/print sheet takes ONE PO-level EWT, but it is derived per line
+  // (see utils/helpers/calculateEWT.js) — total it up here. Derived from the
+  // same array the preview receives so locally-edited lines stay in sync.
   const previewOptions = liveOptions?.length ? liveOptions : options;
-  const ewtAmount = previewOptions.reduce(
-    (sum, o) => sum + (Number(o.purchase_option?.dEWT) || 0),
-    0,
-  );
+  const ewtAmount = totalEWT(previewOptions);
   const allOptionsAtPO = !!po && String(po.nStatus) === String(forApprovalKey);
   const allOptionsAtPayment =
     !!po && String(po.nStatus) === String(forPaymentKey);
@@ -820,21 +826,14 @@ export default function useItemPurchasingUpdateView() {
       const nStatusToSend =
         action === "undo_approval" ? forApprovalKey : action;
 
-      // The For Delivery / Delivered card merges every PO sharing the item
-      // into one card — cancelling from there has to cancel all of them, not
-      // just the PO that happened to be opened.
-      const cancelShared =
-        String(nStatusToSend) === String(cancelledPOKey) &&
-        [String(forDeliveryKey), String(deliveredKey)].includes(
-          String(selectedStatusCode),
-        );
+      // A PO can be cancelled at any stage - the API takes down the
+      // voucher, the JEV and the stock that go with it.
 
       await withSpinner("Purchase Order", async () => {
         await PurchaseOrderAPI.updateCartStatus({
           nPurchaseOrderId: po?.nPurchaseOrderId,
           nStatus: nStatusToSend,
           nUserId: currentUserId,
-          cancelShared,
         });
       });
       bustPOCache(); // ← add here
@@ -867,7 +866,13 @@ export default function useItemPurchasingUpdateView() {
       navigate("/item-purchasing");
     } catch (err) {
       console.error("Failed to update cart status:", err);
-      await showSwal("ERROR", {}, { entity: "Purchase Order" });
+      // The API explains WHY it refused (items already arrived, …) — show
+      // that instead of a bare "something went wrong".
+      await showSwal(
+        "ERROR",
+        err?.message ? { text: err.message } : {},
+        { entity: "Purchase Order" },
+      );
     }
   };
   const handleConfirmReceived = async () => {
@@ -1535,6 +1540,7 @@ export default function useItemPurchasingUpdateView() {
     assignedAOName,
     checkByOtherAOName,
     generalManagerName,
+    aotlName,
     aoGmDirectory,
     // ui state
     confirmAction,

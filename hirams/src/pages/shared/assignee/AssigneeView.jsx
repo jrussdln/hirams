@@ -43,7 +43,7 @@ export default function AssigneeView({
   activeStatusLabel,
   inactiveStatusLabel,
   forApprovalStatusLabel,
-  fetchAssignees,
+  refreshAssignees,
   handleAddClick,
   handleEditClick,
   handleInfoClick,
@@ -218,7 +218,7 @@ export default function AssigneeView({
             onChange={setSearch}
           />
         </div>
-        <SyncMenu onSync={fetchAssignees} />
+        <SyncMenu onSync={refreshAssignees} />
         <BaseButton
           label="Assignee"
           tooltip="Add Assignee"
@@ -247,7 +247,7 @@ export default function AssigneeView({
         handleClose={handleCloseAEModal}
         assignee={selectedAssignee}
         activeStatusKey={activeStatusKey}
-        onAssigneeSaved={fetchAssignees}
+        onAssigneeSaved={refreshAssignees}
       />
       <InfoAssigneeModal
         open={openInfoModal}
@@ -267,7 +267,7 @@ export default function AssigneeView({
         open={openDeleteModal}
         onClose={handleCloseDeleteModal}
         entityToDelete={entityToDelete}
-        onSuccess={fetchAssignees}
+        onSuccess={refreshAssignees}
       />
     </PageLayout>
   );

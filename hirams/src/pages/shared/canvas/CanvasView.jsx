@@ -647,6 +647,7 @@ export default function CanvasView(props) {
         onSuccess={() => fetchItems({ restoreScroll: true })}
         suppliers={suppliers}
         cItemType={cItemType}
+        stage={forCanvasKey.includes(selectedStatusCode) ? "canvas" : ""}
       />
       <ExportCanvasModal
         open={isExportCanvasOpen}
@@ -688,6 +689,7 @@ export default function CanvasView(props) {
         itemId={suggestionsItem?.id}
         suppliers={suppliers}
         cItemType={cItemType}
+        stage={forCanvasKey.includes(selectedStatusCode) ? "canvas" : ""}
         onSuccess={() => fetchItems({ restoreScroll: true })}
       />
       <CostBreakdownModal

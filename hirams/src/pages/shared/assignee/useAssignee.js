@@ -76,18 +76,22 @@ export default function useAssignee() {
   }, []);
 
   useEffect(() => {
+    // A new search (or a new status) starts on the first page — otherwise
+    // the table can sit on a page the result set no longer has.
     setPage(0);
-  }, [selectedStatusCode]);
+  }, [selectedStatusCode, debouncedSearch]);
 
   const fetchAssignees = useCallback(
     async (force = false, silent = false) => {
-      if (!force && isFetched && !debouncedSearch) return;
+      // The list is fetched ONCE — the API hands back every assignee — and
+      // the search runs over it here, the same way the supplier / client
+      // lists work. That way the box never needs a round trip, and
+      // CLEARING it always brings the whole list back.
+      if (!force && isFetched) return;
       if (mappingLoading) return;
       if (!silent) setLoading(true);
       try {
-        const response = await AssigneeAPI.getAssignees(
-          `search=${encodeURIComponent(debouncedSearch)}`,
-        );
+        const response = await AssigneeAPI.getAssignees();
         const raw = response.assignees ?? [];
         setAssignees(raw.map(formatAssignee));
         setIsFetched(true);
@@ -97,7 +101,7 @@ export default function useAssignee() {
         if (!silent) setLoading(false);
       }
     },
-    [debouncedSearch, mappingLoading, isFetched],
+    [mappingLoading, isFetched],
   );
 
   const fetchAssigneesRef = useRef(fetchAssignees);
@@ -109,7 +113,14 @@ export default function useAssignee() {
     if (!mappingLoading) {
       fetchAssignees();
     }
-  }, [mappingLoading, debouncedSearch, fetchAssignees]);
+  }, [mappingLoading, fetchAssignees]);
+
+  // Always bypasses the isFetched guard — the Sync button and a live
+  // refresh both mean "get it again".
+  const refreshAssignees = useCallback(
+    () => fetchAssigneesRef.current?.(true, true),
+    [],
+  );
 
   useEffect(() => {
     const onUpdated = () => fetchAssigneesRef.current?.(true, true);
@@ -124,13 +135,23 @@ export default function useAssignee() {
     };
   }, []);
 
-  const filteredAssignees = useMemo(
-    () =>
-      selectedStatusCode
-        ? assignees.filter((a) => a.statusCode === selectedStatusCode)
-        : assignees,
-    [assignees, selectedStatusCode],
-  );
+  // The list on screen: the status tab, then the search. The search runs
+  // over the whole record — name, nickname, address and TIN — so anything
+  // printed in the table can be looked up.
+  const filteredAssignees = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    return assignees.filter((a) => {
+      if (selectedStatusCode && a.statusCode !== selectedStatusCode)
+        return false;
+      if (!q) return true;
+      return (
+        a.name?.toLowerCase().includes(q) ||
+        a.nickname?.toLowerCase().includes(q) ||
+        a.address?.toLowerCase().includes(q) ||
+        a.tin?.toLowerCase().includes(q)
+      );
+    });
+  }, [assignees, selectedStatusCode, debouncedSearch]);
 
   const notifySidebar = useCallback((code) => {
     setItem(SESSION_KEY, code);
@@ -223,6 +244,7 @@ export default function useAssignee() {
     inactiveStatusLabel,
     forApprovalStatusLabel,
     fetchAssignees,
+    refreshAssignees,
     handleAddClick,
     handleEditClick,
     handleInfoClick,

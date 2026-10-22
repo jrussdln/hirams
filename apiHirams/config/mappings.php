@@ -38,6 +38,17 @@ return [
         1 => 'EWT',
         0 => 'N/A',
     ],
+    // EWT bypass type — a per-line override of the DEFAULT EWT formula
+    // (see App\Helpers\FormulaHelper::calculateEWT).
+    //   Q = Qty x UnitPrice
+    //   A => Q x 0%              → 0.00 (no withholding on this line)
+    //   B => Q x 1%              → gross x 1%
+    //   C => (Q / 1.12) x 1%     → net-of-VAT x 1%
+    'ewt_bypass_type' => [
+        'A' => '0% of Q',
+        'B' => '1% of Q',
+        'C' => '1% of Q / 1.12 (VAT net)',
+    ],
     'proc_source' => [
         'P' => 'PhilGEPS',
         'W' => 'Walk-in',
@@ -210,5 +221,10 @@ return [
         'A' => 'Active', //0
         'C' => 'Cancelled', //1
         'P' => 'Pending', //
+    ],
+    'unit_price_status' => [
+        'A' => 'Active', //0
+        'P' => 'Pending', //
+        'C' => 'Cancelled', //1
     ],
 ];

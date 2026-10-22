@@ -614,7 +614,9 @@ export default function CollectionView(props) {
         onSuccess={() => fetchItems({ restoreScroll: true })}
         suppliers={suppliers}
         cItemType={cItemType}
-        isForPurchase={true}
+        // The Add-On rule belongs to the For Canvass / For Purchase
+        // stages — at the collection stage the switch is the user's.
+        stage="collection"
       />
       <TransactionActionModal
         open={Boolean(actionModal)}
@@ -643,6 +645,9 @@ export default function CollectionView(props) {
         itemId={suggestionsItem?.id}
         suppliers={suppliers}
         cItemType={cItemType}
+        // The Add-On rule belongs to the For Canvass / For Purchase
+        // stages — at the collection stage the switch is the user's.
+        stage="collection"
         onSuccess={() => fetchItems({ restoreScroll: true })}
       />
       <DirectCostModal

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useTheme } from "@mui/material/styles";
-import { Box, Paper, Typography, Checkbox } from "@mui/material";
+import { useNavigate } from "react-router-dom";
+import { Box, Paper, Typography, Checkbox, Tooltip } from "@mui/material";
 import {
   Edit,
   Delete,
@@ -8,13 +9,11 @@ import {
   CompareArrows,
   AddShoppingCart,
   RemoveShoppingCart,
-  Visibility,
   ShoppingCart,
 } from "@mui/icons-material";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import BaseButton from "../../../../components/ui/form/BaseButton";
 import PurchaseOrderAPI from "../../../../api/endpoints/purchase-order.api.js";
-import PurchaseItemInfoModal from "../../purchase/modal/PurchaseItemInfoModal";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import {
   fmtPHP,
@@ -24,6 +23,7 @@ import {
 import MiniBaseButton from "../../../../components/ui/form/MiniBaseButton";
 import { CART_STATUS_STYLES } from "../../../../utils/style/sharedConfirmStyles.jsx";
 import { getOptionArrival } from "../../../../utils/helpers/purchaseProgress.js";
+import { ewtOfOption } from "../../../../utils/helpers/calculateEWT.js";
 // ── PROMPT 1 — inline color map, only tokens this component uses ──
 const useColors = (c) => ({
   textPrimary: c.gray.textPrimary,
@@ -67,6 +67,8 @@ const useColors = (c) => ({
   specsHeaderText: c.gray.textPrimary,
   specsContentBg: c.slate.outerBg,
   specsContentText: c.gray.textSecondary,
+  // the PENDING purchase price notice
+  pendingText: c.amber.warnText,
 });
 
 const getColor = (colors, path) =>
@@ -233,7 +235,7 @@ function CartActionButtons({
   onRemoveFromCart,
   onEditOption,
   onAddToCart,
-  onViewInfo,
+  onViewCart,
   isAssignedToMe,
   readOnly,
   colors,
@@ -275,18 +277,33 @@ function CartActionButtons({
     }
   };
 
+  // An option that is ALREADY on the order (in the cart, or moved on to
+  // For Approval / For Payment / Pending Receipt / For Delivery / Delivered)
+  // is edited from here — and the cart it sits in is one click away.
+  const viewCartButton = (
+    <BaseButton
+      icon={<ShoppingCart sx={{ fontSize: "0.9rem", color: colors.viewColor }} />}
+      // The stage the option is at rides along on the tooltip — the View
+      // button used to carry it.
+      tooltip={progressLabel ? `${progressLabel} — View Cart` : "View Cart"}
+      onClick={onViewCart}
+      disabled={isDisabled}
+      size="small"
+    />
+  );
+
   if (isProgressed)
     return (
-      <BaseButton
-        icon={
-          <Visibility
-            sx={{ fontSize: "0.9rem", color: colors.progressColor }}
-          />
-        }
-        tooltip={progressLabel}
-        onClick={onViewInfo}
-        size="small"
-      />
+      <>
+        <BaseButton
+          icon={<Edit sx={{ fontSize: "0.9rem" }} />}
+          tooltip={isDisabled ? "Not allowed" : "Edit"}
+          onClick={() => !isDisabled && onEditOption(option)}
+          disabled={isDisabled}
+          size="small"
+        />
+        {viewCartButton}
+      </>
     );
 
   if (canRemove)
@@ -308,28 +325,28 @@ function CartActionButtons({
           />
         )}
         <BaseButton
-          icon={
-            <Visibility sx={{ fontSize: "0.9rem", color: colors.viewColor }} />
-          }
-          tooltip="Option Details"
-          onClick={onViewInfo}
+          icon={<Edit sx={{ fontSize: "0.9rem" }} />}
+          tooltip={isDisabled ? "Not allowed" : "Edit"}
+          onClick={() => !isDisabled && onEditOption(option)}
           disabled={isDisabled}
           size="small"
         />
+        {viewCartButton}
       </>
     );
 
   if (isInCart)
     return (
-      <BaseButton
-        icon={
-          <Visibility sx={{ fontSize: "0.9rem", color: colors.viewColor }} />
-        }
-        tooltip="Option Details"
-        onClick={onViewInfo}
-        disabled={isDisabled}
-        size="small"
-      />
+      <>
+        <BaseButton
+          icon={<Edit sx={{ fontSize: "0.9rem" }} />}
+          tooltip={isDisabled ? "Not allowed" : "Edit"}
+          onClick={() => !isDisabled && onEditOption(option)}
+          disabled={isDisabled}
+          size="small"
+        />
+        {viewCartButton}
+      </>
     );
 
   if (cartPhase === "loading")
@@ -588,6 +605,12 @@ function PurchaseStatusIcon({
 ═══════════════════════════════════════════════════════════════ */
 const PurchaseOptionRow = ({
   option,
+  // The EWT type labels (A / B / C) — the mapping, with the app's own
+  // wording as the fallback.
+  ewtTypeLabels: ewtTypeLabelsProp,
+  // The letter that means "Pending" in the purchase price status — the
+  // table resolves it once (it owns the mapping) and hands it down.
+  pendingStatusLetter = "P",
   index,
   isLastOption,
   itemId,
@@ -645,8 +668,50 @@ const PurchaseOptionRow = ({
     [base],
   );
   const isPurchase = mode === "purchase";
+  const navigate = useNavigate();
 
-  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  // ── THE PENDING PURCHASE PRICE ───────────────────────────────
+  // A price renegotiated at the purchase stage does NOT touch the
+  // canvassed one (dUnitPrice): it is filed as a PENDING purchase
+  // price (dPurchaseUnitPrice + cPurchaseUnitPriceStatus = 'P') until
+  // it is approved ('A'). Until then the line still counts at the
+  // canvassed price — so the row says so, and switches between the
+  // request and the price that counts every 2 seconds.
+  const pendingPrice = option.dPurchaseUnitPrice;
+  const hasPendingPrice =
+    pendingPrice !== null &&
+    pendingPrice !== undefined &&
+    pendingPrice !== "" &&
+    String(option.cPurchaseUnitPriceStatus || "") === pendingStatusLetter;
+
+  // The REQUESTED price lives in the PENDING tag's tooltip — the row
+  // never changes on its own, so nothing flickers while you read it.
+
+  // VIEW CART — the order this option sits in, the same jump the option
+  // details modal makes.
+  const handleViewCart = () => {
+    const poId = option?.nPurchaseOrderId;
+    if (poId) {
+      navigate(`/item-purchasing-update?id=${poId}`);
+    } else {
+      console.warn("PurchaseOptionRow: no PO id to open the cart for.");
+    }
+  };
+
+  // The EWT TYPE of the line — the formula its EWT is built from. The
+  // default ("") is never named: it needs no label, the supplier's own
+  // flags decide.
+  const ewtTypeLabels = {
+    A: "0% of Q",
+    B: "1% of Q",
+    C: "1% of Q / 1.12 (VAT net)",
+    ...(ewtTypeLabelsProp || {}),
+  };
+  const ewtType = String(option.cEWTType || "");
+  const ewtTypeLabel =
+    ewtType && ewtType !== "—"
+      ? ewtTypeLabels[ewtType] || ewtType
+      : "";
 
   const includedQty = item.purchaseOptions
     .filter((o) => o.bIncluded && Number(o.bAddOn) !== 1)
@@ -895,9 +960,12 @@ const PurchaseOptionRow = ({
                 )}
               </Box>
 
+              {/* SUPPLIER — the nickname in caps. */}
               <Typography sx={{ fontSize: "0.75rem", fontWeight: 500 }}>
                 {displayIndex}.{" "}
-                {option.supplierNickName || option.strSupplierNickName}
+                {String(
+                  option.supplierNickName || option.strSupplierNickName || "",
+                ).toUpperCase()}
               </Typography>
             </Box>
 
@@ -916,18 +984,42 @@ const PurchaseOptionRow = ({
             />
           </Box>
 
+          {/* BRAND on its own line, MODEL under it — both flush left. */}
           <Box
             sx={{
               flex: 2,
               textAlign: "left",
               display: "flex",
-              alignItems: "center",
-              gap: 1,
+              flexDirection: "column",
+              alignItems: "flex-start",
+              justifyContent: "center",
+              gap: 0,
+              minWidth: 0,
             }}
           >
-            <Typography sx={{ fontSize: "0.7rem" }}>
-              {option.strBrand} | {option.strModel}
-            </Typography>
+            {option.strBrand && (
+              <Typography
+                sx={{
+                  fontSize: "0.7rem",
+                  fontWeight: 700,
+                  lineHeight: 1.15,
+                  textTransform: "uppercase",
+                }}
+              >
+                {option.strBrand}
+              </Typography>
+            )}
+            {option.strModel && (
+              <Typography
+                sx={{
+                  fontSize: "0.65rem",
+                  fontStyle: "italic",
+                  lineHeight: 1.15,
+                }}
+              >
+                {option.strModel}
+              </Typography>
+            )}
           </Box>
 
           <Box sx={{ flex: 1, textAlign: "center" }}>
@@ -954,30 +1046,97 @@ const PurchaseOptionRow = ({
             </Typography>
           </Box>
 
-          <Box sx={{ flex: isPurchase ? 2 : 1.5, textAlign: "right" }}>
-            <Typography sx={{ fontSize: "0.7rem" }}>
+          {/* UNIT PRICE, with the price-updated date under it — the same
+              tight line spacing as the brand · model, but right aligned.
+
+              A PENDING purchase price takes the lead every other second:
+              the request is called out, and the price that actually
+              counts stays on screen the rest of the time. */}
+          <Box
+            sx={{
+              flex: isPurchase ? 2 : 1.5,
+              textAlign: "right",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              justifyContent: "center",
+              gap: 0,
+              minWidth: 0,
+            }}
+          >
+            {hasPendingPrice ? (
+              // A small tag ABOVE the price — always there. The REQUESTED
+              // price is in its tooltip: the price on the row never moves.
+              <Tooltip
+                title={`Requested price: ₱ ${fmtPHP(pendingPrice)}`}
+                placement="top"
+                arrow
+              >
+                <Typography
+                  sx={{
+                    fontSize: "0.5rem",
+                    lineHeight: 1,
+                    fontWeight: 700,
+                    letterSpacing: "0.05em",
+                    color: colors.pendingText,
+                    cursor: "help",
+                  }}
+                >
+                  PENDING
+                </Typography>
+              </Tooltip>
+            ) : null}
+            <Typography sx={{ fontSize: "0.7rem", lineHeight: 1.15 }}>
               ₱ {fmtPHP(option.dUnitPrice)}
             </Typography>
-          </Box>
-          <Box sx={{ flex: 1.5, textAlign: "right" }}>
             <Typography
-              sx={{ fontSize: "0.7rem", color: colors.textSecondary }}
+              sx={{
+                fontSize: "0.58rem",
+                lineHeight: 1.15,
+                color: colors.textSecondary,
+              }}
             >
               {option.dtCanvass ? fmtDate(option.dtCanvass) : "—"}
             </Typography>
           </Box>
-          {!isPurchase && (
-            <Box sx={{ flex: 1.5, textAlign: "right" }}>
-              <Typography sx={{ fontSize: "0.7rem" }}>
-                ₱ {fmtPHP(option.dEWT)}
-              </Typography>
-            </Box>
-          )}
 
           <Box sx={{ flex: isPurchase ? 2 : 1.5, textAlign: "right" }}>
             <Typography sx={{ fontSize: "0.7rem", color: colors.textPrimary }}>
+              {/* The line amount follows the unit price it belongs to —
+                  the request and the price that counts switch together,
+                  so the row never shows a unit price that does not add
+                  up. */}
               ₱ {fmtPHP(option.nQuantity * option.dUnitPrice)}
             </Typography>
+          </Box>
+
+          {/* THE EWT — after the total, with the TYPE under it. */}
+          <Box
+            sx={{
+              flex: 1.5,
+              textAlign: "right",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              justifyContent: "center",
+              gap: 0,
+              minWidth: 0,
+            }}
+          >
+            <Typography sx={{ fontSize: "0.7rem", lineHeight: 1.15 }}>
+              ₱ {fmtPHP(ewtOfOption(option))}
+            </Typography>
+            {ewtTypeLabel && (
+              <Typography
+                sx={{
+                  fontSize: "0.58rem",
+                  lineHeight: 1.15,
+                  color: colors.textSecondary,
+                }}
+              >
+                {ewtTypeLabel}
+              </Typography>
+            )}
           </Box>
 
           {checkboxOptionsEnabled && (
@@ -992,14 +1151,17 @@ const PurchaseOptionRow = ({
             >
               {isPurchase ? (
                 isCancelled ? (
+                  // A CANCELLED order is still an order — the cart is
+                  // where it lives, so the button goes there (the eye
+                  // that used to open the details modal is gone).
                   <BaseButton
                     icon={
-                      <Visibility
-                        sx={{ fontSize: "0.9rem", color: colors.voidColor }}
+                      <ShoppingCart
+                        sx={{ fontSize: "0.9rem", color: colors.viewColor }}
                       />
                     }
-                    tooltip="Cancelled"
-                    onClick={() => setInfoModalOpen(true)}
+                    tooltip="View Cart"
+                    onClick={handleViewCart}
                     disabled={rowDisabled}
                     size="small"
                   />
@@ -1017,7 +1179,7 @@ const PurchaseOptionRow = ({
                     onEditOption={onEditOption}
                     onAddToCart={handleAddToCart}
                     onRemoveFromCart={handleRemoveFromCart}
-                    onViewInfo={() => setInfoModalOpen(true)}
+                    onViewCart={handleViewCart}
                     isProgressed={isProgressed}
                     isInCart={isInCart}
                     isAssignedToMe={!isAssignedToMe}
@@ -1168,23 +1330,7 @@ const PurchaseOptionRow = ({
         </Paper>
       )}
 
-      {isPurchase && (
-        <PurchaseItemInfoModal
-          open={infoModalOpen}
-          onClose={() => setInfoModalOpen(false)}
-          item={item}
-          option={option}
-          cartKey={cartKey}
-          cancelledPOKey={cancelledPOKey}
-          forApprovalKey={forApprovalKey}
-          forPaymentKey={forPaymentKey}
-          pendingReceiptKey={pendingReceiptKey}
-          forDeliveryKey={forDeliveryKey}
-          deliveredKey={deliveredKey}
-          readOnly={readOnly || !isAssignedToMe}
-        />
-      )}
-    </React.Fragment>
+      </React.Fragment>
   );
 };
 

@@ -17,15 +17,16 @@ class PurchaseOrder extends Model
         'strShippingDetails',
         'cPaymentTerms',
         'dFreight',
-        'cStatus',//This should be removed
         'nStatus',
         'dtProceedToPayment',//This should be removed
-        'dtPurchaseOrderCreated'
+        'dtPurchaseOrderCreated',
+        'dtCancelled'
     ];
 
     protected $casts = [
       
         'dtPurchaseOrderCreated' => 'datetime',
+        'dtCancelled' => 'datetime',
         'dFreight' => 'float',
     ];
 

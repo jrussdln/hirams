@@ -26,6 +26,8 @@ const num = (v) => Number(v) || 0;
 export default function DeliveredPanel({
   options = [],
   txnTotals,
+  // The PO the rows belong to — it rides on the code line of every row.
+  poNumber = "",
   // One number for the whole card — pre-filled on every edit form.
   suggestedReceiptNo = "",
   // Edit button → delivered form. Saves ONE line (returns true when recorded).
@@ -320,6 +322,7 @@ export default function DeliveredPanel({
                     p={p}
                     tx={tx}
                     idx={idx}
+                    poNumber={poNumber}
                     onBrandClick={onBrandClick}
                   />
                 </Box>

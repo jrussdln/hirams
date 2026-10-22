@@ -177,7 +177,8 @@ export default function JevListView({
         align: "center",
         render: (_, row) => {
           const isDeletable =
-            row.cStatus === jevPendingKey || row.cStatus === jevCancelledKey;
+            (row.cStatus === jevPendingKey || row.cStatus === jevCancelledKey) &&
+            row.bDeletable !== false;
 
           return (
             <div className="flex justify-center gap-0">
@@ -206,7 +207,9 @@ export default function JevListView({
               />
               <BaseButton
                 icon={icons.delete}
-                tooltip="Delete JEV"
+                // A disabled Delete says WHY it is disabled: the API
+                // sends the reason back with the row.
+                tooltip={isDeletable ? "Delete JEV" : row.strDeleteBlockReason || "Delete JEV"}
                 size="small"
                 actionColor="delete"
                 disabled={!isDeletable}

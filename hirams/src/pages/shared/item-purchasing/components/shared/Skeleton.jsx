@@ -10,9 +10,10 @@
  *                         company · amount, the item rows and the date/VIEW
  *                         footer.
  *   • CartUpdateSkeleton→ the PO DETAIL page: the progress stepper, the
- *                         company / supplier / purchase-order cards, the
- *                         shipping + payment row and the Purchase Items table
- *                         with its Order Total footer.
+ *                         header panel (purchase order · company ·
+ *                         client/supplier cards, then the shipping +
+ *                         payment row) and the Purchase Items table with
+ *                         its Order Total footer.
  *
  * The bars themselves are neutral (the theme's own skeleton shades), so a
  * loading state never shouts — only the small chips keep their tint, so the
@@ -26,8 +27,6 @@ import {
   Inventory2Outlined,
   ExpandLess,
   ExpandMore,
-  StoreOutlined,
-  LocalShippingOutlined,
   ReceiptLongOutlined,
   AccountCircleOutlined,
 } from "@mui/icons-material";
@@ -508,10 +507,10 @@ function StepperSkeleton({ bar, c }) {
               }}
             />
             <Box sx={{ px: 0.25, textAlign: "center" }}>
-              {bar({ w: 52, h: 8 })}
+              {bar({ w: 52, h: 9 })}
             </Box>
             <Box sx={{ px: 0.25, mt: 0.15, textAlign: "center" }}>
-              {bar({ w: 40, h: 6, tint: c.skeleton.skelFaint })}
+              {bar({ w: 40, h: 7, tint: c.skeleton.skelFaint })}
             </Box>
           </Box>
         ))}
@@ -520,32 +519,42 @@ function StepperSkeleton({ bar, c }) {
   );
 }
 
-// One info card of the header row (Company / Supplier / Purchase Order).
-function InfoCardSkeleton({ bar, c, icon, lines = 2, extra = null }) {
+// One card of the header row — the shape of CardStructure: a 3px accent
+// border down the left, the small uppercase label on top, the content
+// under it. The accent keeps the card's own colour (blue for the company,
+// amber for the client/supplier, green for the order), so a loading page
+// still says which card is which.
+function HeaderCardSkeleton({
+  bar,
+  c,
+  accent,
+  flex = 1,
+  minWidth,
+  labelWidth = 50,
+  children,
+}) {
   return (
     <Box
       sx={{
-        flex: 1,
-        px: 1.25,
-        py: 1.25,
+        position: "relative",
+        overflow: "hidden",
+        flex,
+        minWidth,
+        background: c.slate.cardGlass,
+        border: `0.5px solid ${accent}`,
+        borderLeft: `3px solid ${accent}`,
         borderRadius: "8px",
-        background: c.slate.innerBg,
-        border: `0.5px solid ${c.slate.border}`,
+        px: 1.25,
+        py: 1,
         display: "flex",
         flexDirection: "column",
         gap: 0.5,
+        justifyContent: "center",
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
-        {icon}
-        {bar({ w: 56, h: 8 })}
-      </Box>
-      {Array.from({ length: lines }).map((_, i) => (
-        <Box key={i}>
-          {bar({ w: i === lines - 1 ? "45%" : "78%", h: i === 0 ? 10 : 8 })}
-        </Box>
-      ))}
-      {extra}
+      {/* THE LABEL — uppercase, small, the card's own colour */}
+      {bar({ w: labelWidth, h: 8, tint: accent })}
+      {children}
     </Box>
   );
 }
@@ -562,84 +571,102 @@ export function CartUpdateSkeleton() {
       {/* STEPPER */}
       <StepperSkeleton bar={bar} c={c} />
 
-      {/* HEADER CARDS — Company | Supplier | Purchase Order */}
+      {/* THE HEADER — the ContentHeaderStructure: a bordered panel with the
+          cards inside it. */}
       <Box
         sx={{
-          display: "flex",
-          flexDirection: { xs: "column", sm: "row" },
-          gap: 1,
-          alignItems: "stretch",
+          background: c.cyan.bg,
+          border: `1px solid ${c.cyan.border}`,
+          borderRadius: "8px",
+          p: 1.5,
+          mb: 1,
+          overflow: "hidden",
         }}
       >
-        <InfoCardSkeleton
-          bar={bar}
-          c={c}
-          icon={
-            <StoreOutlined sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }} />
-          }
-          lines={3}
-        />
-        <InfoCardSkeleton
-          bar={bar}
-          c={c}
-          icon={
-            <LocalShippingOutlined
-              sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }}
-            />
-          }
-          lines={3}
-        />
-        <InfoCardSkeleton
-          bar={bar}
-          c={c}
-          icon={
-            <ReceiptLongOutlined
-              sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }}
-            />
-          }
-          lines={1}
-          // The assigned AO, under the PO number.
-          extra={
+        {/* PURCHASE ORDER | COMPANY | CLIENT · SUPPLIER — the order leads,
+            the parties follow. */}
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            gap: { xs: 0.75, sm: 1 },
+            alignItems: "stretch",
+          }}
+        >
+          {/* THE ORDER — the number, then the AO behind it */}
+          <HeaderCardSkeleton
+            bar={bar}
+            c={c}
+            accent={c.green.border}
+            flex="0 0 auto"
+            minWidth={{ xs: "100%", sm: "140px" }}
+            labelWidth={78}
+          >
+            {bar({ w: 66, h: 11 })}
+            {/* THE AO — the icon, the label, the name */}
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.4 }}>
               <AccountCircleOutlined
                 sx={{ fontSize: "0.7rem", color: c.slate.mutedColor }}
               />
-              {bar({ w: 54, h: 8 })}
+              {bar({ w: 16, h: 8, tint: c.skeleton.skelMed })}
+              {bar({ w: 54, h: 9 })}
             </Box>
-          }
-        />
-      </Box>
+          </HeaderCardSkeleton>
 
-      {/* SHIPPING + PAYMENT */}
-      <Box
-        sx={{
-          mt: 1,
-          display: "flex",
-          flexDirection: { xs: "column", sm: "row" },
-          gap: 1,
-          alignItems: "stretch",
-        }}
-      >
-        <InfoCardSkeleton
-          bar={bar}
-          c={c}
-          icon={
-            <LocalShippingOutlined
-              sx={{ fontSize: "0.85rem", color: c.slate.mutedColor }}
-            />
-          }
-          lines={2}
-        />
-        <InfoCardSkeleton
-          bar={bar}
-          c={c}
-          icon={
-            <ReceiptLongOutlined
-              sx={{ fontSize: "0.85rem", color: c.slate.mutedColor }}
-            />
-          }
-          lines={2}
-        />
+          {/* THE COMPANY — the name, the address, the TIN */}
+          <HeaderCardSkeleton
+            bar={bar}
+            c={c}
+            accent={c.blue.border}
+            labelWidth={50}
+          >
+            {bar({ w: "70%", h: 12 })}
+            {bar({ w: "92%", h: 9, sx: { mt: 0.1 } })}
+            {bar({ w: "55%", h: 8, sx: { mt: 0.1 } })}
+          </HeaderCardSkeleton>
+
+          {/* THE CLIENT / SUPPLIER — same shape as the company */}
+          <HeaderCardSkeleton
+            bar={bar}
+            c={c}
+            accent={c.amber.border}
+            labelWidth={54}
+          >
+            {bar({ w: "70%", h: 12 })}
+            {bar({ w: "92%", h: 9, sx: { mt: 0.1 } })}
+            {bar({ w: "55%", h: 8, sx: { mt: 0.1 } })}
+          </HeaderCardSkeleton>
+        </Box>
+
+        {/* SHIPPING + PAYMENT */}
+        <Box
+          sx={{
+            mt: 1,
+            display: "flex",
+            flexDirection: { xs: "column", sm: "row" },
+            gap: { xs: 0.75, sm: 1 },
+            alignItems: "flex-start",
+          }}
+        >
+          <HeaderCardSkeleton
+            bar={bar}
+            c={c}
+            accent={c.slate.border}
+            labelWidth={96}
+          >
+            {bar({ w: "80%", h: 8 })}
+            {bar({ w: "62%", h: 8, sx: { mt: 0.15 } })}
+          </HeaderCardSkeleton>
+          <HeaderCardSkeleton
+            bar={bar}
+            c={c}
+            accent={c.slate.border}
+            labelWidth={88}
+          >
+            {bar({ w: "80%", h: 8 })}
+            {bar({ w: "62%", h: 8, sx: { mt: 0.15 } })}
+          </HeaderCardSkeleton>
+        </Box>
       </Box>
 
       {/* PURCHASE ITEMS — the table with its header strip and total footer */}
@@ -688,10 +715,10 @@ export function CartUpdateSkeleton() {
             key={idx}
             sx={{
               px: 2,
-              py: 0.875,
+              py: 1,
               display: "flex",
               alignItems: "center",
-              gap: 0.75,
+              gap: { xs: 0.75, sm: 2 },
               borderBottom:
                 idx < lineItemCount - 1
                   ? `0.5px solid ${c.slate.divider}`
@@ -705,7 +732,7 @@ export function CartUpdateSkeleton() {
 
             <Box sx={{ flex: 1, minWidth: 0 }}>
               {/* The transaction code, above the brand · model */}
-              {bar({ w: 62, h: 8 })}
+              {bar({ w: 62, h: 9 })}
               <Box
                 sx={{
                   display: "flex",
@@ -714,50 +741,61 @@ export function CartUpdateSkeleton() {
                   mt: 0.15,
                 }}
               >
-                {bar({ w: 92, h: 10 })}
+                {bar({ w: 100, h: 12 })}
               </Box>
               {/* The item name */}
-              {bar({ w: "55%", h: 8, sx: { mt: 0.15 } })}
+              {bar({ w: "55%", h: 9, sx: { mt: 0.15 } })}
             </Box>
 
             {/* QTY (with the unit under it) */}
             <Box
               sx={{
-                width: 60,
+                minWidth: 50,
                 flexShrink: 0,
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
+                alignItems: "flex-end",
+                gap: 0.1,
               }}
             >
-              {bar({ w: 28, h: 10 })}
-              {bar({ w: 18, h: 6, tint: c.skeleton.skelFaint, sx: { mt: 0.1 } })}
+              {bar({ w: 28, h: 11, sx: { ml: "auto" } })}
+              {bar({
+                w: 18,
+                h: 7,
+                tint: c.skeleton.skelFaint,
+                sx: { ml: "auto" },
+              })}
             </Box>
 
             {/* UNIT PRICE */}
             <Box
               sx={{
-                width: 80,
+                minWidth: 70,
                 flexShrink: 0,
                 textAlign: "right",
                 display: "flex",
                 justifyContent: "flex-end",
               }}
             >
-              {bar({ w: 44, h: 10 })}
+              {bar({ w: 44, h: 11, sx: { ml: "auto" } })}
             </Box>
 
             {/* TOTAL */}
             <Box
               sx={{
-                width: 80,
+                minWidth: 70,
                 flexShrink: 0,
                 textAlign: "right",
                 display: "flex",
                 justifyContent: "flex-end",
               }}
             >
-              {bar({ w: 48, h: 10, tint: c.skeleton.skelMed })}
+              {bar({
+                w: 48,
+                h: 11,
+                tint: c.skeleton.skelMed,
+                sx: { ml: "auto" },
+              })}
             </Box>
           </Box>
         ))}
@@ -778,8 +816,8 @@ export function CartUpdateSkeleton() {
               width: 34,
               height: 34,
               borderRadius: "8px",
-              background: c.slate.innerBg,
-              border: `0.5px solid ${c.slate.border}`,
+              background: c.slate.mutedBg,
+              border: `0.5px solid ${c.slate.mutedBorder}`,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -792,12 +830,14 @@ export function CartUpdateSkeleton() {
             />
           </Box>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            {bar({ w: 62, h: 10 })}
-            {bar({ w: 42, h: 7, sx: { mt: 0.1 } })}
+            {bar({ w: 62, h: 11 })}
+            {bar({ w: 42, h: 8, sx: { mt: 0.1 } })}
           </Box>
+          {/* The spacer the real row leaves for the pricing columns */}
+          <Box sx={{ width: 44, flexShrink: 0 }} />
           <Box
             sx={{
-              width: 80,
+              minWidth: 80,
               flexShrink: 0,
               textAlign: "right",
               display: "flex",
@@ -807,7 +847,18 @@ export function CartUpdateSkeleton() {
             }}
           >
             {bar({ w: 52, h: 12, tint: c.skeleton.skelMed })}
-            {bar({ w: 40, h: 7, tint: c.skeleton.skelFaint, sx: { mt: 0.1 } })}
+            {bar({
+              w: 40,
+              h: 9,
+              tint: c.skeleton.skelFaint,
+              sx: { mt: 0.1 },
+            })}
+            {bar({
+              w: 34,
+              h: 9,
+              tint: c.skeleton.skelFaint,
+              sx: { mt: 0.1 },
+            })}
           </Box>
         </Box>
       </Box>

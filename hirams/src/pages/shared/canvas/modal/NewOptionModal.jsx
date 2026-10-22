@@ -3,6 +3,7 @@ import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer.jsx";
 import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
+import EwtTypeField from "../../../../components/ui/form/EwtTypeField.jsx";
 import { Typography, Link, Box } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import PurchaseOptionAPI from "../../../../api/endpoints/purchase-option.api.js";
@@ -10,6 +11,7 @@ import SupplierContactField from "./SupplierContactField.jsx";
 import { withSpinner, showSwal } from "../../../../utils/helpers/swal.jsx";
 import { validateFormData } from "../../../../utils/form/validation.js";
 import uiMessages from "../../../../utils/helpers/uiMessages.js";
+import useMapping from "../../../../hooks/useMapping.js";
 
 const initialFormData = {
   nSupplierId: "",
@@ -19,9 +21,15 @@ const initialFormData = {
   model: "",
   specs: "",
   unitPrice: "",
-  ewt: "",
-  bIncluded: false,
-  bAddOn: true,
+  // The EWT TYPE — which formula the line's EWT is built from.
+  // "" = Default (the supplier's own flags decide), "A" = 0% of Q,
+  // "B" = 1% of Q, "C" = 1% of Q / 1.12 (VAT net).
+  cEWTType: "",
+  bIncluded: true,
+  // A new option joins the item's SELECTION. The Add-On switch moves it
+  // to the extra list instead — the two are the same choice, so they
+  // never sit in neither list.
+  bAddOn: false,
   nSupplierContactId: "",
 };
 
@@ -61,11 +69,15 @@ function NewOptionModal({
   onSuccess,
   suppliers,
   cItemType,
-  isForPurchase = "",
+  // The stage the modal was opened from — "canvas" (For Canvass),
+  // "purchase" (For Purchase) or anything else. The Add-On rule only
+  // bites in the first two.
+  stage = "",
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const navigate = useNavigate();
+  const { ewtBypassType } = useMapping();
 
   // Wire up theme colors — SINGLE SOURCE from getThemeColors
   const baseColors = React.useMemo(() => getThemeColors(isDark), [isDark]);
@@ -77,6 +89,64 @@ function NewOptionModal({
   const [calculatedEWT, setCalculatedEWT] = useState("");
   const [ewtLoading, setEwtLoading] = useState(false);
 
+  // The Add-On rule is enforced in the FOR CANVASS and FOR PURCHASE
+  // stages only — the two where an item's quantity is being covered by
+  // its selection. In every other stage (For Collection and the rest)
+  // the switch is the user's to flip.
+  const stageLocksAddOn = stage === "canvas" || stage === "purchase";
+
+  // WHAT "the item's quantity is filled" means DEPENDS on the stage:
+  // the CANVASS stage measures the SELECTION (the options included in
+  // the item's requirement — the "3 / 3" in the Quantity column), the
+  // PURCHASE stage measures what has actually been ORDERED (the "0 / 3"
+  // on the options badge). Measuring the wrong one locks the switch
+  // while the stage still says the item is short.
+  const measurePurchased = stage === "purchase";
+
+  // The item's quantity is ALREADY COVERED (10/10): there is nothing
+  // left of the item for this option to be part of, so it can only ride
+  // along as an add-on. The option being edited is left out of the sum
+  // — it is the one in question. An item with no quantity of its own is
+  // never "full" — there is nothing to fill.
+  //
+  // Add-ons never count towards the cover: an item whose ONLY option is
+  // an add-on has nothing in its selection, so it is NOT full — the
+  // switch stays free there, for adding and for editing alike.
+  const selectionFillsItem = (() => {
+    const item = sourceItem;
+    if (!item) return false;
+    const itemQty = Number(item.qty || 0);
+    if (!(itemQty > 0)) return false;
+    const covered = (item.purchaseOptions || [])
+      .filter(
+        (o) =>
+          // An add-on is an EXTRA — it never covers the item.
+          Number(o.bAddOn) !== 1 &&
+          // CANVASS counts the selection, PURCHASE counts the orders.
+          (measurePurchased
+            ? Number(o.bPurchaseIncluded) === 1
+            : !!o.bIncluded) &&
+          o.id !== (editingOption?.id ?? null),
+      )
+      .reduce((s, o) => s + Number(o.nQuantity || 0), 0);
+    return covered >= itemQty;
+  })();
+
+  // The option being edited IS already an add-on.
+  const optionIsAddOn =
+    Number(editingOption?.bAddOn ?? formData.bAddOn) === 1;
+
+  // The Add-On switch is locked ON when the item's quantity is already
+  // filled by its selection — there is nothing left of that item for the
+  // line to be part of, so it can only be an extra.
+  //
+  // A NEW option always answers to that rule. An option that is being
+  // EDITED does not — except when it IS the add-on: turning that one
+  // back into a normal option would push the item over its quantity
+  // (10 already covered + the add-on = too much).
+  const isAddOnLocked =
+    stageLocksAddOn && selectionFillsItem && (!formData.id || optionIsAddOn);
+
   useEffect(() => {
     if (editingOption) {
       setFormData({
@@ -87,9 +157,11 @@ function NewOptionModal({
         model: editingOption.strModel || "",
         specs: editingOption.strSpecs || "",
         unitPrice: editingOption.dUnitPrice || "",
-        ewt: editingOption.dEWT || "",
-        bIncluded: !!editingOption.bIncluded,
-        bAddOn: editingOption.bAddOn,
+        cEWTType: editingOption.cEWTType || "",
+        bIncluded: isAddOnLocked ? false : !!editingOption.bIncluded,
+        // Locked ON (the item's quantity is already filled) — the switch
+        // reads ON and the option is an add-on.
+        bAddOn: isAddOnLocked ? true : !!editingOption.bAddOn,
         id: editingOption.id,
         nSupplierContactId: editingOption.nSupplierContactId || "",
       });
@@ -97,6 +169,9 @@ function NewOptionModal({
     } else {
       setFormData({
         ...initialFormData,
+        // Locked ON (the item's quantity is already filled) — the switch
+        // reads ON and the option is an add-on.
+        ...(isAddOnLocked ? { bAddOn: true, bIncluded: false } : null),
         quantity: sourceItem?.remainingQty ?? sourceItem?.qty ?? "",
         uom: sourceItem?.uom ?? "",
         specs: sourceItem?.specs ?? "",
@@ -104,7 +179,7 @@ function NewOptionModal({
       setCalculatedEWT("");
     }
     setErrors({});
-  }, [editingOption, open]);
+  }, [editingOption, open, isAddOnLocked]);
 
   useEffect(() => {
     const supplierId = Number(formData.nSupplierId);
@@ -120,7 +195,6 @@ function NewOptionModal({
     ) {
       clearTimeout(ewtDebounceRef.current);
       setCalculatedEWT("");
-      setFormData((prev) => ({ ...prev, ewt: "" }));
       setEwtLoading(false);
       return;
     }
@@ -136,16 +210,16 @@ function NewOptionModal({
           quantity,
           unitPrice,
           cItemType,
+          // The line's EWT type — the server picks the formula.
+          cEWTType: formData.cEWTType || null,
         });
         if (!cancelled) {
           const ewt = response.calculatedEWT;
           setCalculatedEWT(ewt);
-          setFormData((prev) => ({ ...prev, ewt }));
         }
       } catch {
         if (!cancelled) {
           setCalculatedEWT("");
-          setFormData((prev) => ({ ...prev, ewt: "" }));
         }
       } finally {
         if (!cancelled) setEwtLoading(false);
@@ -161,6 +235,7 @@ function NewOptionModal({
     Number(formData.quantity),
     Number(formData.unitPrice),
     cItemType,
+    formData.cEWTType,
   ]);
 
   const handleChange = (e) => {
@@ -183,7 +258,16 @@ function NewOptionModal({
 
   const handleSwitchChange = (e) => {
     const { name, checked } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: checked }));
+    setFormData((prev) => {
+      // The Add-On switch is the ONE choice: an option either joins the
+      // item's selection (bIncluded) or rides along as an extra (bAddOn).
+      // It can never be neither — an option in neither list shows up
+      // nowhere at all.
+      if (name === "bAddOn") {
+        return { ...prev, bAddOn: checked, bIncluded: !checked };
+      }
+      return { ...prev, [name]: checked };
+    });
   };
 
   const validate = () => {
@@ -215,9 +299,13 @@ function NewOptionModal({
       model: formData.model || null,
       specs: formData.specs || null,
       unitPrice: Number(formData.unitPrice),
-      ewt: Number(formData.ewt) || 0,
+      // The EWT itself is derived by the server from this type — the
+      // amount is never sent by the client.
+      cEWTType: formData.cEWTType || null,
       bIncluded: formData.bIncluded ? 1 : 0,
-      bAddOn: formData.bAddOn ? 1 : 0,
+      // Locked ON (the item's quantity is already filled) — the option is
+      // an add-on, so the value goes with the switch.
+      bAddOn: (isAddOnLocked || formData.bAddOn) ? 1 : 0,
       nSupplierContactId: formData.nSupplierContactId || null,
     };
 
@@ -250,17 +338,13 @@ function NewOptionModal({
     onClose();
   };
 
-  // In For Purchase only options that are part of the selection (bIncluded)
-  // get locked — an option added straight from this page (bIncluded = 0) stays
-  // fully editable. Falls back to the loaded form flag if the prop is absent.
-  const optionIncluded =
-    Number(editingOption?.bIncluded ?? formData.bIncluded) === 1;
-  const isEditForPurchase =
-    Boolean(formData.id) && Boolean(isForPurchase) && optionIncluded;
+  // The option's fields are ALWAYS editable — the For Purchase stage used
+  // to lock the ones already on the order, but a line can be corrected
+  // at any time.
 
   const fields = [
-    { name: "brand", label: "Brand", xs: 4, disabled: isEditForPurchase },
-    { name: "model", label: "Model", xs: 4, disabled: isEditForPurchase },
+    { name: "brand", label: "Brand", xs: 4 },
+    { name: "model", label: "Model", xs: 4 },
     {
       name: "nSupplierId",
       label: "Supplier",
@@ -269,7 +353,6 @@ function NewOptionModal({
       xs: 4,
       value: formData.nSupplierId,
       onChange: handleSupplierChange,
-      disabled: isEditForPurchase,
     },
     {
       name: "_supplierLink",
@@ -332,21 +415,22 @@ function NewOptionModal({
       numberOnly: true,
     },
     {
-      name: "ewt",
-      label: ewtLoading ? "EWT (calculating...)" : "EWT",
-      type: "peso",
+      // The EWT amount is DERIVED (server-side) from the line's EWT type —
+      // the field only shows it and lets the user pick the type.
+      name: "_ewtType",
+      type: "custom",
       xs: 4,
-      numberOnly: true,
-      value: calculatedEWT ? Number(calculatedEWT) : "",
-      onChange: (e) =>
-        setFormData((prev) => ({ ...prev, ewt: e.target.value })),
-      placeholder: calculatedEWT
-        ? Number(calculatedEWT).toLocaleString("en-PH", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })
-        : "0.00",
-      disabled: isEditForPurchase,
+      render: () => (
+        <EwtTypeField
+          value={formData.cEWTType}
+          amount={calculatedEWT === "" ? null : Number(calculatedEWT)}
+          loading={ewtLoading}
+          labels={ewtBypassType}
+          onChange={(type) =>
+            setFormData((prev) => ({ ...prev, cEWTType: type }))
+          }
+        />
+      ),
     },
     {
       name: "specs",
@@ -356,9 +440,6 @@ function NewOptionModal({
       xs: 12,
       multiline: true,
       minRows: 3,
-      showOnlyHighlighter: isEditForPurchase,
-      showAllFormatting: !isEditForPurchase,
-      readOnlyHighlight: isEditForPurchase,
       sx: {
         "& textarea": {
           resize: "vertical",
@@ -373,10 +454,12 @@ function NewOptionModal({
     },
   ];
 
-  // The Add-On is ON and locked: an option added for a purchase is always
-  // an add-on, and it cannot be switched off.
+  // The Add-On is ON and locked whenever the item's quantity is already
+  // filled by its selection (there is nothing left of the item for this
+  // option to be part of) — and only in the For Canvass / For Purchase
+  // stages. In every other stage the switch is the user's to flip.
   const switches = [
-    { name: "bAddOn", label: "Add-On?", xs: 12, disabled: true },
+    { name: "bAddOn", label: "Add-On?", xs: 12, disabled: isAddOnLocked },
   ];
 
   if (!open) return null;

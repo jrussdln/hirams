@@ -204,6 +204,7 @@ export default function ItemPurchasingUpdateView({
   allOptionsAtPayment,
   anyOptionArrived,
   assignedAONickName,
+  assignedAOName,
   receiveForms,
   setReceiveForms,
   receiveSaving,
@@ -274,6 +275,19 @@ export default function ItemPurchasingUpdateView({
   const poIsCancelled =
     activeStatus === String(cancelledPOKey) ||
     String(currentStatus) === String(cancelledPOKey);
+  // ── Cancel is offered at EVERY stage: a purchase order can be called off
+  // whatever it has raised. What goes down with it depends on the stage —
+  // the voucher and the JEV from For Payment on, the stock as well from
+  // For Delivery on — and the API sorts that out.
+  //
+  // The order's OWN status decides the wording, NOT the tab it was opened
+  // from: a PARTIALLY received PO still sits on Pending Receipt while the
+  // list files it under For Delivery.
+  const poStatus = String(currentStatus ?? activeStatus);
+  // A cancelled PO has nothing left to cancel.
+  const canCancelPO = !poIsCancelled;
+  // Only the people who can approve an order may call it off.
+  const canCancelPORole = isFinanceOfficer || isManagement;
   // Pending receipt swaps the line-item list for the Receive panel
   const isPendingReceipt = activeStatus === String(pendingReceiptKey);
   // For Delivery / Delivered both swap the line-item list for a deliver panel
@@ -402,7 +416,17 @@ export default function ItemPurchasingUpdateView({
     if (key === cartKey) return "open";
     if (key === forApprovalKey) return "close";
     if (key === forPaymentKey) return "approve";
-    if (key === cancelledPOKey) return "cancel";
+    // A PO cancel also takes down whatever it raised, so the wording
+    // depends on the stage it had reached.
+    if (key === cancelledPOKey) {
+      if ([cartKey, forApprovalKey].map(String).includes(poStatus)) {
+        return "cancel_po_cart";
+      }
+      if ([forDeliveryKey, deliveredKey].map(String).includes(poStatus)) {
+        return "cancel_po_stock";
+      }
+      return "cancel_po";
+    }
     return key;
   };
   const confirmSlot = confirmAction ? toConfirmSlot(confirmAction) : null;
@@ -440,7 +464,7 @@ export default function ItemPurchasingUpdateView({
         flexWrap: "wrap",
       }}
     >
-      {!poIsCancelled && (
+      {canCancelPO && canCancelPORole && (
         <BaseButton
           label="Cancel"
           icon={icons.cancel}
@@ -595,6 +619,25 @@ export default function ItemPurchasingUpdateView({
     (currentStatus === forApprovalKey || allOptionsAtPO) &&
     (po?.strShippingDetails || po?.cPaymentTerms);
 
+  // The AO is shown by NICKNAME — the short name the people of the office
+  // call each other by, in caps. The full name is only a fallback for an
+  // account without one.
+  const aoLabel = (
+    assignedAONickName && assignedAONickName !== "—"
+      ? assignedAONickName
+      : assignedAOName
+  ).toUpperCase();
+
+  // The Purchase Order card (the number + the AO behind it) rides along for
+  // as long as the order is being worked on: while it waits for approval,
+  // for payment, and while the goods are on their way in — Pending Receipt
+  // included. It is the PO's OWN status that counts, not the tab it was
+  // opened from.
+  const showPurchaseOrderCard =
+    allOptionsAtPO ||
+    allOptionsAtPayment ||
+    String(po?.nStatus) === String(pendingReceiptKey);
+
   const PurchaseOrderHeader = (
     <ContentHeaderStructure
       p={1.5}
@@ -611,15 +654,71 @@ export default function ItemPurchasingUpdateView({
           alignItems: "stretch",
         }}
       >
+        {/* PO Number + Account Officer — the order itself leads the header,
+            the parties follow. */}
+        {showPurchaseOrderCard && (
+          <CardStructure
+            label="Purchase Order"
+            variant="success"
+            flex="0 0 auto"
+            minWidth={{ xs: "100%", sm: "140px" }}
+          >
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.35 }}>
+              <Typography
+                sx={{
+                  fontSize: { xs: "0.65rem", sm: "0.72rem" },
+                  fontWeight: 600,
+                  fontStyle: "italic",
+                  color: c.textBodySoft,
+                  lineHeight: 1.15,
+                  letterSpacing: "0.3px",
+                }}
+              >
+                {po?.strPurchaseOrderNo ?? "—"}
+              </Typography>
+              {/* The Account Officer who raised the order — by nickname. */}
+              <Box
+                sx={{ display: "flex", alignItems: "center", gap: 0.4 }}
+              >
+                <AccountCircleOutlined
+                  sx={{
+                    fontSize: { xs: "0.6rem", sm: "0.7rem" },
+                    color: c.textMuted,
+                  }}
+                />
+                <Typography
+                  sx={{
+                    fontSize: { xs: "0.55rem", sm: "0.6rem" },
+                    color: c.textMuted,
+                    fontWeight: 600,
+                  }}
+                >
+                  AO:
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: { xs: "0.55rem", sm: "0.6rem" },
+                    color: c.textBodySoft,
+                    fontWeight: 500,
+                  }}
+                >
+                  {aoLabel}
+                </Typography>
+              </Box>
+            </Box>
+          </CardStructure>
+        )}
+
         {/* Company Card */}
-        <CardStructure icon="bank" label="Company" variant="info">
+        <CardStructure label="Company" variant="info">
           <Typography
             sx={{
-              fontSize: { xs: "0.6rem", sm: "0.65rem" },
+              fontSize: { xs: "0.72rem", sm: "0.8rem" },
               fontWeight: 700,
               color: c.textBody,
               textTransform: "uppercase",
-              mb: 0.2,
+              lineHeight: 1.1,
+              mb: 0.1,
             }}
           >
             {companyInfo?.strCompanyName ?? "—"}
@@ -627,8 +726,10 @@ export default function ItemPurchasingUpdateView({
           {companyInfo?.strAddress && (
             <Typography
               sx={{
-                fontSize: { xs: "0.5rem", sm: "0.55rem" },
+                fontSize: { xs: "0.52rem", sm: "0.57rem" },
                 color: c.textMuted,
+                textTransform: "uppercase",
+                lineHeight: 1.15,
               }}
             >
               {companyInfo.strAddress}
@@ -639,7 +740,8 @@ export default function ItemPurchasingUpdateView({
               sx={{
                 fontSize: { xs: "0.5rem", sm: "0.55rem" },
                 color: c.textMutedAlt,
-                mt: 0.2,
+                lineHeight: 1.15,
+                mt: 0.1,
               }}
             >
               TIN: {companyInfo.strTIN}
@@ -649,14 +751,15 @@ export default function ItemPurchasingUpdateView({
 
         {/* Supplier Card — For Delivery / Delivered shows the Client instead */}
         {isForDeliveryPhase ? (
-          <CardStructure icon="assign" label="Client" variant="warn">
+          <CardStructure label="Client" variant="warn">
             <Typography
               sx={{
-                fontSize: { xs: "0.6rem", sm: "0.65rem" },
+                fontSize: { xs: "0.72rem", sm: "0.8rem" },
                 fontWeight: 700,
                 color: c.textBody,
                 textTransform: "uppercase",
-                mb: 0.2,
+                lineHeight: 1.1,
+                mb: 0.1,
               }}
             >
               {clientInfo?.strClientName ||
@@ -666,8 +769,10 @@ export default function ItemPurchasingUpdateView({
             {clientInfo?.strAddress && (
               <Typography
                 sx={{
-                  fontSize: { xs: "0.5rem", sm: "0.55rem" },
+                  fontSize: { xs: "0.52rem", sm: "0.57rem" },
                   color: c.textMuted,
+                  textTransform: "uppercase",
+                  lineHeight: 1.15,
                 }}
               >
                 {clientInfo.strAddress}
@@ -678,7 +783,8 @@ export default function ItemPurchasingUpdateView({
                 sx={{
                   fontSize: { xs: "0.5rem", sm: "0.55rem" },
                   color: c.textMutedAlt,
-                  mt: 0.2,
+                  lineHeight: 1.15,
+                  mt: 0.1,
                 }}
               >
                 TIN: {clientInfo.strTIN}
@@ -686,14 +792,15 @@ export default function ItemPurchasingUpdateView({
             )}
           </CardStructure>
         ) : (
-          <CardStructure icon="phone" label="Supplier" variant="warn">
+          <CardStructure label="Supplier" variant="warn">
             <Typography
               sx={{
-                fontSize: { xs: "0.6rem", sm: "0.65rem" },
+                fontSize: { xs: "0.72rem", sm: "0.8rem" },
                 fontWeight: 700,
                 color: c.textBody,
                 textTransform: "uppercase",
-                mb: 0.2,
+                lineHeight: 1.1,
+                mb: 0.1,
               }}
             >
               {supplierInfo?.strSupplierName ?? "—"}
@@ -701,8 +808,10 @@ export default function ItemPurchasingUpdateView({
             {supplierInfo?.strAddress && (
               <Typography
                 sx={{
-                  fontSize: { xs: "0.5rem", sm: "0.55rem" },
+                  fontSize: { xs: "0.52rem", sm: "0.57rem" },
                   color: c.textMuted,
+                  textTransform: "uppercase",
+                  lineHeight: 1.15,
                 }}
               >
                 {supplierInfo.strAddress}
@@ -713,7 +822,8 @@ export default function ItemPurchasingUpdateView({
                 sx={{
                   fontSize: { xs: "0.5rem", sm: "0.55rem" },
                   color: c.textMutedAlt,
-                  mt: 0.2,
+                  lineHeight: 1.15,
+                  mt: 0.1,
                 }}
               >
                 TIN: {supplierInfo.strTIN}
@@ -722,48 +832,6 @@ export default function ItemPurchasingUpdateView({
           </CardStructure>
         )}
 
-        {/* PO Number + Assigned AO */}
-        {(allOptionsAtPO || allOptionsAtPayment) && (
-          <CardStructure
-            icon="check"
-            label="Purchase Order"
-            variant="success"
-            flex="0 0 auto"
-            minWidth={{ xs: "100%", sm: "140px" }}
-          >
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.5 }}>
-              <Typography
-                sx={{
-                  fontSize: { xs: "0.65rem", sm: "0.72rem" },
-                  fontWeight: 600,
-                  fontStyle: "italic",
-                  color: c.textBodySoft,
-                  lineHeight: 1.2,
-                  letterSpacing: "0.3px",
-                }}
-              >
-                {po?.strPurchaseOrderNo ?? "—"}
-              </Typography>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-                <AccountCircleOutlined
-                  sx={{
-                    fontSize: { xs: "0.6rem", sm: "0.7rem" },
-                    color: c.textMuted,
-                  }}
-                />
-                <Typography
-                  sx={{
-                    fontSize: { xs: "0.55rem", sm: "0.6rem" },
-                    color: c.textBodySoft,
-                    fontWeight: 500,
-                  }}
-                >
-                  {assignedAONickName}
-                </Typography>
-              </Box>
-            </Box>
-          </CardStructure>
-        )}
       </Box>
 
       {/* Shipping + Payment Row */}
@@ -778,11 +846,7 @@ export default function ItemPurchasingUpdateView({
           }}
         >
           {po?.strShippingDetails && (
-            <CardStructure
-              icon="bank"
-              label="Shipping Details"
-              variant="default"
-            >
+            <CardStructure label="Shipping Details" variant="default">
               <Box
                 sx={{
                   maxHeight: "20px",
@@ -801,7 +865,7 @@ export default function ItemPurchasingUpdateView({
                     fontSize: { xs: "0.55rem", sm: "0.6rem" },
                     fontWeight: 500,
                     color: c.textBody,
-                    lineHeight: 1.3,
+                    lineHeight: 1.2,
                   }}
                   dangerouslySetInnerHTML={{ __html: po.strShippingDetails }}
                 />
@@ -809,7 +873,7 @@ export default function ItemPurchasingUpdateView({
             </CardStructure>
           )}
           {po?.cPaymentTerms && (
-            <CardStructure icon="tin" label="Payment Terms" variant="default">
+            <CardStructure label="Payment Terms" variant="default">
               <Box
                 sx={{
                   maxHeight: "20px",
@@ -829,7 +893,7 @@ export default function ItemPurchasingUpdateView({
                     fontSize: { xs: "0.55rem", sm: "0.6rem" },
                     fontWeight: 500,
                     color: c.textBody,
-                    lineHeight: 1.3,
+                    lineHeight: 1.2,
                   }}
                 >
                   {paymentTerms?.[po.cPaymentTerms] ?? po.cPaymentTerms}
@@ -913,6 +977,7 @@ export default function ItemPurchasingUpdateView({
             <DeliveredPanel
               options={liveOptions}
               txnTotals={txnItemTotals}
+              poNumber={po?.strPurchaseOrderNo}
               suggestedReceiptNo={suggestedReceiptNo}
               onSaveDeliver={saveDeliverRow}
               savingDeliver={deliverSaving}
@@ -926,6 +991,7 @@ export default function ItemPurchasingUpdateView({
               forms={deliverForms}
               setForms={setDeliverForms}
               txnTotals={txnItemTotals}
+              poNumber={po?.strPurchaseOrderNo}
               suggestedReceiptNo={suggestedReceiptNo}
               onSaveReceive={saveReceiveRow}
               savingReceive={receiveSaving}

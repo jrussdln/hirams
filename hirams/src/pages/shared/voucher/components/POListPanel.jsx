@@ -8,6 +8,7 @@ import {
 } from "@mui/icons-material";
 import { useMemo } from "react";
 import { fmtPHP } from "../../../../utils/formatters/formatter";
+import { totalEWT } from "../../../../utils/helpers/calculateEWT.js";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import PORowPanel from "./PORowPanel";
 import PickableValue from "../../jev/components/AmountPick.jsx";
@@ -105,12 +106,10 @@ export default function POListPanel({
     );
   }, 0);
 
+  // The EWT is derived per line — see utils/helpers/calculateEWT.js
   const grandEwtTotal = supplierLinks.reduce((sum, link) => {
     const opts = link.purchase_order?.purchase_order_options || [];
-    return (
-      sum +
-      opts.reduce((s, opt) => s + Number(opt.purchase_option?.dEWT || 0), 0)
-    );
+    return sum + totalEWT(opts);
   }, 0);
 
   // The FREIGHT on the linked POs — the charge on top of the goods. It sits

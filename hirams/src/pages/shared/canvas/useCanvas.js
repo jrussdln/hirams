@@ -11,6 +11,8 @@ import DirectCostOptionAPI from "../../../api/endpoints/direct-cost-option.api.j
 import { arrayMove } from "@dnd-kit/sortable";
 import { fmtDate, fmtPHP } from "../../../utils/formatters/formatter.js";
 import { getDueDateColor } from "../../../utils/helpers/dueDateColor";
+import { ewtOfOption } from "../../../utils/helpers/calculateEWT.js";
+import { NO_TRANSACTION_ABC } from "../../../constants/tableDataFallbacks";
 
 const mapSuppliers = (suppliers) =>
   suppliers.map((s) => ({
@@ -394,8 +396,12 @@ export default function useCanvas() {
     ? Number(transaction.dTotalABC)
     : items.reduce((s, i) => s + Number(i.abc || 0), 0);
   const abcValue = transactionHasABC
-    ? `₱ ${fmtPHP(transaction.dTotalABC)}`
-    : `₱ ${fmtPHP(totalItemsABC)}`;
+    ? Number(transaction.dTotalABC || 0) > 0
+      ? `₱ ${fmtPHP(transaction.dTotalABC)}`
+      : NO_TRANSACTION_ABC
+    : Number(totalItemsABC || 0) > 0
+      ? `₱ ${fmtPHP(totalItemsABC)}`
+      : NO_TRANSACTION_ABC;
   const abcSub =
     (itemsManagementKey.includes(selectedStatusCode) ||
       itemsVerificationKey.includes(selectedStatusCode) ||
@@ -500,7 +506,13 @@ export default function useCanvas() {
             strModel: o.strModel,
             dUnitPrice: o.dUnitPrice,
             strSpecs: o.strSpecs,
-            dEWT: o.dEWT,
+            // The EWT is DERIVED — see utils/helpers/calculateEWT.js
+            dEWT: ewtOfOption(o),
+            // The EWT TYPE - the formula the line's EWT is built from.
+            cEWTType: o.cEWTType || "",
+            bEWT: o.bEWT,
+            bVAT: o.bVAT,
+            cItemType: o.cItemType,
             bIncluded: o.bIncluded,
             bAddOn: o.bAddOn,
             dSuggestivePrice: o.dSuggestivePrice,
@@ -872,7 +884,7 @@ export default function useCanvas() {
           model: selectedOption.strModel,
           unitPrice: selectedOption.dUnitPrice,
           specs: selectedOption.strSpecs,
-          ewt: selectedOption.dEWT,
+          ewt: ewtOfOption(selectedOption),
           included: !!selectedOption.bIncluded,
         },
       ],

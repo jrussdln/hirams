@@ -16,7 +16,6 @@ use App\Http\Controllers\Api\Finance\JevEntriesController;
 use App\Http\Controllers\Api\Finance\JournalAccountController;
 use App\Http\Controllers\Api\Masters\MappingController;
 use App\Http\Controllers\Api\Masters\PricingSetController;
-use App\Http\Controllers\Api\Purchasing\PurchaseItemHistoryController;
 use App\Http\Controllers\Api\Purchasing\PurchaseOptionsController;
 use App\Http\Controllers\Api\Purchasing\PurchaseOrderController;
 use App\Http\Controllers\Api\Purchasing\PurchaseOrderOptionsController;

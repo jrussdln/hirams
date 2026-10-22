@@ -226,6 +226,12 @@ export default function useJevList() {
           // ever edited in place (see openEditJev).
           cJEVLinkType: j.cJEVLinkType ?? "",
           dtOccur: fmtDateTime(j.dtOccur),
+          // Whether this row may be deleted, and why not when it may not.
+          // The API decides (a paid voucher, a live Purchase Order, a
+          // completed transaction all keep their journal), so the button
+          // and the API can never disagree.
+          bDeletable: j.bDeletable !== false,
+          strDeleteBlockReason: j.strDeleteBlockReason ?? "",
         };
       }),
     [filteredJevs, jev_status],
@@ -291,6 +297,10 @@ export default function useJevList() {
       if (!j?.nJEVId) return;
       const removable = [jevPendingKey, jevCancelledKey].includes(j.cStatus);
       if (!removable) return;
+      // The API has the last word — a journal that is still on the books
+      // (a paid voucher, a live Purchase Order, a completed transaction)
+      // is refused there, and the row's disabled button already says so.
+      if (j.bDeletable === false) return;
 
       // ADD this line:
       const num = String(j.strJEVNumber ?? "").trim();

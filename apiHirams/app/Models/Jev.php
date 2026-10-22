@@ -39,6 +39,15 @@ class Jev extends Model
     {
         return $this->hasMany(Inventory::class, 'nJEVId', 'nJEVId');
     }
+    /**
+     * The transactions this journal belongs to. A Collection (C) JEV is
+     * raised against a transaction — tbltransactions points at tbljevs the
+     * same way a voucher does.
+     */
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transactions::class, 'nJEVId', 'nJEVId');
+    }
     public static function generateNumber(): string
     {
         // call inside DB::transaction so the lock works

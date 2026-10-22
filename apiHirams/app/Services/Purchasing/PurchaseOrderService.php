@@ -3,14 +3,15 @@
 namespace App\Services\Purchasing;
 
 use App\Events\InventoryUpdated;
+use App\Events\JevUpdated;
 use App\Events\PurchaseOrderUpdated;
 use App\Events\VoucherUpdated;
 use App\Models\Inventory;
 use App\Models\Jev;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderOption;
-use App\Models\PurchaseOptions;
 use App\Models\SerialNumber;
+use App\Models\Voucher;
 use App\Models\VoucherSupplier;
 use App\Services\CrudService;
 use Illuminate\Database\Eloquent\Collection;
@@ -52,6 +53,29 @@ class PurchaseOrderService extends CrudService
             'delivered'       => '160',
             'cancelled'       => '170',
             'removed'         => '100',
+        ];
+    }
+
+    /**
+     * The voucher / journal status codes a PO cancellation needs.
+     *
+     * They are looked up BY NAME in config/mappings.php — the same file the
+     * MappingController hands to the frontend — so the API and the UI can
+     * never drift apart.
+     *
+     * (Do NOT hard-code these letters: the old 'O' = Open came from the
+     * retired `cart_status` mapping and is not a voucher status at all —
+     * using it left every Active and Paid voucher alive when its PO was
+     * cancelled.)
+     */
+    private function financeCodes(): array
+    {
+        $voucherStatus = config('mappings.voucher_status', []);
+        $jevStatus     = config('mappings.jev_status', []);
+
+        return [
+            'voucherCancelled' => (string) (array_search('Cancelled', $voucherStatus, true) ?: ''),
+            'jevCancelled'     => (string) (array_search('Cancelled', $jevStatus, true) ?: ''),
         ];
     }
 
@@ -119,40 +143,34 @@ class PurchaseOrderService extends CrudService
         $codes = $this->statusCodes();
         $purchaseOrder = $this->newQuery()->with('purchaseOrderOptions.purchaseOption')->findOrFail($validated['nPurchaseOrderId']);
 
+        $isCancelling = (string) $validated['nStatus'] === (string) $codes['cancelled'];
+
+        // Which POs go down with this one. Only the PO itself: a cancel
+        // never takes a sibling order down with it.
+        $idsToCancel = collect([(int) $purchaseOrder->nPurchaseOrderId]);
+
+        // ✅ A PO can be cancelled at any stage. What goes down with it
+        // depends on what it raised:
+        //   • Cart / For Approval — nothing else exists yet
+        //   • For Payment / Pending Receipt — the voucher and the JEV
+        //   • For Delivery / Delivered — the voucher, the JEV and the stock
+        // The blocks below take each of those down with the order.
+
         // ✅ Update PO status directly
         $purchaseOrder->nStatus = $validated['nStatus'];
+        // ✅ The moment the order went down — a cancelled card says WHEN.
+        if ($isCancelling && !$purchaseOrder->dtCancelled) {
+            $purchaseOrder->dtCancelled = now();
+        }
         $purchaseOrder->save();
 
         $this->broadcast('status_updated', $purchaseOrder, $validated['nStatus']);
 
         // ✅ If Cancelled → propagate to all items (unset inclusion, cancel linked vouchers)
-        if ((string)$validated['nStatus'] === (string)$codes['cancelled']) {
-            $idsToCancel = collect([(int) $purchaseOrder->nPurchaseOrderId]);
-
-            if (!empty($validated['cancelShared'])) {
-                // Same transaction item = same shared card → every PO
-                // holding a purchase item of one of this PO's transaction
-                // items goes down with it.
-                $txItemIds = $purchaseOrder->purchaseOrderOptions
-                    ->pluck('purchaseOption.nTransactionItemId')
-                    ->filter()
-                    ->unique()
-                    ->values();
-
-                if ($txItemIds->isNotEmpty()) {
-                    $sharedItemIds = PurchaseOptions::whereIn('nTransactionItemId', $txItemIds)
-                        ->pluck('nPurchaseItemId');
-
-                    $sharedPoIds = PurchaseOrderOption::whereIn('nPurchaseItemId', $sharedItemIds)
-                        ->pluck('nPurchaseOrderId');
-
-                    $idsToCancel = $idsToCancel
-                        ->merge($sharedPoIds)
-                        ->map(fn($id) => (int) $id)
-                        ->unique()
-                        ->values();
-                }
-            }
+        if ($isCancelling) {
+            $finance = $this->financeCodes();
+            $voucherCancelledCode = $finance['voucherCancelled'];
+            $jevCancelledCode     = $finance['jevCancelled'];
 
             foreach ($idsToCancel as $poId) {
                 $po = $poId === (int) $purchaseOrder->nPurchaseOrderId
@@ -163,6 +181,9 @@ class PurchaseOrderService extends CrudService
                 // The originating PO is already at the new status above.
                 if ((string) $po->nStatus !== (string) $codes['cancelled']) {
                     $po->nStatus = $codes['cancelled'];
+                    if (!$po->dtCancelled) {
+                        $po->dtCancelled = now();
+                    }
                     $po->save();
                     $this->broadcast('status_updated', $po, $codes['cancelled']);
                 }
@@ -180,19 +201,45 @@ class PurchaseOrderService extends CrudService
                     ->get();
 
                 foreach ($linkedVouchers as $vs) {
-                    if ($vs->voucher && in_array($vs->voucher->cStatus, ['O', 'C'])) {
-                        $vs->voucher->cStatus = 'X';
-                        $vs->voucher->save();
-                        broadcast(new VoucherUpdated('status_changed', $vs->voucher->nVoucherId));
+                    // A voucher that is not already cancelled goes down with the
+                    // PO — Active ('A'), Closed ('C') and Paid ('P') alike.
+                    // Only Cancelled ('X') is final.
+                    if (!$vs->voucher) {
+                        continue;
+                    }
 
-                        // Also cancel the associated JEV if the voucher has one
-                        if ($vs->voucher->nJEVId) {
-                            $jev = $vs->voucher->jev();
-                            if ($jev && in_array($jev->cStatus, ['O', 'C'])) {
-                                $jev->cStatus = 'C';
-                                $jev->save();
-                                broadcast(new VoucherUpdated('jev_cancelled', $jev->nJEVId));
-                            }
+                    if ((string) $vs->voucher->cStatus === $voucherCancelledCode) {
+                        continue;
+                    }
+
+                    $vs->voucher->cStatus = $voucherCancelledCode;
+                    $vs->voucher->save();
+                    broadcast(new VoucherUpdated('status_changed', $vs->voucher->nVoucherId));
+
+                    // Also cancel the associated JEV if the voucher has one.
+                    // A journal can be shared by more than one voucher, so it
+                    // only goes down once no OTHER live voucher still points
+                    // at it.
+                    if ($vs->voucher->nJEVId) {
+                        // The RELATION, not the journal: `jev()` hands back
+                        // the BelongsTo itself, so reading cStatus off it
+                        // would blow up on a property that does not exist
+                        // there. The attribute resolves the journal (or
+                        // null when it is already gone).
+                        $jev = $vs->voucher->jev;
+
+                        $stillInUse = $jev ? Voucher::where('nJEVId', $vs->voucher->nJEVId)
+                            ->where('nVoucherId', '!=', $vs->voucher->nVoucherId)
+                            ->where(fn($q) => $q->where('cStatus', '!=', $voucherCancelledCode)
+                                ->orWhereNull('cStatus'))
+                            ->exists() : false;
+
+                        if ($jev && !$stillInUse && (string) $jev->cStatus !== $jevCancelledCode) {
+                            $jev->cStatus = $jevCancelledCode;
+                            $jev->save();
+                            // The JEV screen listens on its OWN channel — a
+                            // voucher event would never reach it.
+                            broadcast(new JevUpdated('updated', $jev->nJEVId));
                         }
                     }
                 }
@@ -215,9 +262,14 @@ class PurchaseOrderService extends CrudService
         $codes = $this->statusCodes();
 
         DB::transaction(function () use ($purchaseOrders, $validated, $codes) {
+            $isCancelling = (string) $validated['nStatus'] === (string) $codes['cancelled'];
             foreach ($purchaseOrders as $po) {
                 // ✅ Update PO nStatus directly, no per-item history rows
                 $po->nStatus = $validated['nStatus'];
+                // ✅ The moment the order went down — a cancelled card says WHEN.
+                if ($isCancelling && !$po->dtCancelled) {
+                    $po->dtCancelled = now();
+                }
                 $po->save();
 
                 $this->broadcast('status_synced', $po);
@@ -369,7 +421,7 @@ class PurchaseOrderService extends CrudService
         $poIds = collect($poIds)->filter()->unique()->values();
         if ($poIds->isEmpty()) return null;
 
-        $firstCancelledId = DB::transaction(function () use ($poIds, $cancelledCode) {
+        $firstCancelled = DB::transaction(function () use ($poIds, $cancelledCode) {
             $purchaseItemIds = PurchaseOrderOption::whereIn('nPurchaseOrderId', $poIds)
                 ->pluck('nPurchaseItemId')
                 ->filter()
@@ -393,25 +445,37 @@ class PurchaseOrderService extends CrudService
                 ->update(['cStatus' => 'C']);
 
             $jevIds = $rows->pluck('nJEVId')->filter()->unique()->values();
+            $cancelledJevIds = collect();
             if ($jevIds->isNotEmpty()) {
                 $liveJevIds = Inventory::whereIn('nJEVId', $jevIds)
                     ->where(fn($q) => $q->where('cStatus', '!=', 'C')->orWhereNull('cStatus'))
                     ->pluck('nJEVId')
                     ->unique();
 
-                Jev::whereIn('nJEVId', $jevIds->diff($liveJevIds))
+                $cancelledJevIds = $jevIds->diff($liveJevIds)->values();
+
+                Jev::whereIn('nJEVId', $cancelledJevIds)
                     ->where(fn($q) => $q->where('cStatus', '!=', 'C')->orWhereNull('cStatus'))
                     ->update(['cStatus' => 'C']);
             }
 
-            return (int) $rows->first()->nInventoryId;
+            return [
+                'inventoryId' => (int) $rows->first()->nInventoryId,
+                'jevIds'      => $cancelledJevIds,
+            ];
         });
 
-        if ($firstCancelledId) {
-            broadcast(new InventoryUpdated('cancelled', $firstCancelledId));
+        if ($firstCancelled) {
+            broadcast(new InventoryUpdated('cancelled', $firstCancelled['inventoryId']));
+
+            // The journals that went down with the stock — the JEV screen
+            // listens on its own channel, so it has to be told.
+            foreach ($firstCancelled['jevIds'] as $jevId) {
+                broadcast(new JevUpdated('updated', (int) $jevId));
+            }
         }
 
-        return $firstCancelledId;
+        return $firstCancelled['inventoryId'] ?? null;
     }
 
     /**
