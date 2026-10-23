@@ -244,12 +244,9 @@ const SidebarContent = ({
                     {renderNavItem(navConfig.management.inventory)}
                   </SectionGroup>
 
-                  <SectionGroup
-                    label={SECTION_LABELS.accounting}
-                    {...{ collapsed, forceExpanded }}
-                  >
-                    {renderNavItem(navConfig.management.accounting[0])}
-                  </SectionGroup>
+                  {/* NO Accounting — vouchers and journals are finance's
+                      realm; the Account Officer and AO Team Leader get no
+                      accounting section at all. */}
                 </>
               )}
 

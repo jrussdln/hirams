@@ -6,6 +6,7 @@ import {
   CheckCircleOutline,
   WarningAmberOutlined,
   CloseOutlined,
+  LocalShippingOutlined,
 } from "@mui/icons-material";
 import { useMemo, useState } from "react";
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
@@ -14,6 +15,7 @@ import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
 import { VoucherUpdateSkeleton } from "../../components/Skeleton.jsx";
 import ParticularsAEModal from "../../modal/ParticularsAEModal.jsx";
 import VoucherUpdateModal from "../../modal/VoucherUpdateModal.jsx";
+import FreightEWTUpdateModal from "../../../item-purchasing/modal/FreightEWTUpdateModal.jsx";
 import POListPanel from "../../components/POListPanel.jsx";
 import AssigneeListPanel from "../../components/AssigneeListPanel.jsx";
 import PickableValue from "../../../jev/components/AmountPick.jsx";
@@ -133,6 +135,11 @@ export default function VoucherUpdateView() {
   const [dismissedBalanceMsg, setDismissedBalanceMsg] = useState(null);
   // The voucher's headline banner can be dismissed for good.
   const [dismissedVoucherBanner, setDismissedVoucherBanner] = useState(false);
+  // FREIGHT / EWT — the row whose PO the editor opens on (supplier links
+  // carry the PO with its options). Null = closed. Active and Closed
+  // vouchers both get the editor: the totals on the voucher read the same
+  // values, so the refetch keeps them in step.
+  const [freightEwtLink, setFreightEwtLink] = useState(null);
 
   const { voucher, loading, handleBack, confirmLoading, saving } = vu;
   const goBack = handleBack;
@@ -459,6 +466,31 @@ export default function VoucherUpdateView() {
             )}
         </>
       )}
+      {/* FREIGHT / EWT — the footer's editor for the voucher's PO, right
+          before Preview Voucher. Active and Closed vouchers alike: the
+          totals on the voucher read the same values, so the refetch keeps
+          them in step. A voucher linked to SEVERAL POs disables it — the
+          row trucks on the PO list pick the PO there. */}
+      {!isAssigneeType && supplierLinks.length > 0 && (
+        <Tooltip
+          title={
+            supplierLinks.length > 1
+              ? "This voucher holds several POs — use the truck button on each PO row"
+              : "Freight / EWT"
+          }
+          arrow
+        >
+          <span>
+            <BaseButton
+              label="Freight/EWT"
+              icon={<LocalShippingOutlined sx={{ fontSize: "1rem" }} />}
+              onClick={() => setFreightEwtLink(supplierLinks[0])}
+              actionColor="default"
+              disabled={supplierLinks.length > 1 || confirmLoading || saving}
+            />
+          </span>
+        </Tooltip>
+      )}
       {showFooterPrint && (
         <>
           <BaseButton
@@ -635,7 +667,17 @@ export default function VoucherUpdateView() {
                 ? handleRemovePO
                 : undefined
             }
-            onBrandClick={openTransactionForPurchase}
+            onFreightEwt={setFreightEwtLink}
+            /* Brand / model → the purchasing transaction follows the same
+               rule as the PO number: management clicks, finance and the
+               rest read plain text. */
+            onBrandClick={
+              isManagement ? openTransactionForPurchase : undefined
+            }
+            /* Only MANAGEMENT may jump from a PO number to its purchasing
+               record — finance and every other role read it as plain text.
+               (The panel's navigable prop also guards its internal click.) */
+            navigable={isManagement}
             supplierNickName={payeeNickName}
             supplierAddress={supplierAddress}
             supplierTIN={supplierTIN}
@@ -737,6 +779,23 @@ export default function VoucherUpdateView() {
         onConfirm={activeConfirm?.onConfirm}
         onClose={activeConfirm?.onClose}
       />
+      {/* FREIGHT / EWT — the editor for the clicked row's PO. The voucher
+          refreshes on save so its own totals (Freight / EWT / NET) read the
+          values just saved. */}
+      {freightEwtLink && (
+        <FreightEWTUpdateModal
+          open={!!freightEwtLink}
+          onClose={() => setFreightEwtLink(null)}
+          po={freightEwtLink.purchase_order ?? null}
+          options={freightEwtLink.purchase_order?.purchase_order_options ?? []}
+          onSuccess={async () => {
+            await fetchVoucher();
+            window.dispatchEvent(
+              new CustomEvent("purchase_order_data_updated"),
+            );
+          }}
+        />
+      )}
     </PageLayout>
   );
 }

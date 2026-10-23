@@ -456,6 +456,10 @@ export default function ItemsTable({
   // The brand · model becomes a LINK when this is set: it opens the
   // transaction the batch was bought on. The callback receives the row.
   onBrandClick = null,
+  // The PO code (header card + delivered rows) is a LINK while this is
+  // true — false renders every PO code as plain text. The JEV viewer
+  // turns it off for finance; on the PO itself management keeps the jump.
+  poNavigable = true,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -470,10 +474,12 @@ export default function ItemsTable({
   // route the voucher page's PO list uses.
   const openPurchaseOrder = useCallback(
     (nPurchaseOrderId) => {
-      if (nPurchaseOrderId == null) return;
+      // A host that says the PO must NOT navigate silences the internal
+      // jump entirely (finance on the JEV viewer).
+      if (!poNavigable || nPurchaseOrderId == null) return;
       navigate(`/item-purchasing-update?id=${nPurchaseOrderId}`);
     },
-    [navigate],
+    [navigate, poNavigable],
   );
 
   const showSelling = showSellingOverride ?? hasDeliveredRows(rows);
@@ -621,7 +627,7 @@ export default function ItemsTable({
           name={headerName}
           open={open}
           onToggle={() => setOpen((v) => !v)}
-          onOpenPO={openPurchaseOrder}
+          onOpenPO={poNavigable ? openPurchaseOrder : undefined}
         />
       )}
       {open && (
@@ -757,7 +763,7 @@ export default function ItemsTable({
                         openPurchaseOrder(row.nPurchaseOrderId);
                       }}
                       title={
-                        row.nPurchaseOrderId
+                        poNavigable && row.nPurchaseOrderId
                           ? "Open this PO in Item Purchasing"
                           : undefined
                       }
@@ -774,20 +780,27 @@ export default function ItemsTable({
                         background: "transparent",
                         fontSize: "0.55rem",
                         fontWeight: 700,
-                        // Blue — it is a link, like every other PO code.
-                        color: row.nPurchaseOrderId
-                          ? colors.blue.text
-                          : colors.gray.textSecondary,
+                        // Blue — it is a link, like every other PO code. A
+                        // non-navigable host (finance on the JEV viewer)
+                        // reads it as plain muted text.
+                        color:
+                          poNavigable && row.nPurchaseOrderId
+                            ? colors.blue.text
+                            : colors.gray.textSecondary,
                         textTransform: "uppercase",
                         lineHeight: 1,
                         mb: 0.15,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
-                        cursor: row.nPurchaseOrderId ? "pointer" : "default",
-                        "&:hover": row.nPurchaseOrderId
-                          ? { textDecoration: "underline" }
-                          : undefined,
+                        cursor:
+                          poNavigable && row.nPurchaseOrderId
+                            ? "pointer"
+                            : "default",
+                        "&:hover":
+                          poNavigable && row.nPurchaseOrderId
+                            ? { textDecoration: "underline" }
+                            : undefined,
                       }}
                     >
                       {row.strPurchaseOrderNo}

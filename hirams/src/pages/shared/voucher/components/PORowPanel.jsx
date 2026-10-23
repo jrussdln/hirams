@@ -4,6 +4,7 @@ import {
   KeyboardArrowUp,
   KeyboardArrowDown,
   DeleteOutlineOutlined,
+  LocalShippingOutlined,
 } from "@mui/icons-material";
 import { fmtPHP, fmtQty } from "../../../../utils/formatters/formatter";
 import { ewtOfOption, totalEWT } from "../../../../utils/helpers/calculateEWT.js";
@@ -76,6 +77,8 @@ export default function PORowPanel({
   // Adds a particular to the voucher (shown when the list has no header of
   // its own to hold it).
   onAddItem,
+  // Opens the Freight / EWT editor for this row's PO (Active and Closed).
+  onFreightEwt,
   isJEVPage = false,
 }) {
   const theme = useTheme();
@@ -201,11 +204,13 @@ export default function PORowPanel({
                   e.stopPropagation();
                   onNavigate?.(link.nPurchaseOrderId);
                 }}
-                title="Open this purchase order"
+                title={onNavigate ? "Open this purchase order" : undefined}
                 sx={{
                   fontSize: { xs: "0.72rem", sm: "0.8rem", md: "0.88rem" },
                   fontWeight: 700,
-                  color: colors.blue.text,
+                  // Blue is the LINK look — a number that does not navigate
+                  // (finance et al. on the voucher page) reads as plain text.
+                  color: onNavigate ? colors.blue.text : colors.gray.textMuted,
                   textTransform: "uppercase",
                   cursor: onNavigate ? "pointer" : "default",
                   // The box hugs the text — otherwise the whole column width is
@@ -338,11 +343,13 @@ export default function PORowPanel({
                   e.stopPropagation();
                   onNavigate?.(link.nPurchaseOrderId);
                 }}
-                title="Open this purchase order"
+                title={onNavigate ? "Open this purchase order" : undefined}
                 sx={{
                   fontSize: { xs: "0.5rem", sm: "0.54rem", md: "0.58rem" },
                   fontWeight: 700,
-                  color: colors.blue.text,
+                  // Blue is the LINK look — a number that does not navigate
+                  // (finance et al. on the voucher page) reads as plain text.
+                  color: onNavigate ? colors.blue.text : colors.gray.textMuted,
                   cursor: onNavigate ? "pointer" : "default",
                   // The box hugs the text — otherwise the whole column width is
                   // a link and clicking the empty space opens the PO. No
@@ -378,6 +385,35 @@ export default function PORowPanel({
           {/* A single PO has no list header of its own, so the button sits
               here — left of the others. */}
           {onAddItem && <AddItemButton onClick={onAddItem} c={colors} />}
+          {/* FREIGHT / EWT — the editor for this PO's freight and its
+              lines' EWT, next to the remove button like the canvas rows. */}
+          {onFreightEwt && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                // The row toggles on its own — the button must not double up.
+                e.stopPropagation();
+                onFreightEwt?.();
+              }}
+              title="Freight/EWT"
+              sx={{
+                width: { xs: 18, sm: 20 },
+                height: { xs: 18, sm: 20 },
+                borderRadius: "50px",
+                border: `0.5px solid ${colors.green.border}`,
+                background: colors.green.bg,
+                color: colors.green.text,
+                opacity: 0.85,
+                "&:hover": { background: colors.green.bg, opacity: 1 },
+                p: 0,
+                flexShrink: 0,
+              }}
+            >
+              <LocalShippingOutlined
+                sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }}
+              />
+            </IconButton>
+          )}
           {onRemove && (
             <IconButton
               size="small"

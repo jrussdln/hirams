@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Box, Typography, IconButton, Skeleton, useTheme } from "@mui/material";
 import {
   AddOutlined,
@@ -160,12 +160,20 @@ export default function JevViewPanel({
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
+  // Riding on the JEV list page (/jev) itself, the number needs no link —
+  // its target IS the screen it sits on — even for finance / management.
+  const location = useLocation();
+  const onJevPage =
+    location.pathname === "/jev" || location.pathname.startsWith("/jev/");
   const isDark = theme.palette.mode === "dark";
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useMemo(() => useColors(base), [base]);
-  const jevId = jev?.nJEVId;
-  // A link needs an id to point at — without one it stays plain text.
-  const jevLinkable = jevLinkableProp && !!jevId;
+  const keys = useKeysLabels();
+  const cached = useMemo(() => loadMappings() ?? {}, []);
+  const typeMap = jev_types ?? cached.jev_types ?? keys.jev_types;
+  const statusMap = jev_status ?? cached.jev_status ?? keys.jev_status;
+  const pendingStatusKey = jevPendingKey ?? keys.jevPendingKey;
+  const cancelledStatusKey = jevCancelledKey || keys.jevCancelledKey;
 
   // ── The journal's type and status, in words ──────────────────────────
   // "V" and "A" are codes; the header must print "Disbursement Voucher"
@@ -173,12 +181,20 @@ export default function JevViewPanel({
   // they come from the shared mapping cache, so the raw code can never
   // reach the screen. The cache is read straight from storage first, so
   // the very first paint already carries the words.
-  const keys = useKeysLabels();
-  const cached = useMemo(() => loadMappings() ?? {}, []);
-  const typeMap = jev_types ?? cached.jev_types ?? keys.jev_types;
-  const statusMap = jev_status ?? cached.jev_status ?? keys.jev_status;
-  const pendingStatusKey = jevPendingKey ?? keys.jevPendingKey;
-  const cancelledStatusKey = jevCancelledKey || keys.jevCancelledKey;
+  const jevId = jev?.nJEVId;
+  // The JEV number navigates (it opens /jev?id=…) for FINANCE and
+  // MANAGEMENT only — every other role reads it as plain text. Callers
+  // may hand the flags in; otherwise the signed-in user's roles decide.
+  // (?? lets an explicit false from a caller stand, and a caller that
+  // says nothing fall back to the user's own roles.)
+  const canNavigate =
+    (isFinanceOfficer ?? keys.isFinanceOfficer) ||
+    (isManagement ?? keys.isManagement);
+  // A link needs an id to point at — without one it stays plain text. And
+  // on /jev itself the panel is already showing that very journal, so the
+  // number is plain text there for everyone.
+  const jevLinkable =
+    jevLinkableProp && !!jevId && canNavigate && !onJevPage;
 
   // ── R / D — inventory-backed JEVs ────────────────────────────────────
   // Received Purchases (R) and Delivered Items (D) are stamped onto

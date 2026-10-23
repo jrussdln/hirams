@@ -231,11 +231,11 @@ export default function ItemPurchasingView({
   forDeliveryKey,
   deliveredKey,
   cancelledPOKey,
-  removedFromCartKey,
   voucherActiveKey,
   voucherClosedKey,
   fetchAllPurchaseOrders,
   groupedByPeriod,
+  isManagement,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -255,8 +255,8 @@ export default function ItemPurchasingView({
     forDeliveryKey: forDeliveryKey ?? "",
     deliveredKey: deliveredKey ?? "",
     cancelledPOKey: cancelledPOKey ?? "",
-    removedFromCartKey,
     currentUserId,
+    isManagement,
     onUpdateClick: handleUpdateClick,
     collapsed: allCollapsed,
     onRemoved: () => fetchAllPurchaseOrders({ bustCache: true }),

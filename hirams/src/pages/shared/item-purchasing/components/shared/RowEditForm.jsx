@@ -12,6 +12,7 @@ import {
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
 import FormGrid from "../../../../../components/ui/form/FormGrid.jsx";
 import ScanSerialNumberModal from "../../modal/ScanSerialNumberModal.jsx";
+import useKeysLabels from "../../../../../hooks/useKeysLabels.js";
 
 // Width of the "Save Changes" button. The label row carries a spacer of the
 // same width so the Receipt No. label stays lined up with its input.
@@ -66,6 +67,10 @@ export default function RowEditForm({
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
   const { slate, gray, blue, red, amber, green } = base;
+  // The JEV numbers in the lock notice navigate (they open /jev?id=…) for
+  // FINANCE and MANAGEMENT only — AO / AOTL read them as plain text.
+  const keys = useKeysLabels();
+  const canOpenJev = keys.isFinanceOfficer || keys.isManagement;
 
   // Which row's S/N are being scanned by camera (modal is local to this form).
   const [scanOpen, setScanOpen] = React.useState(false);
@@ -289,31 +294,37 @@ export default function RowEditForm({
                     {jevs.map((j, i) => (
                       <Box key={j.id ?? j.number} component="span">
                         {i > 0 && ", "}
-                        <Box
-                          component="span"
-                          role="button"
-                          tabIndex={0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/jev?id=${j.id}`);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
+                        {/* Finance / management get the jump; AO / AOTL
+                            see the number as part of the warning text. */}
+                        {canOpenJev ? (
+                          <Box
+                            component="span"
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
                               e.stopPropagation();
                               navigate(`/jev?id=${j.id}`);
-                            }
-                          }}
-                          title="Open this JEV"
-                          sx={{
-                            color: blue.text,
-                            cursor: "pointer",
-                            fontWeight: 700,
-                            "&:hover": { textDecoration: "underline" },
-                          }}
-                        >
-                          {j.number}
-                        </Box>
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                navigate(`/jev?id=${j.id}`);
+                              }
+                            }}
+                            title="Open this JEV"
+                            sx={{
+                              color: blue.text,
+                              cursor: "pointer",
+                              fontWeight: 700,
+                              "&:hover": { textDecoration: "underline" },
+                            }}
+                          >
+                            {j.number}
+                          </Box>
+                        ) : (
+                          <Box component="span">{j.number}</Box>
+                        )}
                       </Box>
                     ))}
                     {")"}

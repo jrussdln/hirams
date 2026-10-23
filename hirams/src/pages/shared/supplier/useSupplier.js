@@ -24,6 +24,9 @@ function formatSupplier(supplier, { vat, ewt }) {
     ewt: ewt?.[supplier.bEWT],
     ewtActive: Number(supplier.bEWT) === 1,
     statusCode: supplier.cStatus,
+    // How many purchase options still name this supplier — a supplier that
+    // carries any cannot be deleted, it has to be transferred instead.
+    optionsCount: Number(supplier.purchase_options_count ?? 0),
   };
 }
 export default function useSupplier() {
@@ -37,6 +40,7 @@ export default function useSupplier() {
   const [openBankModal, setOpenBankModal] = useState(false);
   const [openInfoModal, setOpenInfoModal] = useState(false);
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
+  const [openTransferModal, setOpenTransferModal] = useState(false);
 
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [entityToDelete, setEntityToDelete] = useState(null);
@@ -250,6 +254,30 @@ export default function useSupplier() {
     setSelectedSupplier(supplier);
     setOpenBankModal(true);
   }, []);
+  // Transfer — the stand-in for Delete on a supplier that still carries
+  // purchase options: the modal moves them to another active supplier.
+  const handleTransferClick = useCallback((supplier) => {
+    setSelectedSupplier(supplier);
+    setOpenTransferModal(true);
+  }, []);
+  const handleCloseTransferModal = useCallback(() => {
+    setOpenTransferModal(false);
+    setSelectedSupplier(null);
+  }, []);
+  // The move itself — the modal only picks the destination and the options.
+  // The source id travels WITH the call, so the modal can close itself
+  // (and drop the selection) before the request is even sent.
+  const handleTransferOptions = useCallback(
+    async (sourceSupplierId, targetSupplierId, optionIds) => {
+      if (!sourceSupplierId) return;
+      await SupplierAPI.transferOptions(sourceSupplierId, {
+        nTargetSupplierId: targetSupplierId,
+        optionIds,
+      });
+      await fetchSuppliersRef.current?.(true, true); // ✅ Silent refresh
+    },
+    [],
+  );
   const handleCloseModal = useCallback(() => {
     setOpenModal(false);
     setSelectedSupplier(null);
@@ -324,6 +352,7 @@ export default function useSupplier() {
     openBankModal,
     openInfoModal,
     openDeleteModal,
+    openTransferModal,
     selectedSupplier,
     entityToDelete,
     suppliers: filteredSuppliers,
@@ -350,11 +379,14 @@ export default function useSupplier() {
     handleDeleteClick,
     handleContactsClick,
     handleBankClick,
+    handleTransferClick,
     handleCloseModal,
     handleCloseContactModal,
     handleCloseBankModal,
     handleCloseInfoModal,
     handleCloseDeleteModal,
+    handleCloseTransferModal,
+    handleTransferOptions,
     handlePageChange,
     handleRowsPerPageChange,
     handleRowClick,

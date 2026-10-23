@@ -494,49 +494,70 @@ export default function ItemPurchasingUpdateView({
         />
       )}
 
-      {showPODetails && (
+      {/* FREIGHT / EWT — the same editor, for the For Payment stage (the
+          voucher's totals read these values, so a change keeps them in
+          step after they refetch). */}
+      {selectedStatusCode === forPaymentKey && (
+        <BaseButton
+          label="Freight/EWT"
+          icon={<LocalShippingOutlined sx={{ fontSize: "1rem" }} />}
+          onClick={() => setShowFreightEwtModal(true)}
+          actionColor="default"
+          disabled={isLoadingPage || actionLoading}
+        />
+      )}
+
+      {po?.strShippingDetails || po?.cPaymentTerms ? (
         <>
-          {po?.strShippingDetails || po?.cPaymentTerms ? (
-            <>
-              {selectedStatusCode === cartKey && (
-                <>
-                  <BaseButton
-                    label="Edit PO Details"
-                    icon={icons.edit}
-                    onClick={openPaymentForm}
-                    actionColor="default"
-                    disabled={isLoadingPage || paymentLoading}
-                  />
-                  {/* FREIGHT / EWT — the editor for the charge on the PO and
-                      the EWT on its lines. It sits right before the Close
-                      that sends the PO for approval. */}
-                  <BaseButton
-                    label="Freight/EWT"
-                    icon={<LocalShippingOutlined sx={{ fontSize: "1rem" }} />}
-                    onClick={() => setShowFreightEwtModal(true)}
-                    actionColor="default"
-                    disabled={isLoadingPage || actionLoading}
-                  />
-                  <BaseButton
-                    label="Close"
-                    icon={icons.close}
-                    onClick={() => setConfirmAction(forApprovalKey)}
-                    actionColor="approve"
-                    disabled={isLoadingPage || actionLoading}
-                  />
-                </>
-              )}
-            </>
-          ) : (
+          {/* EDIT PO DETAILS — the shipping / payment-terms editor, from
+              the Cart stage right through For Approval and For Payment.
+              It shows even while a voucher holds the PO: the details are
+              just fields (freight passes through untouched), so the
+              voucher gate only ever needed to close the CART buttons
+              below — Close moves the stage, Freight/EWT the money. */}
+          {[cartKey, forApprovalKey, forPaymentKey].includes(
+            String(selectedStatusCode),
+          ) && (
             <BaseButton
-              label="Proceed to PO Details"
-              icon={icons.submit}
+              label="Edit PO Details"
+              icon={icons.edit}
               onClick={openPaymentForm}
-              actionColor="approve"
+              actionColor="default"
               disabled={isLoadingPage || paymentLoading}
             />
           )}
+          {selectedStatusCode === cartKey && showPODetails && (
+            <>
+              {/* FREIGHT / EWT — the editor for the charge on the PO and
+                  the EWT on its lines. It sits right before the Close
+                  that sends the PO for approval. */}
+              <BaseButton
+                label="Freight/EWT"
+                icon={<LocalShippingOutlined sx={{ fontSize: "1rem" }} />}
+                onClick={() => setShowFreightEwtModal(true)}
+                actionColor="default"
+                disabled={isLoadingPage || actionLoading}
+              />
+              <BaseButton
+                label="Close"
+                icon={icons.close}
+                onClick={() => setConfirmAction(forApprovalKey)}
+                actionColor="approve"
+                disabled={isLoadingPage || actionLoading}
+              />
+            </>
+          )}
         </>
+      ) : (
+        showPODetails && (
+          <BaseButton
+            label="Proceed to PO Details"
+            icon={icons.submit}
+            onClick={openPaymentForm}
+            actionColor="approve"
+            disabled={isLoadingPage || paymentLoading}
+          />
+        )
       )}
 
       {/* FREIGHT / EWT — the same editor, for the For Approval stage (where
@@ -590,15 +611,19 @@ export default function ItemPurchasingUpdateView({
         />
       )}
 
-      {selectedStatusCode === forPaymentKey && (
-        <BaseButton
-          label="Manage Voucher"
-          icon={icons.manage}
-          onClick={() => setShowManageVoucher(true)}
-          actionColor="approve"
-          disabled={isLoadingPage || actionLoading}
-        />
-      )}
+      {/* MANAGE VOUCHER — finance/management only, like the Approve next
+          to it: the voucher is where the money settles, so an AO or AOTL
+          never opens this editor. */}
+      {selectedStatusCode === forPaymentKey &&
+        (isFinanceOfficer || isManagement) && (
+          <BaseButton
+            label="Manage Voucher"
+            icon={icons.manage}
+            onClick={() => setShowManageVoucher(true)}
+            actionColor="approve"
+            disabled={isLoadingPage || actionLoading}
+          />
+        )}
 
       {selectedStatusCode === forApprovalKey &&
         (isFinanceOfficer || isManagement) && (
@@ -1020,8 +1045,8 @@ export default function ItemPurchasingUpdateView({
                   pendingReceiptKey={pendingReceiptKey}
                   forDeliveryKey={forDeliveryKey}
                   deliveredKey={deliveredKey}
-                  removedFromCartKey={removedFromCartKey}
                   currentUserId={currentUserId}
+                  isManagement={isManagement}
                   poStatus={currentStatus}
                   // Only the brand · model is a link here — it opens the
                   // transaction for purchase, the job the old "View For

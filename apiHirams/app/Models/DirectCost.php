@@ -32,15 +32,13 @@ class DirectCost extends Model
         );
     }
 
-    // Uncomment if transaction model exists
-    /*
+    // The transaction this cost line is charged to.
     public function transaction()
     {
         return $this->belongsTo(
-            Transaction::class,
+            Transactions::class,
             'nTransactionID',
-            'nTransactionID'
+            'nTransactionId'
         );
     }
-    */
 }

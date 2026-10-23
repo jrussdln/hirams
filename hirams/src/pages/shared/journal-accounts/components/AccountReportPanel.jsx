@@ -166,7 +166,9 @@ const EntryBranch = ({
   sx,
   onOpenJev,
   // (row) => void — row carries nJournalAccountId; opens the transfer
-  // modal to re-home that entry's journal account.
+  // modal to re-home that entry's journal account. When the caller passes
+  // nothing (finance on the journal-accounts page), the whole Action
+  // column folds away.
   onTransferEntry,
 }) => {
   const [page, setPage] = useState(0);
@@ -431,47 +433,53 @@ const EntryBranch = ({
         ),
       },
       // Action column — Transfer re-homes the entry's journal account.
-      {
-        key: "action",
-        label: "Action",
-        xs: 0.9,
-        align: "center",
-        render: (_, row) => (
-          <Box
-            component="button"
-            type="button"
-            onClick={() => onTransferEntry?.(row)}
-            title="Transfer this entry's journal account"
-            aria-label="Transfer this entry's journal account"
-            sx={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 0.35,
-              px: 0.7,
-              py: 0.3,
-              borderRadius: "6px",
-              border: `1px solid ${colors.border}`,
-              background: "transparent",
-              color: colors.gray.sec,
-              fontFamily: "inherit",
-              fontSize: "0.62rem",
-              fontWeight: 600,
-              lineHeight: 1.2,
-              whiteSpace: "nowrap",
-              cursor: "pointer",
-              "&:hover": {
-                background: colors.hoverBg,
-                borderColor: colors.blue.border,
-                color: colors.blue.text,
-              },
-            }}
-          >
-            <DriveFileMoveOutlined sx={{ fontSize: "0.8rem" }} />
-            Transfer
-          </Box>
-        ),
-      },
+      // Only exists while the caller hands the handler in; finance reads
+      // the report without it.
+      ...(onTransferEntry
+        ? [
+            {
+              key: "action",
+              label: "Action",
+              xs: 0.9,
+              align: "center",
+              render: (_, row) => (
+                <Box
+                  component="button"
+                  type="button"
+                  onClick={() => onTransferEntry(row)}
+                  title="Transfer this entry's journal account"
+                  aria-label="Transfer this entry's journal account"
+                  sx={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 0.35,
+                    px: 0.7,
+                    py: 0.3,
+                    borderRadius: "6px",
+                    border: `1px solid ${colors.border}`,
+                    background: "transparent",
+                    color: colors.gray.sec,
+                    fontFamily: "inherit",
+                    fontSize: "0.62rem",
+                    fontWeight: 600,
+                    lineHeight: 1.2,
+                    whiteSpace: "nowrap",
+                    cursor: "pointer",
+                    "&:hover": {
+                      background: colors.hoverBg,
+                      borderColor: colors.blue.border,
+                      color: colors.blue.text,
+                    },
+                  }}
+                >
+                  <DriveFileMoveOutlined sx={{ fontSize: "0.8rem" }} />
+                  Transfer
+                </Box>
+              ),
+            },
+          ]
+        : []),
     ];
   }, [colors, onOpenJev, onTransferEntry]);
 
@@ -616,11 +624,19 @@ function AccountReportPanel({
   // the destination account and updates ONLY that entry.
   const [transferEntry, setTransferEntry] = useState(null);
 
-  // Entry row's Transfer → open the modal for THAT entry line.
-  const handleTransferEntry = (row) => {
-    if (!row?.nJEVEntryId) return;
-    setTransferEntry(row);
-  };
+  // Same rule the account tree above follows: finance reads the books —
+  // transferring an entry line is management's (or any other role's, as
+  // before) action.
+  const canTransferEntry = isManagement || !isFinanceOfficer;
+
+  // Entry row's Transfer → open the modal for THAT entry line. No handler
+  // for finance → EntryBranch drops its Action column entirely.
+  const handleTransferEntry = canTransferEntry
+    ? (row) => {
+        if (!row?.nJEVEntryId) return;
+        setTransferEntry(row);
+      }
+    : undefined;
 
   const toggleRow = (key) =>
     setCollapsedIds((prev) => {

@@ -10,6 +10,7 @@ import {
   ReplayOutlined,
   AccountCircleOutlined,
   PhotoCameraOutlined,
+  RemoveShoppingCartOutlined,
 } from "@mui/icons-material";
 
 // ── Shared color variants ─────────────────────────────────────────────────
@@ -262,6 +263,13 @@ export const CART_CONFIRM_STYLES = {
     title: "Print this Purchase Order?",
     desc: "This will open the print view for this purchase order.",
     confirmLabel: "Yes, Print PO",
+  },
+  remove_from_cart: {
+    variant: "red",
+    Icon: RemoveShoppingCartOutlined,
+    title: "Remove this item from the cart?",
+    desc: "This will take the item off its purchase order. If it is the item's last line, the purchase order itself is deleted. This action cannot be undone.",
+    confirmLabel: "Yes, Remove Item",
   },
 };
 

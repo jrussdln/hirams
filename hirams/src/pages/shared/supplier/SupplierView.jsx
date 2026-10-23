@@ -9,6 +9,7 @@ import {
   HowToReg,
   PersonOff,
   PersonAdd,
+  DriveFileMoveOutlined,
 } from "@mui/icons-material";
 import PageLayout from "../../../components/layouts/page/content-page";
 import CustomTable from "../../../components/ui/form/Table";
@@ -19,6 +20,7 @@ import SupplierAEModal from "./modal/SupplierAEModal";
 import ContactModal from "./modal/ContactModal";
 import BankModal from "./modal/BankModal";
 import InfoSupplierModal from "./modal/InfoSupplierModal";
+import TransferSupplierModal from "./modal/TransferSupplierModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import {
@@ -51,6 +53,7 @@ export default function SupplierView({
   openBankModal,
   openInfoModal,
   openDeleteModal,
+  openTransferModal,
   selectedSupplier,
   entityToDelete,
   suppliers,
@@ -75,11 +78,14 @@ export default function SupplierView({
   handleDeleteClick,
   handleContactsClick,
   handleBankClick,
+  handleTransferClick,
   handleCloseModal,
   handleCloseContactModal,
   handleCloseBankModal,
   handleCloseInfoModal,
   handleCloseDeleteModal,
+  handleCloseTransferModal,
+  handleTransferOptions,
   handlePageChange,
   handleRowsPerPageChange,
   handleRowClick,
@@ -103,6 +109,7 @@ export default function SupplierView({
         render: (_, row) => {
           const hasName = Boolean(row.supplierName?.trim());
           const hasNickname = Boolean(row.supplierNickName?.trim());
+          const optionCount = Number(row.optionsCount ?? 0);
 
           return (
             <div className="min-w-0 text-left">
@@ -115,8 +122,18 @@ export default function SupplierView({
                   {NO_NAME}
                 </span>
               )}
-              <span className="block text-xs font-light italic leading-tight -mt-0.5">
-                {hasNickname ? row.supplierNickName : NO_NICKNAME}
+              <span className="flex items-center gap-1 min-w-0">
+                <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
+                  {hasNickname ? row.supplierNickName : NO_NICKNAME}
+                </span>
+                {/* How many purchase options still name this supplier — the
+                    same count that decides whether Delete or Transfer is
+                    offered. */}
+                {optionCount > 0 && (
+                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+                    · {optionCount} item{optionCount === 1 ? "" : "s"}
+                  </span>
+                )}
               </span>
             </div>
           );
@@ -283,7 +300,23 @@ export default function SupplierView({
                 }}
               />
             ),
-            !isActive && isManagement && (
+            !isActive && isManagement && row.optionsCount > 0 && (
+              // A supplier that still carries purchase options cannot be
+              // deleted — the options would be left pointing at nothing.
+              // Transfer moves them to another supplier instead.
+              <BaseButton
+                key="transfer"
+                icon={<DriveFileMoveOutlined fontSize="small" />}
+                tooltip={`Transfer Options (${row.optionsCount})`}
+                actionColor="reassign"
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleTransferClick(row);
+                }}
+              />
+            ),
+            !isActive && isManagement && !row.optionsCount && (
               <BaseButton
                 key="delete"
                 icon={<Delete fontSize="small" />}
@@ -320,6 +353,7 @@ export default function SupplierView({
       handleContactsClick,
       handleBankClick,
       handleDeleteClick,
+      handleTransferClick,
     ],
   );
 
@@ -415,6 +449,12 @@ export default function SupplierView({
         onClose={handleCloseDeleteModal}
         entityToDelete={entityToDelete}
         onSuccess={handleDeleteSuccess}
+      />
+      <TransferSupplierModal
+        open={openTransferModal}
+        handleClose={handleCloseTransferModal}
+        supplier={selectedSupplier}
+        onTransfer={handleTransferOptions}
       />
     </PageLayout>
   );

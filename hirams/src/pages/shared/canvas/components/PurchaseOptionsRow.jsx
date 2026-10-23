@@ -10,10 +10,12 @@ import {
   AddShoppingCart,
   RemoveShoppingCart,
   ShoppingCart,
+  Visibility,
 } from "@mui/icons-material";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import BaseButton from "../../../../components/ui/form/BaseButton";
 import PurchaseOrderAPI from "../../../../api/endpoints/purchase-order.api.js";
+import PurchaseCartUpdateModal from "../../item-purchasing/modal/PurchaseCartUpdateModal.jsx";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import {
   fmtPHP,
@@ -224,6 +226,8 @@ function CartActionButtons({
   latestHistory,
   isProgressed,
   isInCart,
+  // The purchase page reads View Cart as an eye; the canvas keeps the cart.
+  eyeViewCart = false,
   option,
   isIncluded,
   cartKey,
@@ -232,7 +236,11 @@ function CartActionButtons({
   pendingReceiptKey,
   forDeliveryKey,
   deliveredKey,
-  onRemoveFromCart,
+  // Ask-then-confirm: the click only raises the confirmation; the actual
+  // call runs after "Yes, Remove Item". `removing` spins the button while
+  // the request is in flight.
+  onRemoveRequest,
+  removing = false,
   onEditOption,
   onAddToCart,
   onViewCart,
@@ -241,7 +249,6 @@ function CartActionButtons({
   colors,
 }) {
   const [cartPhase, setCartPhase] = useState("idle");
-  const [removePhase, setRemovePhase] = useState("idle");
 
   const progressLabel = latestHistory
     ? ({
@@ -255,6 +262,19 @@ function CartActionButtons({
 
   const isDisabled = readOnly || isAssignedToMe;
   const canRemove = isInCart && !isDisabled;
+  // A CART-stage order — the cart itself, For Approval or For Payment —
+  // still lets an option be pulled back out of it. Pending Receipt and
+  // beyond, and anything already holding stock, never gets the remove
+  // button: from those points the option feeds a voucher or moves through
+  // the warehouse.
+  const stageAllowsRemove =
+    latestHistory != null &&
+    [String(cartKey), String(forApprovalKey), String(forPaymentKey)].includes(
+      String(latestHistory.nStatus),
+    );
+  const hasStock =
+    Number(option?.nInventoryQty || 0) > 0 ||
+    Number(option?.nDeliveredQty || 0) > 0;
   const handleAddClick = async () => {
     if (isDisabled) return;
     setCartPhase("loading");
@@ -267,22 +287,18 @@ function CartActionButtons({
     }
   };
 
-  const handleRemoveClick = async () => {
-    if (isDisabled) return;
-    setRemovePhase("loading");
-    try {
-      await onRemoveFromCart();
-    } finally {
-      setRemovePhase("idle");
-    }
-  };
-
   // An option that is ALREADY on the order (in the cart, or moved on to
   // For Approval / For Payment / Pending Receipt / For Delivery / Delivered)
   // is edited from here — and the cart it sits in is one click away.
   const viewCartButton = (
     <BaseButton
-      icon={<ShoppingCart sx={{ fontSize: "0.9rem", color: colors.viewColor }} />}
+      icon={
+        eyeViewCart ? (
+          <Visibility sx={{ fontSize: "0.9rem", color: colors.viewColor }} />
+        ) : (
+          <ShoppingCart sx={{ fontSize: "0.9rem", color: colors.viewColor }} />
+        )
+      }
       // The stage the option is at rides along on the tooltip — the View
       // button used to carry it.
       tooltip={progressLabel ? `${progressLabel} — View Cart` : "View Cart"}
@@ -295,6 +311,7 @@ function CartActionButtons({
   if (isProgressed)
     return (
       <>
+        {viewCartButton}
         <BaseButton
           icon={<Edit sx={{ fontSize: "0.9rem" }} />}
           tooltip={isDisabled ? "Not allowed" : "Edit"}
@@ -302,14 +319,41 @@ function CartActionButtons({
           disabled={isDisabled}
           size="small"
         />
-        {viewCartButton}
+        {/* Still in a cart-stage order (For Approval / For Payment
+            included) → the same remove-from-cart the cart branch offers.
+            Later stages or existing stock never reach this. */}
+        {stageAllowsRemove && !hasStock
+          ? removing
+            ? <Spinner color={colors.voidColor} colors={colors} />
+            : (
+                <BaseButton
+                  icon={
+                    <RemoveShoppingCart
+                      sx={{ fontSize: "0.9rem", color: colors.voidColor }}
+                    />
+                  }
+                  tooltip={isDisabled ? "Not allowed" : "Remove from cart"}
+                  onClick={() => !isDisabled && onRemoveRequest()}
+                  disabled={isDisabled}
+                  size="small"
+                />
+              )
+          : null}
       </>
     );
 
   if (canRemove)
     return (
       <>
-        {removePhase === "loading" ? (
+        {viewCartButton}
+        <BaseButton
+          icon={<Edit sx={{ fontSize: "0.9rem" }} />}
+          tooltip={isDisabled ? "Not allowed" : "Edit"}
+          onClick={() => !isDisabled && onEditOption(option)}
+          disabled={isDisabled}
+          size="small"
+        />
+        {removing ? (
           <Spinner color={colors.voidColor} colors={colors} />
         ) : (
           <BaseButton
@@ -319,25 +363,18 @@ function CartActionButtons({
               />
             }
             tooltip={isDisabled ? "Not allowed" : "Remove from cart"}
-            onClick={handleRemoveClick}
+            onClick={() => !isDisabled && onRemoveRequest()}
             disabled={isDisabled}
             size="small"
           />
         )}
-        <BaseButton
-          icon={<Edit sx={{ fontSize: "0.9rem" }} />}
-          tooltip={isDisabled ? "Not allowed" : "Edit"}
-          onClick={() => !isDisabled && onEditOption(option)}
-          disabled={isDisabled}
-          size="small"
-        />
-        {viewCartButton}
       </>
     );
 
   if (isInCart)
     return (
       <>
+        {viewCartButton}
         <BaseButton
           icon={<Edit sx={{ fontSize: "0.9rem" }} />}
           tooltip={isDisabled ? "Not allowed" : "Edit"}
@@ -345,7 +382,6 @@ function CartActionButtons({
           disabled={isDisabled}
           size="small"
         />
-        {viewCartButton}
       </>
     );
 
@@ -630,6 +666,8 @@ const PurchaseOptionRow = ({
   statusChangedAlert,
   readOnly = false,
   mode = "canvas",
+  // Purchase page shows View Cart as an eye; the canvas keeps the cart.
+  eyeViewCart = false,
   // purchase-mode only:
   currentUserId,
   cancelledPOKey,
@@ -639,7 +677,6 @@ const PurchaseOptionRow = ({
   pendingReceiptKey,
   forDeliveryKey,
   deliveredKey,
-  removedFromCartKey,
   latestHistory = null,
   onAddedToCart,
   isProgressed = false,
@@ -688,11 +725,17 @@ const PurchaseOptionRow = ({
   // never changes on its own, so nothing flickers while you read it.
 
   // VIEW CART — the order this option sits in, the same jump the option
-  // details modal makes.
+  // details modal makes. The PO's stage rides along: without ?status= the
+  // update page has to infer the tab, and a deep-link response that lacks
+  // the option quantities can misfile the PO (a Pending Receipt order
+  // opened under Delivered with a Pending Receipt tracker).
   const handleViewCart = () => {
     const poId = option?.nPurchaseOrderId;
     if (poId) {
-      navigate(`/item-purchasing-update?id=${poId}`);
+      const stage = latestHistory?.nStatus
+        ? `&status=${encodeURIComponent(String(latestHistory.nStatus))}`
+        : "";
+      navigate(`/item-purchasing-update?id=${poId}${stage}`);
     } else {
       console.warn("PurchaseOptionRow: no PO id to open the cart for.");
     }
@@ -746,13 +789,18 @@ const PurchaseOptionRow = ({
       } else throw new Error("No purchase order returned");
     });
   };
+  // Remove-from-cart runs through a confirmation — the button only raises
+  // the ask; the request fires from "Yes, Remove Item".
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const handleRemoveFromCart = async () => {
     if (readOnly) return;
+    setRemoving(true);
+    setConfirmRemove(false);
     try {
       const res = await PurchaseOrderAPI.removeFromCart({
         nPurchaseItemId: option.nPurchaseItemId,
         nUserId: currentUserId,
-        nStatus: removedFromCartKey,
         isManagement,
       });
       if (res) {
@@ -761,6 +809,8 @@ const PurchaseOptionRow = ({
       }
     } catch (err) {
       console.error("Failed to remove from cart:", err);
+    } finally {
+      setRemoving(false);
     }
   };
 
@@ -1156,9 +1206,15 @@ const PurchaseOptionRow = ({
                   // that used to open the details modal is gone).
                   <BaseButton
                     icon={
-                      <ShoppingCart
-                        sx={{ fontSize: "0.9rem", color: colors.viewColor }}
-                      />
+                      eyeViewCart ? (
+                        <Visibility
+                          sx={{ fontSize: "0.9rem", color: colors.viewColor }}
+                        />
+                      ) : (
+                        <ShoppingCart
+                          sx={{ fontSize: "0.9rem", color: colors.viewColor }}
+                        />
+                      )
                     }
                     tooltip="View Cart"
                     onClick={handleViewCart}
@@ -1169,6 +1225,8 @@ const PurchaseOptionRow = ({
                   <CartActionButtons
                     latestHistory={latestHistory}
                     option={option}
+                    // Purchase page shows the eye glyph for View Cart.
+                    eyeViewCart={eyeViewCart}
                     isIncluded={isIncluded}
                     cartKey={cartKey}
                     forApprovalKey={forApprovalKey}
@@ -1178,7 +1236,8 @@ const PurchaseOptionRow = ({
                     deliveredKey={deliveredKey}
                     onEditOption={onEditOption}
                     onAddToCart={handleAddToCart}
-                    onRemoveFromCart={handleRemoveFromCart}
+                    onRemoveRequest={() => setConfirmRemove(true)}
+                    removing={removing}
                     onViewCart={handleViewCart}
                     isProgressed={isProgressed}
                     isInCart={isInCart}
@@ -1330,6 +1389,14 @@ const PurchaseOptionRow = ({
         </Paper>
       )}
 
+      {/* Remove-from-cart asks once before it pulls the option off its PO. */}
+      <PurchaseCartUpdateModal
+        open={confirmRemove}
+        action="remove_from_cart"
+        loading={removing}
+        onConfirm={handleRemoveFromCart}
+        onClose={() => setConfirmRemove(false)}
+      />
       </React.Fragment>
   );
 };

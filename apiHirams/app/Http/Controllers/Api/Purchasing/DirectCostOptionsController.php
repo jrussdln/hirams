@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\Purchasing;
 
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\DirectCostOption\StoreDirectCostOptionRequest;
+use App\Http\Requests\DirectCostOption\TransferDirectCostCostsRequest;
 use App\Http\Requests\DirectCostOption\UpdateDirectCostOptionRequest;
 use App\Services\Purchasing\DirectCostOptionsService;
+use RuntimeException;
 
 /**
  * Legacy-shape controller: no try/catch and no return types on purpose —
@@ -43,8 +45,52 @@ class DirectCostOptionsController extends ApiController
 
     public function destroy($id)
     {
-        $this->service->delete($id);
+        // An option a live transaction still charges a cost to cannot be
+        // removed — the lines would be left pointing at nothing. They have
+        // to be transferred to another option first.
+        if ($this->service->hasCosts((int) $id)) {
+            return response()->json([
+                'message' => 'Cannot delete a direct cost option that is used in transactions. Transfer its entries to another option first.',
+            ], 422);
+        }
+
+        $this->service->delete((int) $id);
 
         return response()->json(['message' => 'Deleted']);
     }
-}
+
+    /**
+     * GET /direct-cost-options/{id}/costs
+     *
+     * The transactions that charge a direct cost to this option — the list
+     * the transfer modal shows before the lines are moved to another
+     * option.
+     */
+    public function costs($id)
+    {
+        return $this->service->costs((int) $id);
+    }
+
+    /**
+     * POST /direct-cost-options/{id}/transfer
+     *
+     * Moves this option's direct cost lines to another option.
+     */
+    public function transfer(TransferDirectCostCostsRequest $request, $id)
+    {
+        try {
+            $validated = $request->validated();
+
+            $moved = $this->service->transferCosts(
+                (int) $id,
+                (int) $validated['nTargetCostOptionId'],
+                array_map('intval', $validated['costIds'] ?? [])
+            );
+        } catch (RuntimeException $e) {
+            // The refusal must reach the modal as a message, not a generic
+            // server error.
+            return $this->fail($e->getMessage(), 422);
+        }
+
+        return response()->json(['moved' => $moved]);
+    }}

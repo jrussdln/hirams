@@ -16,6 +16,8 @@ import { fmtDate, fmtPHP, fmtQty } from "../../../../utils/formatters/formatter.
 import { ewtOfOption, totalEWT } from "../../../../utils/helpers/calculateEWT.js";
 import { CART_STATUS_STYLES } from "../../../../utils/style/sharedConfirmStyles.jsx";
 import CartRowPanel from "./shared/CartRowPanel.jsx";
+import PurchaseCartUpdateModal from "../modal/PurchaseCartUpdateModal.jsx";
+import MoveItemModal from "../modal/MoveItemModal.jsx";
 import { BadgeCycler } from "./shared/Stamp.jsx";
 import {
   getOptionArrival,
@@ -67,8 +69,10 @@ export default function CartCardPanel({
   forDeliveryKey,
   deliveredKey,
   cancelledPOKey,
-  removedFromCartKey,
   currentUserId,
+  // Management pages pass true; AO / AOTL surfaces pass their real flag —
+  // the backend's cart permission is management · AO · AOTL.
+  isManagement = true,
   onUpdateClick,
   collapsed,
   onRemoved,
@@ -252,7 +256,6 @@ export default function CartCardPanel({
       await PurchaseOrderAPI.removeFromCart({
         nPurchaseItemId,
         nUserId: currentUserId,
-        nStatus: removedFromCartKey,
         isManagement: true,
       });
       await onRemoved?.();
@@ -262,6 +265,30 @@ export default function CartCardPanel({
     } finally {
       setRemovingOptionId(null);
     }
+  };
+
+  // The remove button first asks — the row only carries the id it wants
+  // gone; the actual call waits for "Yes, Remove Item".
+  const [removeConfirmId, setRemoveConfirmId] = React.useState(null);
+  const confirmRemoveOption = async () => {
+    const id = removeConfirmId;
+    setRemoveConfirmId(null);
+    await handleRemoveOption(id);
+  };
+
+  // The MOVE modal picks the destination; the row only opens the modal.
+  // Like remove, the source id travels with the call, so closing the modal
+  // loses nothing.
+  const [moveItemId, setMoveItemId] = React.useState(null);
+  const handleMoveItem = async (nPurchaseItemId, nTargetPurchaseOrderId) => {
+    await PurchaseOrderAPI.moveItem({
+      nPurchaseItemId,
+      nTargetPurchaseOrderId,
+      nUserId: currentUserId,
+      isManagement: isManagement,
+    });
+    await onRemoved?.();
+    window.dispatchEvent(new CustomEvent("cart_data_updated"));
   };
 
   return (
@@ -592,8 +619,19 @@ export default function CartCardPanel({
                 isRemoving={
                   removingOptionId === opt.purchase_option?.nPurchaseItemId
                 }
-                showRemove={String(po.nStatus) === String(cartKey)}
-                onRemove={handleRemoveOption}
+                // A cart-stage order — Cart, For Approval or For Payment —
+                // still lets a line be pulled back out of it. From Pending
+                // Receipt on the line is moving through the warehouse.
+                showMove={
+                  [String(cartKey), String(forApprovalKey), String(forPaymentKey)].includes(
+                    String(po.nStatus),
+                  ) && !isCancelledPO
+                }
+                onMove={setMoveItemId}
+                showRemove={[String(cartKey), String(forApprovalKey), String(forPaymentKey)].includes(
+                  String(po.nStatus),
+                )}
+                onRemove={setRemoveConfirmId}
                 removingOptionId={removingOptionId}
                 hasAnyEWT={hasAnyEWT}
                 poIsPaidRcvdDvrd={poIsPaidRcvdDvrd}
@@ -709,6 +747,25 @@ export default function CartCardPanel({
           </Box>
         </>
       )}
+      {/* Remove-from-cart asks once before it pulls the line off its PO. */}
+      <PurchaseCartUpdateModal
+        open={removeConfirmId !== null}
+        action="remove_from_cart"
+        purchaseOrderNumber={po.strPurchaseOrderNo}
+        loading={removingOptionId !== null}
+        onConfirm={confirmRemoveOption}
+        onClose={() => setRemoveConfirmId(null)}
+      />
+      {/* Moving a line: the other cart-stage orders it can live under. */}
+      <MoveItemModal
+        open={moveItemId !== null}
+        handleClose={() => setMoveItemId(null)}
+        sourcePoNumber={po.strPurchaseOrderNo}
+        itemId={moveItemId}
+        currentUserId={currentUserId}
+        isManagement={isManagement}
+        onMove={handleMoveItem}
+      />
     </Box>
   );
 }

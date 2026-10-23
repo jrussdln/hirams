@@ -88,6 +88,11 @@ export default function JournalAccountsView({
       ) : (
         <JournalAccountPanel
           {...panelProps}
+          /* The view's destructuring ate these out of panelProps — without
+             them the panel's canMaintain gate can never see finance, and
+             the Add / Edit / Delete / drag actions stay visible. */
+          isManagement={isManagement}
+          isFinanceOfficer={isFinanceOfficer}
           jevEntries={jevEntries}
           jevActiveKey={jevActiveKey}
         />

@@ -326,31 +326,24 @@ export default function PurchaseView(props) {
         <>
           {forPurchaseKey.includes(statusCode) &&
             !isCompareActive &&
+            !statusChangedAlert &&
+            /* Delivery details are the PROCUREMENT side of an order —
+               the assigned AO, management, and now Proc / Proc TL all
+               update them. The DR / SI / collection buttons below stay
+               with the assigned AO and management only. */
+            (isAssignedToMe || isProcurement || isProcurementTL) && (
+              <BaseButton
+                label="Delivery Info"
+                icon={icons.delivery}
+                onClick={() => setDeliveryModalOpen(true)}
+                actionColor="info"
+              />
+            )}
+
+          {forPurchaseKey.includes(statusCode) &&
+            !isCompareActive &&
             isAssignedToMe && (
               <>
-                {!statusChangedAlert && (
-                  <BaseButton
-                    label="Delivery Info"
-                    icon={icons.delivery}
-                    onClick={() => setDeliveryModalOpen(true)}
-                    actionColor="info"
-                  />
-                )}
-                {/* {!statusChangedAlert && (
-                  <BaseButton
-                    label="View Cart"
-                    icon={icons.view}
-                    onClick={() => {
-                      const poId = items
-                        .flatMap((i) => i.purchaseOptions || [])
-                        .find((o) => o.nPurchaseOrderId)?.nPurchaseOrderId;
-                      if (poId) navigate(`/item-purchasing-update?id=${poId}`);
-                      else
-                        console.warn("No PO ID found among purchase options");
-                    }}
-                    actionColor="default"
-                  />
-                )} */}
                 {!statusChangedAlert && deliveredOptions.length > 0 && (
                   <BaseButton
                     label="Print DR"
@@ -546,7 +539,13 @@ export default function PurchaseView(props) {
                       crudItemsEnabled={crudItemsEnabled}
                       showAddButton={crudItemsEnabled}
                       showPurchaseOptions={showPurchaseOptions}
-                      checkboxOptionsEnabled={purchaseCheckboxOptionsEnabled}
+                      /* PROCUREMENT READS THE TABLE — Proc / Proc TL have
+                         no cart actions on the purchase page, so the whole
+                         Action column after EWT folds away for them. */
+                      checkboxOptionsEnabled={
+                        purchaseCheckboxOptionsEnabled &&
+                        !(isProcurement || isProcurementTL)
+                      }
                       anyItemHasABC={anyItemHasABC}
                       statusChangedAlert={statusChangedAlert}
                       isManagement={isManagement}
@@ -653,7 +652,9 @@ export default function PurchaseView(props) {
         open={deliveryModalOpen}
         onClose={() => setDeliveryModalOpen(false)}
         transaction={transaction}
-        isProcurement={isProcurement || isAccountOfficer}
+        /* Proc TL edits on the same gate as Proc — without it the TL
+           sees the Delivery Info button but the modal stays read-only. */
+        isProcurement={isProcurement || isProcurementTL || isAccountOfficer}
         isManagement={isManagement}
         onSuccess={() => setDeliveryModalOpen(false)}
       />

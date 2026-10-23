@@ -7,6 +7,7 @@ import {
   HowToReg,
   PersonOff,
   PersonAdd,
+  DriveFileMoveOutlined,
 } from "@mui/icons-material";
 import PageLayout from "../../../components/layouts/page/content-page";
 import CustomTable from "../../../components/ui/form/Table";
@@ -15,6 +16,7 @@ import SyncMenu from "../../../components/ui/form/SyncMenu";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import ClientAEModal from "./modal/ClientAEModal";
 import InfoClientModal from "./modal/InfoClientModal";
+import TransferClientModal from "./modal/TransferClientModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import {
@@ -47,6 +49,7 @@ export default function ClientView({
   openAEModal,
   openInfoModal,
   openDeleteModal,
+  openTransferModal,
   entityToDelete,
   clients,
   loading,
@@ -67,6 +70,9 @@ export default function ClientView({
   handleCloseAEModal,
   handleCloseInfoModal,
   handleCloseDeleteModal,
+  handleTransferClick,
+  handleCloseTransferModal,
+  handleTransferTransactions,
   handlePageChange,
   handleRowsPerPageChange,
   handleRowClick,
@@ -89,6 +95,7 @@ export default function ClientView({
         render: (_, row) => {
           const hasName = Boolean(row.name?.trim());
           const hasNickname = Boolean(row.nickname?.trim());
+          const transactionCount = Number(row.transactionsCount ?? 0);
 
           return (
             <div className="min-w-0 text-left">
@@ -101,8 +108,18 @@ export default function ClientView({
                   {NO_NAME}
                 </span>
               )}
-              <span className="block text-xs font-light italic leading-tight -mt-0.5">
-                {hasNickname ? row.nickname : NO_NICKNAME}
+              <span className="flex items-center gap-1 min-w-0">
+                <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
+                  {hasNickname ? row.nickname : NO_NICKNAME}
+                </span>
+                {/* How many transactions still name this client — the same
+                    count that decides whether Delete or Transfer is offered. */}
+                {transactionCount > 0 && (
+                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+                    · {transactionCount} transaction
+                    {transactionCount === 1 ? "" : "s"}
+                  </span>
+                )}
               </span>
             </div>
           );
@@ -238,7 +255,22 @@ export default function ClientView({
                     }}
                   />
                 )}
-                {!isActive && (
+                {!isActive && row.transactionsCount > 0 && (
+                  // A client that still carries transactions cannot be
+                  // deleted — the transactions would be left pointing at
+                  // nothing. Transfer moves them to another client instead.
+                  <BaseButton
+                    icon={<DriveFileMoveOutlined fontSize="small" />}
+                    tooltip={`Transfer Transactions (${row.transactionsCount})`}
+                    actionColor="reassign"
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleTransferClick(row);
+                    }}
+                  />
+                )}
+                {!isActive && !row.transactionsCount && (
                   <BaseButton
                     icon={<Delete fontSize="small" />}
                     tooltip="Delete Client"
@@ -266,6 +298,7 @@ export default function ClientView({
     handleEditClick,
     handleInfoClick,
     handleDeleteClick,
+    handleTransferClick,
   ]);
 
   return (
@@ -348,6 +381,12 @@ export default function ClientView({
         onClose={handleCloseDeleteModal}
         entityToDelete={entityToDelete}
         onSuccess={fetchClients}
+      />
+      <TransferClientModal
+        open={openTransferModal}
+        handleClose={handleCloseTransferModal}
+        client={selectedClient}
+        onTransfer={handleTransferTransactions}
       />
     </PageLayout>
   );

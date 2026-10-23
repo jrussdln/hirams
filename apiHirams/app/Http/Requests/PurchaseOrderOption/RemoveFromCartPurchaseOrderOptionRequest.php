@@ -21,7 +21,6 @@ class RemoveFromCartPurchaseOrderOptionRequest extends FormRequest
         return [
             'nPurchaseItemId' => 'required|integer',
             'nUserId'         => 'required|integer',
-            'nStatus'         => 'required|string', // kept for API-shape compatibility, unused now
             'isManagement'    => 'required|boolean',
         ];
     }

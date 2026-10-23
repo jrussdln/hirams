@@ -11,6 +11,7 @@ export default function useCompany() {
   const [loading, setLoading] = useState(true);
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [entityToDelete, setEntityToDelete] = useState(null);
+  const [openTransferModal, setOpenTransferModal] = useState(false);
 
   const { vat, ewt, loading: mappingLoading } = useKeysLabels();
 
@@ -52,6 +53,10 @@ export default function useCompany() {
           email: item.strEmail,
           phone: item.strPhoneNo, // ✅ add this
           strLogo: item.strLogo,
+          // What still names this company — the counts that decide whether
+          // Delete or Transfer is offered on the row.
+          transactionsCount: Number(item.transactions_count ?? 0),
+          vouchersCount: Number(item.vouchers_count ?? 0),
         }));
         setCompanies(formatted);
         isFetchedRef.current = true;
@@ -120,6 +125,32 @@ export default function useCompany() {
     setCompanies((prev) => prev.filter((c) => c.id !== entityToDelete.data.id));
   }, [entityToDelete]);
 
+  // Transfer — the stand-in for Delete on a company that still carries
+  // transactions or vouchers: the modal moves them to another company.
+  const handleTransferClick = useCallback((company) => {
+    setSelectedCompany(company);
+    setOpenTransferModal(true);
+  }, []);
+  const handleCloseTransferModal = useCallback(() => {
+    setOpenTransferModal(false);
+    setSelectedCompany(null);
+  }, []);
+  // The move itself — the modal only picks the destination and the
+  // records. The source id travels WITH the call, so the modal can close
+  // itself (and drop the selection) before the request is sent.
+  const handleTransferLinks = useCallback(
+    async (sourceCompanyId, targetCompanyId, transactionIds, voucherIds) => {
+      if (!sourceCompanyId) return;
+      await CompanyAPI.transferLinks(sourceCompanyId, {
+        nTargetCompanyId: targetCompanyId,
+        transactionIds,
+        voucherIds,
+      });
+      await fetchRef.current?.(true); // ✅ Silent refresh
+    },
+    [],
+  );
+
   const handleModalClose = useCallback(() => setOpenModal(false), []);
 
   return {
@@ -137,6 +168,7 @@ export default function useCompany() {
     setOpenDeleteModal, // ← MUST HAVE
     entityToDelete,
     setEntityToDelete, // ← MUST HAVE
+    openTransferModal,
     vat,
     ewt,
     fetchCompanies,
@@ -144,6 +176,9 @@ export default function useCompany() {
     handleEditClick,
     handleDeleteClick,
     handleDeleteSuccess,
+    handleTransferClick,
+    handleCloseTransferModal,
+    handleTransferLinks,
     handleModalClose,
   };
 }

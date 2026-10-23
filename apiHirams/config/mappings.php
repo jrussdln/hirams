@@ -175,8 +175,6 @@ return [
 
         '120' => 'For Approval',      // Closed Cart → PO created
         '130' => 'For Payment',       // Closed PO → Paid
-        '140' => 'Pending Receipt',   // Closed Paid → Received
-        '150' => 'For Delivery',      // Closed Received → Delivering
         '170' => 'Cancelled',         // Cancelled
     ],
     'removed_from_cart_status' => [ //this is the new mapping for removed from cart 
@@ -209,6 +207,11 @@ return [
         'P' => 'Pending JEV',
         'C' => 'Cancelled'
 
+    ],
+    'inventory_status_ao_proc' => [
+        'S' => 'For Delivery',
+        'D' => 'Delivered',
+        'C' => 'Cancelled'
     ],
     'jev_types' => [
         'V' => 'Disbursement Voucher', //DV

@@ -4,6 +4,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\SupplierBank;
 use App\Models\SupplierContact;
+use App\Models\PurchaseOptions;
 class Supplier extends Model
 {
     use HasFactory;
@@ -31,5 +32,12 @@ class Supplier extends Model
     public function contacts()
     {
         return $this->hasMany(SupplierContact::class, 'nSupplierId', 'nSupplierId');
+    }
+    // The purchase options (canvass results) that name this supplier.
+    // A supplier that still carries options cannot simply be deleted —
+    // it has to be TRANSFERRED to another supplier first.
+    public function purchaseOptions()
+    {
+        return $this->hasMany(PurchaseOptions::class, 'nSupplierId', 'nSupplierId');
     }
 }

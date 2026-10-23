@@ -6,6 +6,7 @@ import BaseButton from "../../../components/ui/form/BaseButton";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
 import AssigneeAEModal from "./modal/AssigneeAEModal";
 import InfoAssigneeModal from "./modal/InfoAssigneeModal";
+import TransferAssigneeModal from "./modal/TransferAssigneeModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import {
   Add,
@@ -14,6 +15,7 @@ import {
   PersonOff,
   PersonAdd,
   HowToReg,
+  DriveFileMoveOutlined,
 } from "@mui/icons-material";
 import {
   NO_NAME,
@@ -31,6 +33,7 @@ export default function AssigneeView({
   openAEModal,
   openInfoModal,
   openDeleteModal,
+  openTransferModal,
   selectedAssignee,
   entityToDelete,
   assignees,
@@ -51,6 +54,9 @@ export default function AssigneeView({
   handleCloseAEModal,
   handleCloseInfoModal,
   handleCloseDeleteModal,
+  handleTransferClick,
+  handleCloseTransferModal,
+  handleTransferVouchers,
   handlePageChange,
   handleRowsPerPageChange,
   handleRowClick,
@@ -67,6 +73,7 @@ export default function AssigneeView({
         render: (_, row) => {
           const hasName = Boolean(row.name?.trim());
           const hasNickname = Boolean(row.nickname?.trim());
+          const voucherCount = Number(row.vouchersCount ?? 0);
 
           return (
             <div className="min-w-0 text-left">
@@ -79,8 +86,17 @@ export default function AssigneeView({
                   {NO_NAME}
                 </span>
               )}
-              <span className="block text-xs font-light italic leading-tight -mt-0.5">
-                {hasNickname ? row.nickname : NO_NICKNAME}
+              <span className="flex items-center gap-1 min-w-0">
+                <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
+                  {hasNickname ? row.nickname : NO_NICKNAME}
+                </span>
+                {/* How many vouchers still name this assignee — the same
+                    count that decides whether Delete or Transfer is offered. */}
+                {voucherCount > 0 && (
+                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+                    · {voucherCount} voucher{voucherCount === 1 ? "" : "s"}
+                  </span>
+                )}
               </span>
             </div>
           );
@@ -164,7 +180,21 @@ export default function AssigneeView({
                   }}
                 />
               )}
-              {isInactive && (
+              {isInactive && row.vouchersCount > 0 && (
+                // An assignee that still carries vouchers cannot be deleted
+                // — the voucher lines would be left pointing at nothing.
+                // Transfer moves them to another assignee instead.
+                <BaseButton
+                  icon={<DriveFileMoveOutlined fontSize="small" />}
+                  tooltip={`Transfer Vouchers (${row.vouchersCount})`}
+                  actionColor="reassign"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTransferClick(row);
+                  }}
+                />
+              )}
+              {isInactive && !row.vouchersCount && (
                 <BaseButton
                   icon={<Delete fontSize="small" />}
                   tooltip="Delete Assignee"
@@ -198,6 +228,7 @@ export default function AssigneeView({
       handleEditClick,
       handleInfoClick,
       handleDeleteClick,
+      handleTransferClick,
     ],
   );
 
@@ -268,6 +299,13 @@ export default function AssigneeView({
         onClose={handleCloseDeleteModal}
         entityToDelete={entityToDelete}
         onSuccess={refreshAssignees}
+      />
+      <TransferAssigneeModal
+        open={openTransferModal}
+        handleClose={handleCloseTransferModal}
+        assignee={selectedAssignee}
+        activeStatusKey={activeStatusKey}
+        onTransfer={handleTransferVouchers}
       />
     </PageLayout>
   );

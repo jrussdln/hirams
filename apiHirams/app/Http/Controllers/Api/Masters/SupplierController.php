@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Masters;
 
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\Supplier\StoreSupplierRequest;
+use App\Http\Requests\Supplier\TransferSupplierOptionsRequest;
 use App\Http\Requests\Supplier\UpdateStatusSupplierRequest;
 use App\Http\Requests\Supplier\UpdateSupplierRequest;
 use App\Services\Masters\SupplierService;
@@ -65,6 +66,16 @@ class SupplierController extends ApiController
     public function destroy(int $id): JsonResponse
     {
         try {
+            // A supplier that still carries purchase options (canvass
+            // results) cannot be removed — the options would be left
+            // pointing at nothing. They have to be transferred to another
+            // supplier first.
+            if ($this->service->hasPurchaseOptions($id)) {
+                return response()->json([
+                    'message' => 'Cannot delete a supplier that has purchase options. Transfer them to another supplier first.',
+                ], 422);
+            }
+
             $supplier = $this->service->delete($id);
 
             return response()->json([
@@ -75,6 +86,55 @@ class SupplierController extends ApiController
             return $this->notFound('Supplier');
         } catch (Exception $e) {
             return $this->handleException($e, 'delete_failed', 'Supplier');
+        }
+    }
+
+    /**
+     * GET /suppliers/{id}/options
+     *
+     * The purchase options that name this supplier — the list the transfer
+     * modal shows before the options are moved to another supplier.
+     */
+    public function options(int $id): JsonResponse
+    {
+        try {
+            $options = $this->service->purchaseOptions($id);
+
+            return response()->json([
+                'message' => __('messages.retrieve_success', ['name' => 'Supplier options']),
+                'options' => $options,
+            ]);
+        } catch (ModelNotFoundException) {
+            return $this->notFound('Supplier');
+        } catch (Exception $e) {
+            return $this->handleException($e, 'retrieve_failed', 'Supplier options');
+        }
+    }
+
+    /**
+     * POST /suppliers/{id}/transfer
+     *
+     * Moves the supplier's purchase options to another (active) supplier.
+     */
+    public function transfer(TransferSupplierOptionsRequest $request, int $id): JsonResponse
+    {
+        try {
+            $validated = $request->validated();
+
+            $moved = $this->service->transferPurchaseOptions(
+                $id,
+                (int) $validated['nTargetSupplierId'],
+                array_map('intval', $validated['optionIds'] ?? []),
+            );
+
+            return response()->json([
+                'message' => __('messages.update_success', ['name' => 'Supplier options']),
+                'moved'   => $moved,
+            ]);
+        } catch (ModelNotFoundException) {
+            return $this->notFound('Supplier');
+        } catch (Exception $e) {
+            return $this->fail($e->getMessage(), 422);
         }
     }
 

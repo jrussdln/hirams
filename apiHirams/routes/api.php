@@ -90,6 +90,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // ── COMPANIES ───────────────────────────────────────────
     Route::prefix('companies')->group(function () {
         Route::post('{id}/logo', [CompanyController::class, 'uploadLogo']);
+        // The transactions and vouchers a company holds, and the move that
+        // hands them over to another company.
+        Route::get('{companyId}/links', [CompanyController::class, 'links']);
+        Route::post('{companyId}/transfer', [CompanyController::class, 'transfer']);
     });
     Route::apiResource('companies', CompanyController::class);
 
@@ -97,6 +101,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::get('client/active', [ClientController::class, 'activeClients']);
     Route::prefix('clients')->group(function () {
         Route::patch('{id}/status', [ClientController::class, 'updateStatus']);
+        // The transactions a client holds, and the move that hands them
+        // over to another (active) client.
+        Route::get('{clientId}/transactions', [ClientController::class, 'transactions']);
+        Route::post('{clientId}/transfer', [ClientController::class, 'transfer']);
     });
     Route::apiResource('clients', ClientController::class);
 
@@ -106,6 +114,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::patch('{id}/status', [SupplierController::class, 'updateStatus']);
         Route::get('{supplierId}/banks', [SupplierBankController::class, 'bySupplier']);
         Route::get('{supplierId}/contacts', [SupplierContactController::class, 'bySupplier']);
+        // The purchase options a supplier holds, and the move that hands
+        // them over to another (active) supplier.
+        Route::get('{supplierId}/options', [SupplierController::class, 'options']);
+        Route::post('{supplierId}/transfer', [SupplierController::class, 'transfer']);
     });
     Route::apiResource('suppliers', SupplierController::class);
 
@@ -202,6 +214,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::apiResource('item-pricings', ItemPricingController::class);
 
     // ── DIRECT COSTS ────────────────────────────────────────
+    // The transactions charging a direct cost to an option, and the move
+    // that hands them over to another option.
+    Route::get('direct-cost-options/{costOptionId}/costs', [DirectCostOptionsController::class, 'costs']);
+    Route::post('direct-cost-options/{costOptionId}/transfer', [DirectCostOptionsController::class, 'transfer']);
     Route::apiResource('direct-cost-options', DirectCostOptionsController::class);
     Route::apiResource('direct-cost', DirectCostController::class);
 
@@ -231,12 +247,20 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     Route::prefix('purchase-order')->group(function () {
         Route::post('latest-history', [PurchaseOrderOptionsController::class, 'latestPurchaseOrderOptionsHistory']);
         Route::get('option/{nPurchaseItemId}/all-history', [PurchaseOrderOptionsController::class, 'allOptionHistory']);
+        // The cart-stage orders one item can move to (same transaction ·
+        // company · supplier · Account Officer), and the move itself.
+        Route::get('option/{nPurchaseItemId}/move-targets', [PurchaseOrderOptionsController::class, 'moveTargets']);
+        Route::post('move', [PurchaseOrderOptionsController::class, 'move']);
     });
 
     // ── ASSIGNEES ───────────────────────────────────────────
     Route::prefix('assignees')->group(function () {
         Route::post('check-exist', [AssigneeController::class, 'checkExist']);
         Route::patch('{id}/status', [AssigneeController::class, 'updateStatus']);
+        // The vouchers an assignee is on, and the move that hands them
+        // over to another (active) assignee.
+        Route::get('{assigneeId}/vouchers', [AssigneeController::class, 'vouchers']);
+        Route::post('{assigneeId}/transfer', [AssigneeController::class, 'transfer']);
     });
     Route::apiResource('assignees', AssigneeController::class);
 

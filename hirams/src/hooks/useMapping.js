@@ -29,6 +29,7 @@ const parseData = (data, setters) => {
     setVoucherStatus,
     setVoucherType,
     setInventoryStatus,
+    setInventoryStatusAoProc,
     setFinanceStatus,
     setJevTypes,
     setJevStatus,
@@ -65,6 +66,18 @@ const parseData = (data, setters) => {
   setVoucherStatus(data.voucher_status || {});
   setVoucherType(data.voucher_type || {});
   setInventoryStatus(data.inventory_status || {});
+  // The AO / Procurement inventory statuses — the same list WITHOUT the
+  // Pending JEV stage, which finance closes. Falls back to deriving it
+  // (anything not Pending) so a stale mappings cache still hides the
+  // entry until the next fresh fetch lands.
+  setInventoryStatusAoProc(
+    data.inventory_status_ao_proc ||
+      Object.fromEntries(
+        Object.entries(data.inventory_status || {}).filter(
+          ([, label]) => !/pending/i.test(String(label)),
+        ),
+      ),
+  );
   setFinanceStatus(data.finance_status || {});
   setJevTypes(data.jev_types || {});
   setJevStatus(data.jev_status || {});
@@ -105,6 +118,7 @@ export default function useMapping() {
   const [voucherStatus, setVoucherStatus] = useState({});
   const [voucherType, setVoucherType] = useState({});
   const [inventoryStatus, setInventoryStatus] = useState({});
+  const [inventoryStatusAoProc, setInventoryStatusAoProc] = useState({});
   const [financestatus, setFinanceStatus] = useState({});
   const [jev_types, setJevTypes] = useState({});
   const [jev_status, setJevStatus] = useState({});
@@ -145,6 +159,7 @@ export default function useMapping() {
     setVoucherStatus,
     setVoucherType,
     setInventoryStatus,
+    setInventoryStatusAoProc,
     setFinanceStatus,
     setJevTypes,
     setJevStatus,
@@ -208,6 +223,7 @@ export default function useMapping() {
     voucherStatus,
     voucherType,
     inventoryStatus,
+    inventoryStatusAoProc,
     financestatus,
     jev_types,
     jev_status,

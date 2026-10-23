@@ -15,6 +15,7 @@ export default function useDirectCost() {
   const [modalMode, setModalMode] = useState("add");
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [entityToDelete, setEntityToDelete] = useState(null);
+  const [openTransferModal, setOpenTransferModal] = useState(false);
 
   const fetchDirectCosts = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -29,6 +30,9 @@ export default function useDirectCost() {
         ...cost,
         id: cost.nDirectCostOptionID,
         costName: cost.strName,
+        // How many live transactions still charge a cost to this option —
+        // the count that decides whether Delete or Transfer is offered.
+        costsCount: Number(cost.costs_count ?? 0),
       }));
       setDirectCosts(formatted);
     } catch (error) {
@@ -100,6 +104,31 @@ export default function useDirectCost() {
     setSelectedCost(null);
   }, []);
 
+  // Transfer — the stand-in for Delete on an option a live transaction
+  // still charges a cost to: the modal moves those lines to another option.
+  const handleTransferClick = useCallback((row) => {
+    setSelectedCost(row);
+    setOpenTransferModal(true);
+  }, []);
+  const handleCloseTransferModal = useCallback(() => {
+    setOpenTransferModal(false);
+    setSelectedCost(null);
+  }, []);
+  // The move itself — the modal only picks the destination and the lines.
+  // The source id travels WITH the call, so the modal can close itself (and
+  // drop the selection) before the request is sent.
+  const handleTransferCosts = useCallback(
+    async (sourceOptionId, targetOptionId, costIds) => {
+      if (!sourceOptionId) return;
+      await DirectCostOptionAPI.transferCosts(sourceOptionId, {
+        nTargetCostOptionId: targetOptionId,
+        costIds,
+      });
+      await fetchRef.current?.(true); // ✅ Silent refresh (also refreshes the cache)
+    },
+    [],
+  );
+
   const handleSaveSuccess = useCallback(() => {
     fetchRef.current(true); // refetches and refreshes the cache
     handleModalClose();
@@ -126,11 +155,15 @@ export default function useDirectCost() {
     setOpenDeleteModal,
     entityToDelete,
     setEntityToDelete,
+    openTransferModal,
     fetchDirectCosts,
     handleAdd,
     handleEdit,
     handleDelete,
     handleDeleteSuccess,
+    handleTransferClick,
+    handleCloseTransferModal,
+    handleTransferCosts,
     handleModalClose,
     handleSaveSuccess,
     handlePageChange,

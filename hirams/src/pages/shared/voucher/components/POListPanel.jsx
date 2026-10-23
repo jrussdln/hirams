@@ -56,6 +56,11 @@ export default function POListPanel({
   onVoucherClick,
   // Adds a particular to the voucher.
   onAddItem,
+  // Opens the Freight / EWT editor for the clicked row's PO.
+  onFreightEwt,
+  // The PO numbers are LINKS while this is true. False renders them plain
+  // — surfaces where the reader has no business jumping to purchasing.
+  navigable = true,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -88,6 +93,7 @@ export default function POListPanel({
   };
 
   const handleNavigate = (purchaseOrderId) => {
+    if (!navigable) return;
     navigate(`/item-purchasing-update?id=${purchaseOrderId}`);
   };
 
@@ -342,7 +348,7 @@ export default function POListPanel({
                 isRemoving={isRemoving}
                 onToggle={() => toggleRow(rowId)}
                 onRemove={onRemovePO ? () => handleRemove(rowId) : undefined}
-                onNavigate={handleNavigate}
+                onNavigate={navigable ? handleNavigate : undefined}
                 onBrandClick={onBrandClick}
                 supplierNickName={supplierNickName}
                 voucherNumber={voucherNumber}
@@ -351,6 +357,14 @@ export default function POListPanel({
                 supplierTIN={supplierTIN}
                 compact={multiplePOs}
                 onAddItem={multiplePOs ? undefined : onAddItem}
+                // The footer owns the Freight / EWT button for a single-PO
+                // voucher; the per-row trucks only appear when several POs
+                // share it (the footer button cannot say which PO it edits).
+                onFreightEwt={
+                  onFreightEwt && multiplePOs
+                    ? () => onFreightEwt(link)
+                    : undefined
+                }
                 isJEVPage={isJEVPage}
               />
             );

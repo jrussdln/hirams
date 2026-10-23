@@ -179,40 +179,6 @@ export default function PODetailsUpdateModal({
             }
             errors={{ strShippingDetails: paymentErrors?.strShippingDetails }}
           />
-
-          {/* FREIGHT — the charge on top of the goods, saved on the PO.
-              Its own margin: the form grids carry MUI's negative margins,
-              which swallow the column's gap. */}
-          <Box sx={{ mt: 1 }}>
-            <FormGrid
-              fields={[
-                {
-                  name: "dFreight",
-                  label: "Freight Charge",
-                  type: "peso",
-                  xs: 12,
-                  placeholder: "0.00",
-                  helperText:
-                    "Leave empty when the goods carry no freight charge.",
-                  sx: {
-                    "& .MuiInputBase-root": {
-                      backgroundColor: c.inputBg,
-                      borderRadius: 2,
-                      fontSize: "0.75rem",
-                    },
-                  },
-                },
-              ]}
-              formData={{ dFreight: paymentForm.dFreight ?? "" }}
-              handleChange={(e) =>
-                setPaymentForm((p) => ({
-                  ...p,
-                  dFreight: e.target.value,
-                }))
-              }
-              errors={{ dFreight: paymentErrors?.dFreight }}
-            />
-          </Box>
         </Box>
       </Box>
     </ModalContainer>

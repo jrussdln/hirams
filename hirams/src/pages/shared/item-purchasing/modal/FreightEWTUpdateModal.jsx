@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@mui/material/styles";
 import { Box, Typography } from "@mui/material";
 import {
@@ -65,9 +65,29 @@ export default function FreightEWTUpdateModal({
   // The EWT sync - the line it is running for.
   const [syncingId, setSyncingId] = useState(null);
 
-  // Seed from the PO and its lines. The values always follow the PO (a save
-  // refetches it), but the edit states are only reset when the modal is
-  // OPENED - a save must not close the editor.
+  // The SAVED state — the PO and its lines as the parent holds them. Both
+  // seeds read it: the open effect, and Back leaving edit mode (which must
+  // throw away everything the user typed but never saved). Memoized on the
+  // PO and its options — a refetch swaps the identity, so the editor
+  // re-seeds, without re-running on every keystroke's render.
+  const savedState = useMemo(() => {
+    const freight =
+      po?.dFreight != null && po?.dFreight !== "" ? String(po.dFreight) : "";
+    const ewt = {};
+    const types = {};
+    (options || []).forEach((opt) => {
+      const p = opt?.purchase_option;
+      if (!p?.nPurchaseItemId) return;
+      // The EWT is derived — the value comes from the helper, not a column.
+      ewt[p.nPurchaseItemId] = String(ewtOfOption(p));
+      types[p.nPurchaseItemId] = p.cEWTType || "";
+    });
+    return { freight, ewt, types };
+  }, [po, options]);
+
+  // The values always follow the PO (a save refetches it), but the edit
+  // states are only reset when the modal is OPENED - a save must not close
+  // the editor.
   const wasOpenRef = useRef(false);
   useEffect(() => {
     if (!open) {
@@ -81,21 +101,22 @@ export default function FreightEWTUpdateModal({
       setEditingFreight(false);
       setEditingEwt(false);
     }
-    setFreight(
-      po?.dFreight != null && po?.dFreight !== "" ? String(po.dFreight) : "",
-    );
-    const map = {};
-    const types = {};
-    (options || []).forEach((opt) => {
-      const p = opt?.purchase_option;
-      if (!p?.nPurchaseItemId) return;
-      // The EWT is derived — the value comes from the helper, not a column.
-      map[p.nPurchaseItemId] = String(ewtOfOption(p));
-      types[p.nPurchaseItemId] = p.cEWTType || "";
-    });
-    setEwtValues(map);
-    setEwtTypes(types);
-  }, [open, po, options]);
+    setFreight(savedState.freight);
+    setEwtValues(savedState.ewt);
+    setEwtTypes(savedState.types);
+  }, [open, po, options, savedState]);
+
+  // BACK — out of an edit: the screens go back to read-only and the
+  // unsaved changes reset to the saved state. Pressed from read-only it
+  // does nothing (the footer's Cancel then closes the modal itself).
+  const handleBackFromEdit = () => {
+    setFreight(savedState.freight);
+    setEwtValues(savedState.ewt);
+    setEwtTypes(savedState.types);
+    setSyncingId(null);
+    setEditingFreight(false);
+    setEditingEwt(false);
+  };
 
   const poId = po?.nPurchaseOrderId;
   const freightValue = Number(freight) || 0;
@@ -257,12 +278,12 @@ export default function FreightEWTUpdateModal({
       subTitle={po?.strPurchaseOrderNo || ""}
       onSave={handleSave}
       saveLabel="Save"
-      // The footer's Cancel is the way out of an edit: while editing it
-      // closes the editor, otherwise it closes the modal.
+      // The footer's Cancel/Back is the way out of an edit: while editing it
+      // goes back to read-only AND resets the unsaved changes; otherwise it
+      // closes the modal.
       onCancel={() => {
         if (editingFreight || editingEwt) {
-          setEditingFreight(false);
-          setEditingEwt(false);
+          handleBackFromEdit();
           return;
         }
         onClose?.();

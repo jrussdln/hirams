@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Typography, IconButton } from "@mui/material";
 import {
   RemoveShoppingCart,
+  DriveFileMoveOutlined,
   Inventory2Outlined,
   ReceiptLongOutlined,
 } from "@mui/icons-material";
@@ -153,6 +154,10 @@ export default function CartRowPanel({
   isRemoving,
   showRemove,
   onRemove,
+  // The move icon rides next to the remove ✕ — a line doesn't have to be
+  // deleted just to live under another order.
+  showMove = false,
+  onMove,
   removingOptionId,
   hasAnyEWT,
   showQty = true,
@@ -347,7 +352,7 @@ export default function CartRowPanel({
         border: `0.5px solid ${c.redBorder}`,
         borderRadius: "50px",
         p: 0,
-        m: 1,
+        m: 0,
       }}
       title="Remove from cart"
     >
@@ -360,6 +365,58 @@ export default function CartRowPanel({
       ? removeSpinner
       : removeButton
     : null;
+
+  // The MOVE icon — the same circle the ✕ uses, blue. It opens the modal
+  // listing the other cart-stage orders the line can move into.
+  const moveBtn = showMove
+    ? isRemoving
+      ? null
+      : (
+          <IconButton
+            size="small"
+            disabled={removingOptionId !== null}
+            onClick={(e) => {
+              // The row itself opens the PO — the move button must not.
+              e.stopPropagation();
+              onMove?.(p?.nPurchaseItemId);
+            }}
+            sx={{
+              width: { xs: 18, sm: 20 },
+              height: { xs: 18, sm: 20 },
+              color: c.blueText,
+              opacity: removingOptionId ? 0.4 : 0.6,
+              "&:hover": { background: c.blueBg, opacity: 1 },
+              border: `0.5px solid ${c.blueBorder}`,
+              borderRadius: "50px",
+              p: 0,
+              m: 0,
+            }}
+            title="Move item"
+          >
+            <DriveFileMoveOutlined
+              sx={{ fontSize: { xs: "0.65rem", sm: "0.75rem" } }}
+            />
+          </IconButton>
+        )
+    : null;
+
+  // The ACTION slot — the move icon first, the remove ✕ after it; the
+  // buttons drop their IconButton margins so the pair reads as one.
+  const actionsBtn = (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 0.5,
+      }}
+    >
+      {moveBtn}
+      {removeBtn}
+    </Box>
+  );
+  const actionWidth = showRemove && showMove ? 48 : 28;
+  const showActions = showRemove || showMove;
 
   return (
     <>
@@ -438,10 +495,10 @@ export default function CartRowPanel({
                 <HeaderCell label="TOTAL" width={70} c={c} />
               </>
             )}
-            {showRemove && (
+            {showActions && (
               <Box
                 sx={{
-                  width: 28,
+                  width: actionWidth,
                   flexShrink: 0,
                   display: "flex",
                   justifyContent: "center",
@@ -486,8 +543,8 @@ export default function CartRowPanel({
             justifyContent: "space-between",
           }}
         >
-          {/* Mobile-only remove button */}
-          {showRemove && (
+          {/* Mobile-only action buttons */}
+          {showActions && (
             <Box
               sx={{
                 display: { xs: "flex", sm: "none" },
@@ -497,7 +554,7 @@ export default function CartRowPanel({
                 zIndex: 1,
               }}
             >
-              {removeBtn}
+              {actionsBtn}
             </Box>
           )}
 
@@ -532,7 +589,10 @@ export default function CartRowPanel({
               gap: 1,
               flex: { sm: "1 1 0" },
               minWidth: 0,
-              pr: { xs: showRemove ? 3.5 : 0, sm: 0 },
+              pr: {
+                xs: showRemove && showMove ? 5.5 : showRemove ? 3.5 : 0,
+                sm: 0,
+              },
             }}
           >
             {!tableLayout && (
@@ -886,15 +946,15 @@ export default function CartRowPanel({
               </Box>
             )}
 
-            {showRemove && (
+            {showActions && (
               <Box
                 sx={{
                   display: { xs: "none", sm: "flex" },
-                  width: 28,
+                  width: actionWidth,
                   justifyContent: "center",
                 }}
               >
-                {removeBtn}
+                {actionsBtn}
               </Box>
             )}
           </Box>

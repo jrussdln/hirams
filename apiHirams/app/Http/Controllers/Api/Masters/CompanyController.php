@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Masters;
 
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\Company\StoreCompanyRequest;
+use App\Http\Requests\Company\TransferCompanyLinksRequest;
 use App\Http\Requests\Company\UpdateCompanyRequest;
 use App\Services\Masters\CompanyService;
 use Exception;
@@ -76,6 +77,15 @@ class CompanyController extends ApiController
     public function destroy(int $id): JsonResponse
     {
         try {
+            // A company that still carries transactions or vouchers cannot
+            // be removed — the records would be left pointing at nothing.
+            // They have to be transferred to another company first.
+            if ($this->service->hasLinks($id)) {
+                return response()->json([
+                    'message' => 'Cannot delete a company that has transactions or vouchers. Transfer them to another company first.',
+                ], 422);
+            }
+
             $company = $this->service->delete($id);
 
             return response()->json([
@@ -86,6 +96,56 @@ class CompanyController extends ApiController
             return $this->notFound('Company');
         } catch (Exception $e) {
             return $this->handleException($e, 'delete_failed', 'Company');
+        }
+    }
+
+    /**
+     * GET /companies/{id}/links
+     *
+     * The transactions and vouchers that name this company — the list the
+     * transfer modal shows before they are moved to another company.
+     */
+    public function links(int $id): JsonResponse
+    {
+        try {
+            $links = $this->service->links($id);
+
+            return response()->json([
+                'message' => __('messages.retrieve_success', ['name' => 'Company records']),
+                'links'   => $links,
+            ]);
+        } catch (ModelNotFoundException) {
+            return $this->notFound('Company');
+        } catch (Exception $e) {
+            return $this->handleException($e, 'retrieve_failed', 'Company records');
+        }
+    }
+
+    /**
+     * POST /companies/{id}/transfer
+     *
+     * Moves the company's transactions and vouchers to another company.
+     */
+    public function transfer(TransferCompanyLinksRequest $request, int $id): JsonResponse
+    {
+        try {
+            $validated = $request->validated();
+
+            $moved = $this->service->transferLinks(
+                $id,
+                (int) $validated['nTargetCompanyId'],
+                array_map('intval', $validated['transactionIds'] ?? []),
+                array_map('intval', $validated['voucherIds'] ?? []),
+            );
+
+            return response()->json([
+                'message' => __('messages.update_success', ['name' => 'Company records']),
+                'moved'   => $moved,
+            ]);
+        } catch (ModelNotFoundException) {
+            return $this->notFound('Company');
+        } catch (Exception $e) {
+            return $this->fail($e->getMessage(), 422);
         }
     }
 

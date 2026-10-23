@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Transactions;
+use App\Models\Voucher;
 
 class Company extends Model
 {
@@ -30,4 +32,16 @@ class Company extends Model
 
     // ❌ Disable timestamps
     public $timestamps = false;
+
+    // The transactions raised under this company.
+    public function transactions()
+    {
+        return $this->hasMany(Transactions::class, 'nCompanyId', 'nCompanyId');
+    }
+
+    // The vouchers issued under this company.
+    public function vouchers()
+    {
+        return $this->hasMany(Voucher::class, 'nCompanyId', 'nCompanyId');
+    }
 }

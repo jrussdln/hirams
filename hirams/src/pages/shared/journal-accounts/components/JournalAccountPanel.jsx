@@ -192,6 +192,9 @@ const AccountTreeNode = ({
   // Remaining balance of a fund account (own entries + all its links')
   fundIds,
   balanceById,
+  // Finance reads the chart — its row keeps only the read actions
+  // (Journal Entries); Add / Edit / Delete are withheld from it.
+  showRowActions = true,
 }) => {
   const hasChildren = node.children.length > 0;
   const isExpanded = hasChildren && (forceOpen || expandedIds.has(node.id));
@@ -201,13 +204,15 @@ const AccountTreeNode = ({
   // Delete only fits an account nobody depends on — anything with linked
   // accounts or JEV lines keeps it withheld (mirrors the backend guard).
   // Such a leaf is also the only row whose end slot has no chevron.
-  const showDelete = !hasChildren && !hasEntries;
+  const showDelete = showRowActions && !hasChildren && !hasEntries;
   const isRoot = depth === 0;
   // ── Drag & drop ──
-  const { activeId, invalidIds, locked } = useContext(DragCtx);
+  const { activeId, invalidIds, locked, lockedByRole } = useContext(DragCtx);
   const canDrag = !locked; // any account type can be dragged (only blocked while searching)
   const dragHint = locked
-    ? "Clear the search to move accounts"
+    ? lockedByRole
+      ? "You don't have permission to move accounts"
+      : "Clear the search to move accounts"
     : "Drag onto another account to link it";
   const isDragActive = activeId != null;
   const isInvalidTarget = isDragActive && invalidIds.has(node.id);
@@ -406,28 +411,33 @@ const AccountTreeNode = ({
             </Typography>
           )}
         </Box>
+        {/* Finance's row carries only the read action (Journal Entries) —
+            the maintained chart belongs to management, so Add / Edit fold
+            away on that role. */}
         <Box
           className="row-actions"
           sx={{ display: "flex", gap: 0.5, flexShrink: 0 }}
         >
-          <ActionButton
-            label="Add sub-account"
-            color={colors.green.text}
-            hoverBg={colors.green.bg}
-            onClick={() => onAdd(node)}
-          >
-            <Add sx={{ fontSize: "0.8rem" }} />
-          </ActionButton>
-
-          <ActionButton
-            label="Edit"
-            color={colors.blue.text}
-            hoverBg={colors.blue.bg}
-            onClick={() => onEdit(node)}
-          >
-            <Edit sx={{ fontSize: "0.8rem" }} />
-          </ActionButton>
-
+          {showRowActions && (
+            <ActionButton
+              label="Add sub-account"
+              color={colors.green.text}
+              hoverBg={colors.green.bg}
+              onClick={() => onAdd(node)}
+            >
+              <Add sx={{ fontSize: "0.8rem" }} />
+            </ActionButton>
+          )}
+          {showRowActions && (
+            <ActionButton
+              label="Edit"
+              color={colors.blue.text}
+              hoverBg={colors.blue.bg}
+              onClick={() => onEdit(node)}
+            >
+              <Edit sx={{ fontSize: "0.8rem" }} />
+            </ActionButton>
+          )}
           <ActionButton
             label="Journal Entries"
             color={colors.violet.text}
@@ -517,6 +527,7 @@ const AccountTreeNode = ({
               entryAccountIds={entryAccountIds}
               fundIds={fundIds}
               balanceById={balanceById}
+              showRowActions={showRowActions}
             />
           ))}
         </Box>
@@ -631,11 +642,20 @@ export default function JournalAccountPanel({
   setOpenDeleteModal,
   setEntityToDelete,
   handleDeleteSuccess,
+  // Threading the signed-in roles through: finance READS the chart of
+  // accounts — the Add / Edit / Delete row actions, the header Add button
+  // and drag-rehoming (an account "transfer") are management's to use.
+  isManagement = false,
+  isFinanceOfficer = false,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useMemo(() => useColors(base), [base]);
+
+  // Finance that is also management keeps every action (management wins);
+  // finance alone loses them.
+  const canMaintain = isManagement || !isFinanceOfficer;
 
   const isSearching = !!search?.trim();
   const totalAccounts = useMemo(() => countNodes(accountTree), [accountTree]);
@@ -725,8 +745,18 @@ export default function JournalAccountPanel({
   }, [activeId, treeIndex]);
 
   const dragCtx = useMemo(
-    () => ({ activeId, invalidIds, locked: isSearching }),
-    [activeId, invalidIds, isSearching],
+    // Locked while searching (a partial tree's drops would mis-parent) and
+    // for finance — dragging IS how an account transfers, one of the
+    // actions the role doesn't get. `lockedReason` lets the row tooltip
+    // say WHY (finance hears no-permission, searchers hear clear-the-search).
+    () => ({
+      activeId,
+      invalidIds,
+      locked: isSearching || !canMaintain,
+      lockedByRole: !canMaintain,
+      lockedBySearch: isSearching,
+    }),
+    [activeId, invalidIds, isSearching, canMaintain],
   );
 
   const handleDragEnd = ({ active, over }) => {
@@ -776,7 +806,7 @@ export default function JournalAccountPanel({
           />
         </div>
         <SyncMenu onSync={fetchJournalAccounts} />
-        {addButton}
+        {canMaintain && addButton}
       </section>
 
       <section>
@@ -923,6 +953,7 @@ export default function JournalAccountPanel({
                       entryAccountIds={entryAccountIds}
                       fundIds={fundIds}
                       balanceById={balanceById}
+                      showRowActions={canMaintain}
                     />
                   ))
                 )}

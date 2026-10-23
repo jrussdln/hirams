@@ -514,7 +514,6 @@ function TransactionItemsTable({
     forDeliveryKey,
     deliveredKey,
     cancelledPOKey,
-    removedFromCartKey,
   } = useKeysLabels();
   // The EWT TYPES (the per-line bypass of the default EWT formula) — the
   // rows print the type under the EWT amount.
@@ -1448,6 +1447,9 @@ function TransactionItemsTable({
                     <PurchaseOptionRow
                       key={option.id}
                       mode={mode}
+                      // The purchase page reads its View Cart as an eye —
+                      // the canvas keeps the cart glyph.
+                      eyeViewCart={mode === "purchase"}
                       option={option}
                       ewtTypeLabels={ewtBypassType}
                       pendingStatusLetter={pendingStatusLetter}
@@ -1487,7 +1489,6 @@ function TransactionItemsTable({
                       pendingReceiptKey={pendingReceiptKey}
                       forDeliveryKey={forDeliveryKey}
                       deliveredKey={deliveredKey}
-                      removedFromCartKey={removedFromCartKey}
                       latestHistory={
                         isPurchase
                           ? (latestHistories[option.nPurchaseItemId] ?? null)

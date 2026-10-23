@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Transactions;
 
 class Client extends Model
 {
@@ -28,4 +29,12 @@ class Client extends Model
 
      // ❌ Disable timestamps
     public $timestamps = false;
+
+    // The transactions this client is the buyer on. A client that still
+    // carries transactions cannot simply be deleted — it has to be
+    // TRANSFERRED to another client first.
+    public function transactions()
+    {
+        return $this->hasMany(Transactions::class, 'nClientId', 'nClientId');
+    }
 }

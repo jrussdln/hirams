@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Masters;
 use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\Assignee\CheckExistAssigneeRequest;
 use App\Http\Requests\Assignee\StoreAssigneeRequest;
+use App\Http\Requests\Assignee\TransferAssigneeVouchersRequest;
 use App\Http\Requests\Assignee\UpdateAssigneeRequest;
 use App\Http\Requests\Assignee\UpdateStatusAssigneeRequest;
 use App\Services\Masters\AssigneeService;
@@ -106,6 +107,15 @@ class AssigneeController extends ApiController
     public function destroy(int $id): JsonResponse
     {
         try {
+            // An assignee that still carries voucher lines cannot be
+            // removed — the lines would be left pointing at nothing. They
+            // have to be transferred to another assignee first.
+            if ($this->service->hasVouchers($id)) {
+                return response()->json([
+                    'message' => 'Cannot delete an assignee that has vouchers. Transfer them to another assignee first.',
+                ], 422);
+            }
+
             $assignee = $this->service->delete($id);
 
             return response()->json([
@@ -116,6 +126,55 @@ class AssigneeController extends ApiController
             return $this->notFound('Assignee');
         } catch (Exception $e) {
             return $this->handleException($e, 'delete_failed', 'Assignee');
+        }
+    }
+
+    /**
+     * GET /assignees/{id}/vouchers
+     *
+     * The vouchers this assignee is on — the list the transfer modal shows
+     * before the vouchers are moved to another assignee.
+     */
+    public function vouchers(int $id): JsonResponse
+    {
+        try {
+            $vouchers = $this->service->vouchers($id);
+
+            return response()->json([
+                'message'  => __('messages.retrieve_success', ['name' => 'Assignee vouchers']),
+                'vouchers' => $vouchers,
+            ]);
+        } catch (ModelNotFoundException) {
+            return $this->notFound('Assignee');
+        } catch (Exception $e) {
+            return $this->handleException($e, 'retrieve_failed', 'Assignee vouchers');
+        }
+    }
+
+    /**
+     * POST /assignees/{id}/transfer
+     *
+     * Moves the assignee's voucher lines to another (active) assignee.
+     */
+    public function transfer(TransferAssigneeVouchersRequest $request, int $id): JsonResponse
+    {
+        try {
+            $validated = $request->validated();
+
+            $moved = $this->service->transferVouchers(
+                $id,
+                (int) $validated['nTargetAssigneeId'],
+                array_map('intval', $validated['voucherIds'] ?? []),
+            );
+
+            return response()->json([
+                'message' => __('messages.update_success', ['name' => 'Assignee vouchers']),
+                'moved'   => $moved,
+            ]);
+        } catch (ModelNotFoundException) {
+            return $this->notFound('Assignee');
+        } catch (Exception $e) {
+            return $this->fail($e->getMessage(), 422);
         }
     }
 

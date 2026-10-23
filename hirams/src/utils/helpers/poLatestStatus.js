@@ -25,6 +25,11 @@ export const poLatestStatus = (po, keys = {}) => {
   const opts = po?.purchase_order_options ?? [];
   const optOf = (o) => o?.purchase_option ?? o;
 
+  // The delivered/delivery remaps below read the option quantities. Without
+  // the options there is nothing to remap on — a deep link that loaded the
+  // bare PO must not bump a Pending Receipt order all the way to Delivered.
+  if (!opts.length) return status;
+
   const anythingDelivered = opts.some((o) => getDelivered(optOf(o)) > 0);
   // Received but not yet handed over — what still waits to go out.
   const anythingLeft = opts.some((o) => getToDeliver(optOf(o)) > 0);

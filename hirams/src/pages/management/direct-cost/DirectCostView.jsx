@@ -5,8 +5,9 @@ import CustomSearchField from "../../../components/ui/form/SearchField";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
 import DirectCostAEModal from "./modal/DirectCostAEModal";
+import TransferDirectCostModal from "./modal/TransferDirectCostModal";
 import DeleteVerificationModal from "../../shared/transactions/modal/DeleteVerificationModal";
-import { Edit, Delete, Add } from "@mui/icons-material";
+import { Edit, Delete, Add, DriveFileMoveOutlined } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../utils/style/getThemeColors";
 
@@ -31,11 +32,15 @@ export default function DirectCostView({
   setOpenDeleteModal,
   entityToDelete,
   setEntityToDelete,
+  openTransferModal,
   fetchDirectCosts,
   handleAdd,
   handleEdit,
   handleDelete,
   handleDeleteSuccess,
+  handleTransferClick,
+  handleCloseTransferModal,
+  handleTransferCosts,
   handleModalClose,
   handleSaveSuccess,
   handlePageChange,
@@ -51,40 +56,80 @@ export default function DirectCostView({
       {
         key: "costName",
         label: "Description",
-        render: (_, row) => (
-          <span style={{ color: colors.textPrimary }}>{row.costName}</span>
-        ),
+        render: (_, row) => {
+          const costCount = Number(row.costsCount ?? 0);
+
+          return (
+            <div className="min-w-0 text-left">
+              {/* The option name… */}
+              <span
+                className="block text-xs font-medium leading-tight truncate"
+                style={{ color: colors.textPrimary }}
+              >
+                {row.costName}
+              </span>
+              {/* …with how many live transactions still charge a cost to it
+                  BELOW it — the same count that decides whether Delete or
+                  Transfer is offered. */}
+              {costCount > 0 && (
+                <span className="block text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 truncate">
+                  {costCount} transaction{costCount === 1 ? "" : "s"}
+                </span>
+              )}
+            </div>
+          );
+        },
       },
       {
         key: "actions",
         label: "Actions",
-        render: (_, row) => (
-          <div className="flex justify-center space-x-2">
-            <BaseButton
-              icon={<Edit />}
-              tooltip="Edit Direct Cost"
-              size="small"
-              actionColor="edit"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEdit(row);
-              }}
-            />
-            <BaseButton
-              icon={<Delete />}
-              tooltip="Delete Direct Cost"
-              size="small"
-              actionColor="delete"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete(row.id, row.costName);
-              }}
-            />
-          </div>
-        ),
+        render: (_, row) => {
+          const hasEntries = Number(row.costsCount ?? 0) > 0;
+
+          return (
+            <div className="flex justify-center space-x-2">
+              <BaseButton
+                icon={<Edit />}
+                tooltip="Edit Direct Cost"
+                size="small"
+                actionColor="edit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEdit(row);
+                }}
+              />
+              {hasEntries ? (
+                // An option a live transaction still charges a cost to
+                // cannot be deleted — its entries would be left pointing at
+                // nothing. Transfer moves them to another option instead.
+                <BaseButton
+                  icon={<DriveFileMoveOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTransferClick(row);
+                  }}
+                  actionColor="reassign"
+                  size="small"
+                  tooltip={`Transfer Entries (${row.costsCount})`}
+                />
+              ) : (
+                <BaseButton
+                  icon={<Delete />}
+                  tooltip="Delete Direct Cost"
+                  size="small"
+                  actionColor="delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(row.id, row.costName);
+                  }}
+                />
+              )}
+            </div>
+          );
+        },
       },
     ],
-    [colors, handleEdit, handleDelete],
+    [colors, handleEdit, handleDelete, handleTransferClick],
   );
 
   const handleDeleteModalClose = React.useCallback(() => {
@@ -145,6 +190,15 @@ export default function DirectCostView({
         onClose={handleDeleteModalClose}
         entityToDelete={entityToDelete}
         onSuccess={handleDeleteSuccess}
+      />
+
+      {/* Transfer — the stand-in for Delete on an option that still has
+          entries charged to it in a transaction. */}
+      <TransferDirectCostModal
+        open={openTransferModal}
+        handleClose={handleCloseTransferModal}
+        option={selectedCost}
+        onTransfer={handleTransferCosts}
       />
     </PageLayout>
   );

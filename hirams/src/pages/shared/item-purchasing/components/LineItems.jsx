@@ -12,6 +12,8 @@ import {
   getToDeliver,
 } from "../../../../utils/helpers/purchaseProgress.js";
 import CartRowPanel from "./shared/CartRowPanel.jsx";
+import PurchaseCartUpdateModal from "../modal/PurchaseCartUpdateModal.jsx";
+import MoveItemModal from "../modal/MoveItemModal.jsx";
 
 const useColors = (c) => ({
   mutedBg: c.slate.mutedBg,
@@ -56,6 +58,8 @@ export const IconBox = ({
 
 export default function LineItems({
   options,
+  // The PO's number — shown in the remove-from-cart confirmation badge.
+  poNumber = "",
   // The PO's freight charge — printed above the EWT line in the total row.
   freight = 0,
   cartKey,
@@ -64,8 +68,10 @@ export default function LineItems({
   pendingReceiptKey,
   forDeliveryKey,
   deliveredKey,
-  removedFromCartKey,
   currentUserId,
+  // Management pages pass true; AO / AOTL surfaces pass their real flag —
+  // the backend's cart permission is management · AO · AOTL.
+  isManagement = true,
   onRemoved,
   poStatus,
   anyOptionArrived,
@@ -81,13 +87,34 @@ export default function LineItems({
   const [removingOptionId, setRemovingOptionId] = useState(null);
   const [inventoryRows, setInventoryRows] = useState({});
 
-  const handleRemoveOption = async (nPurchaseItemId) => {
+  // The remove button first asks — the row only carries the id it wants
+  // gone; the actual call waits for "Yes, Remove Item".
+  const [removeConfirmId, setRemoveConfirmId] = React.useState(null);
+  const confirmRemoveOption = async () => {
+    const id = removeConfirmId;
+    setRemoveConfirmId(null);
+    await removeOption(id);
+  };
+
+  // The MOVE modal picks the destination; the row only opens the modal.
+  const [moveItemId, setMoveItemId] = React.useState(null);
+  const handleMoveItem = async (nPurchaseItemId, nTargetPurchaseOrderId) => {
+    await PurchaseOrderAPI.moveItem({
+      nPurchaseItemId,
+      nTargetPurchaseOrderId,
+      nUserId: currentUserId,
+      isManagement,
+    });
+    await onRemoved?.();
+    window.dispatchEvent(new CustomEvent("cart_data_updated"));
+  };
+
+  const removeOption = async (nPurchaseItemId) => {
     setRemovingOptionId(nPurchaseItemId);
     try {
       await PurchaseOrderAPI.removeFromCart({
         nPurchaseItemId,
         nUserId: currentUserId,
-        nStatus: removedFromCartKey,
         isManagement: true,
       });
       if (options.length <= 1) {
@@ -164,7 +191,12 @@ export default function LineItems({
 
   // The rows carry their own sticky header (the first row renders it), so
   // these flags only decide what each row shows.
-  const showRemove = String(poStatus) === String(cartKey);
+  // A cart-stage order — Cart, For Approval or For Payment — still lets a
+  // line be pulled back out of it. From Pending Receipt on the line is
+  // moving through the warehouse.
+  const showRemove = [cartKey, forApprovalKey, forPaymentKey]
+    .map(String)
+    .includes(String(poStatus));
   const showArrived = [pendingReceiptKey, forDeliveryKey, deliveredKey]
     .map(String)
     .includes(String(poStatus));
@@ -245,9 +277,11 @@ export default function LineItems({
             onRowClick={onRowClick}
             onBrandClick={onBrandClick}
             showRemove={showRemove}
+            showMove={showRemove}
+            onMove={setMoveItemId}
             isRemoving={removingOptionId === nPurchaseItemId}
             removingOptionId={removingOptionId}
-            onRemove={handleRemoveOption}
+            onRemove={setRemoveConfirmId}
             hasAnyEWT={hasAnyEWT}
             showQty={showQty}
             showPricing={showPOPricing}
@@ -270,6 +304,25 @@ export default function LineItems({
           freightAmount={Number(freight) || 0}
         />
       )}
+      {/* Remove-from-cart asks once before it pulls the line off its PO. */}
+      <PurchaseCartUpdateModal
+        open={removeConfirmId !== null}
+        action="remove_from_cart"
+        purchaseOrderNumber={poNumber}
+        loading={removingOptionId !== null}
+        onConfirm={confirmRemoveOption}
+        onClose={() => setRemoveConfirmId(null)}
+      />
+      {/* Moving a line: the other cart-stage orders it can live under. */}
+      <MoveItemModal
+        open={moveItemId !== null}
+        handleClose={() => setMoveItemId(null)}
+        sourcePoNumber={poNumber}
+        itemId={moveItemId}
+        currentUserId={currentUserId}
+        isManagement={isManagement}
+        onMove={handleMoveItem}
+      />
     </Box>
   );
 }

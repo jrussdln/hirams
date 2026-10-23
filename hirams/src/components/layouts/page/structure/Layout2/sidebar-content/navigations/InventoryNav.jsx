@@ -24,12 +24,24 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
 
   // ✅ Single source from useKeysLabels
   const {
+    // The AO / Procurement list — the same statuses without the Pending
+    // JEV stage, so AO, AOTL and Procurement never see that entry.
+    inventoryStatusAoProc,
+    isAccountOfficer, // AO and AOTL alike
+    isProcurement, // Procurement Officer and TL alike
     inventoryStatus,
     inventoryPendingKey,
     loading: mappingLoading,
   } = useKeysLabels();
 
-  const safeInventoryStatus = inventoryStatus || {};
+  // Accounting is finance's realm: AO / AOTL and Procurement read the AO /
+  // Procurement list; everyone else (management, finance, ...) the full one.
+  const aoOrProc = isAccountOfficer || isProcurement;
+  const effectiveInventoryStatus = aoOrProc
+    ? inventoryStatusAoProc
+    : inventoryStatus;
+
+  const safeInventoryStatus = effectiveInventoryStatus || {};
   const entries = Object.entries(safeInventoryStatus);
   const firstCode = entries[0]?.[0] ?? "";
 

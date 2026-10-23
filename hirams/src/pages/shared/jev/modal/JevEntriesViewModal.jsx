@@ -256,6 +256,9 @@ function JevEntriesViewModal({
     // The transaction status keys — the brand · model opens the transaction
     // in the For Purchase workspace, and that workspace is driven by them.
     isManagement,
+    // The clickable navigations (DV code → voucher, brand · model →
+    // transaction, PO number → purchasing) are finance / management only.
+    isFinanceOfficer,
     isAccountOfficer,
     isAOTL,
     isProcurement,
@@ -289,6 +292,11 @@ function JevEntriesViewModal({
   // The signed-in user — the workspace needs it to load the transaction the
   // way this role sees it.
   const currentUserId = useMemo(() => getItem("user", {})?.nUserId, []);
+
+  // Who gets the blue navigation links — every "open this voucher / this
+  // transaction / this PO" is a jump only finance and management make; the
+  // other roles read the particulars as plain text.
+  const canNavigate = isFinanceOfficer || isManagement;
   const [infoEditing, setInfoEditing] = useState(false);
   const [dateValue, setDateValue] = useState(""); // "YYYY-MM-DD" while editing
   const [titleValue, setTitleValue] = useState("");
@@ -951,7 +959,7 @@ function JevEntriesViewModal({
                   // The DV code opens the voucher itself — the same link the
                   // supplier's PO card carries.
                   onVoucherClick={
-                    voucher?.nVoucherId ? openVoucher : undefined
+                    canNavigate && voucher?.nVoucherId ? openVoucher : undefined
                   }
                 />
               ) : (
@@ -965,12 +973,19 @@ function JevEntriesViewModal({
                   supplierNickName={supplierNickName}
                   supplierAddress={supplierAddress}
                   supplierTIN={supplierTIN}
-                  // The DV code opens the voucher itself.
-                  onVoucherClick={voucher?.nVoucherId ? openVoucher : undefined}
+                  // The DV code opens the voucher itself — finance and
+                  // management only, like every navigation.
+                  onVoucherClick={
+                    canNavigate && voucher?.nVoucherId ? openVoucher : undefined
+                  }
                   // The brand · model opens the transaction the item belongs
-                  // to — the same workspace the item-purchasing and voucher
-                  // pages open.
-                  onBrandClick={openTransactionForPurchase}
+                  // to — like the PO number it now follows the voucher
+                  // page's rule: management clicks, finance and the rest
+                  // read plain text.
+                  onBrandClick={
+                    isManagement ? openTransactionForPurchase : undefined
+                  }
+                  navigable={isManagement}
                 />
               )}
             </Box>
@@ -990,9 +1005,16 @@ function JevEntriesViewModal({
                 // since gone out still belongs in this table, but the
                 // selling columns stay the delivered side's own.
                 showSellingOverride={isReceivedSide ? false : null}
+                /* The PO code (header card AND every delivered row) follows
+                   the same rule as the PO list above: management clicks,
+                   finance reads plain text. */
+                poNavigable={isManagement}
                 // The brand · model opens the transaction the batch was
-                // bought on.
-                onBrandClick={openInventoryRowTransaction}
+                // bought on — management only (finance reads plain text,
+                // same as the PO card above).
+                onBrandClick={
+                  isManagement ? openInventoryRowTransaction : undefined
+                }
               />
             </Box>
           )}

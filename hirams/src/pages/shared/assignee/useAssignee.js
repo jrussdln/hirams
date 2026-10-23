@@ -14,6 +14,9 @@ function formatAssignee(a) {
     address: a.strAddress || "",
     tin: a.strTIN || "",
     statusCode: a.cStatus,
+    // How many vouchers still name this assignee — an assignee that is on
+    // any cannot be deleted, it has to be transferred instead.
+    vouchersCount: Number(a.vouchers_count ?? 0),
     dtCreatedAt: a.dtCreatedAt,
     dtUpdatedAt: a.dtUpdatedAt,
   };
@@ -29,6 +32,7 @@ export default function useAssignee() {
   const [openAEModal, setOpenAEModal] = useState(false);
   const [openInfoModal, setOpenInfoModal] = useState(false);
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
+  const [openTransferModal, setOpenTransferModal] = useState(false);
 
   const [selectedAssignee, setSelectedAssignee] = useState(null);
   const [entityToDelete, setEntityToDelete] = useState(null);
@@ -190,6 +194,30 @@ export default function useAssignee() {
     setOpenAEModal(false);
     setSelectedAssignee(null);
   }, []);
+  // Transfer — the stand-in for Delete on an assignee that still carries
+  // vouchers: the modal moves them to another active assignee.
+  const handleTransferClick = useCallback((a) => {
+    setSelectedAssignee(a);
+    setOpenTransferModal(true);
+  }, []);
+  const handleCloseTransferModal = useCallback(() => {
+    setOpenTransferModal(false);
+    setSelectedAssignee(null);
+  }, []);
+  // The move itself — the modal only picks the destination and the
+  // vouchers. The source id travels WITH the call, so the modal can close
+  // itself (and drop the selection) before the request is sent.
+  const handleTransferVouchers = useCallback(
+    async (sourceAssigneeId, targetAssigneeId, voucherIds) => {
+      if (!sourceAssigneeId) return;
+      await AssigneeAPI.transferVouchers(sourceAssigneeId, {
+        nTargetAssigneeId: targetAssigneeId,
+        voucherIds,
+      });
+      await fetchAssigneesRef.current?.(true, true); // ✅ Silent refresh
+    },
+    [],
+  );
   const handleCloseInfoModal = useCallback(() => setOpenInfoModal(false), []);
   const handleCloseDeleteModal = useCallback(() => {
     setOpenDeleteModal(false);
@@ -231,6 +259,7 @@ export default function useAssignee() {
     openAEModal,
     openInfoModal,
     openDeleteModal,
+    openTransferModal,
     selectedAssignee,
     entityToDelete,
     assignees: filteredAssignees,
@@ -252,6 +281,9 @@ export default function useAssignee() {
     handleCloseAEModal,
     handleCloseInfoModal,
     handleCloseDeleteModal,
+    handleTransferClick,
+    handleCloseTransferModal,
+    handleTransferVouchers,
     handlePageChange,
     handleRowsPerPageChange,
     handleRowClick,

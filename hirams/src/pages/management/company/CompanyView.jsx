@@ -5,8 +5,9 @@ import CustomSearchField from "../../../components/ui/form/SearchField";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
 import CompanyAEModal from "./modal/CompanyAEModal";
+import TransferCompanyModal from "./modal/TransferCompanyModal";
 import DeleteVerificationModal from "../../shared/transactions/modal/DeleteVerificationModal";
-import { Add, Edit, Delete, Phone, Email } from "@mui/icons-material";
+import { Add, Edit, Delete, Phone, Email, DriveFileMoveOutlined } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import {
@@ -53,6 +54,10 @@ export default function CompanyView({
   handleEditClick,
   handleDeleteClick,
   handleDeleteSuccess,
+  openTransferModal,
+  handleTransferClick,
+  handleCloseTransferModal,
+  handleTransferLinks,
   handleModalClose,
 }) {
   const theme = useTheme();
@@ -69,6 +74,8 @@ export default function CompanyView({
         render: (_, row) => {
           const hasName = Boolean(row.name?.trim());
           const hasNickname = Boolean(row.nickname?.trim());
+          const transactionCount = Number(row.transactionsCount ?? 0);
+          const voucherCount = Number(row.vouchersCount ?? 0);
 
           return (
             <div className="min-w-0 text-left">
@@ -81,8 +88,23 @@ export default function CompanyView({
                   {NO_NAME}
                 </span>
               )}
-              <span className="block text-xs font-light italic leading-tight -mt-0.5">
-                {hasNickname ? row.nickname : NO_NICKNAME}
+              <span className="flex items-center gap-1 min-w-0">
+                <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
+                  {hasNickname ? row.nickname : NO_NICKNAME}
+                </span>
+                {/* What still names this company — the same counts that
+                    decide whether Delete or Transfer is offered. */}
+                {transactionCount > 0 && (
+                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+                    · {transactionCount} transaction
+                    {transactionCount === 1 ? "" : "s"}
+                  </span>
+                )}
+                {voucherCount > 0 && (
+                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+                    · {voucherCount} voucher{voucherCount === 1 ? "" : "s"}
+                  </span>
+                )}
               </span>
             </div>
           );
@@ -191,33 +213,65 @@ export default function CompanyView({
         label: "Actions",
         align: "center",
         xs: 1,
-        render: (_, row) => (
-          <div className="flex gap-1 justify-center">
-            <BaseButton
-              icon={<Edit fontSize="small" />}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleEditClick(row);
-              }}
-              actionColor="edit"
-              size="small"
-              tooltip="Edit Company"
-            />
-            <BaseButton
-              icon={<Delete fontSize="small" />}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteClick(row);
-              }}
-              actionColor="delete"
-              size="small"
-              tooltip="Delete Company"
-            />
-          </div>
-        ),
+        render: (_, row) => {
+          const transactionCount = Number(row.transactionsCount ?? 0);
+          const voucherCount = Number(row.vouchersCount ?? 0);
+          const hasLinks = transactionCount + voucherCount > 0;
+
+          const linkParts = [];
+          if (transactionCount > 0) {
+            linkParts.push(
+              `${transactionCount} transaction${transactionCount === 1 ? "" : "s"}`,
+            );
+          }
+          if (voucherCount > 0) {
+            linkParts.push(`${voucherCount} voucher${voucherCount === 1 ? "" : "s"}`);
+          }
+
+          return (
+            <div className="flex gap-1 justify-center">
+              <BaseButton
+                icon={<Edit fontSize="small" />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleEditClick(row);
+                }}
+                actionColor="edit"
+                size="small"
+                tooltip="Edit Company"
+              />
+              {hasLinks ? (
+                // A company that still carries transactions or vouchers
+                // cannot be deleted — they would be left pointing at
+                // nothing. Transfer moves them to another company instead.
+                <BaseButton
+                  icon={<DriveFileMoveOutlined fontSize="small" />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleTransferClick(row);
+                  }}
+                  actionColor="reassign"
+                  size="small"
+                  tooltip={`Transfer Records (${linkParts.join(", ")})`}
+                />
+              ) : (
+                <BaseButton
+                  icon={<Delete fontSize="small" />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteClick(row);
+                  }}
+                  actionColor="delete"
+                  size="small"
+                  tooltip="Delete Company"
+                />
+              )}
+            </div>
+          );
+        },
       },
     ],
-    [colors, handleEditClick, handleDeleteClick],
+    [colors, handleEditClick, handleDeleteClick, handleTransferClick],
   );
 
   return (
@@ -275,6 +329,15 @@ export default function CompanyView({
         }}
         entityToDelete={entityToDelete}
         onSuccess={handleDeleteSuccess}
+      />
+
+      {/* Transfer — the stand-in for Delete on a company that still
+          carries transactions or vouchers. */}
+      <TransferCompanyModal
+        open={openTransferModal}
+        handleClose={handleCloseTransferModal}
+        company={selectedCompany}
+        onTransfer={handleTransferLinks}
       />
     </PageLayout>
   );

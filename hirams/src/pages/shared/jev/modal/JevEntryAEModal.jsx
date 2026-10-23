@@ -11,6 +11,7 @@ import AccountChainSelect from "../components/AccountChainSelect.jsx";
 import { AmountPickContext } from "../components/AmountPickContext.js";
 import POListPanel from "../../voucher/components/POListPanel.jsx";
 import AssigneeListPanel from "../../voucher/components/AssigneeListPanel.jsx";
+import useKeysLabels from "../../../../hooks/useKeysLabels.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -150,6 +151,11 @@ export default function JevEntryAEModal({
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const colors = useMemo(() => useColors(getThemeColors(isDark)), [isDark]);
+
+  // The clickable navigations (the PO numbers in the particulars list) are
+  // finance / management only — every other role reads them as plain text.
+  const { isManagement, isFinanceOfficer } = useKeysLabels();
+  const canNavigate = isFinanceOfficer || isManagement;
 
   // ── Remaining on this side — only used to pre-fill the Amount field ──
   // Amounts are never capped and nothing is shown in the label: the single
@@ -345,6 +351,9 @@ export default function JevEntryAEModal({
               supplierLinks={supplierLinks}
               isJEVPage
               voucherNumber={voucherNumber}
+              // The PO numbers only jump to purchasing for finance and
+              // management — the same rule the viewer modal applies.
+              navigable={canNavigate}
               supplierNickName={
                 supplierInfo?.strSupplierNickName ??
                 supplierInfo?.strSupplierName ??

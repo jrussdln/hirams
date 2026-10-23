@@ -17,6 +17,9 @@ function formatClient(c) {
     contactPerson: c.strContactPerson,
     contactNumber: c.strContactNumber,
     statusCode: c.cStatus,
+    // How many transactions still name this client — a client that carries
+    // any cannot be deleted, it has to be transferred instead.
+    transactionsCount: Number(c.transactions_count ?? 0),
   };
 }
 
@@ -34,6 +37,7 @@ export default function useClient() {
   const [openAEModal, setOpenAEModal] = useState(false);
   const [openInfoModal, setOpenInfoModal] = useState(false);
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
+  const [openTransferModal, setOpenTransferModal] = useState(false);
   const [entityToDelete, setEntityToDelete] = useState(null);
 
   const [selectedStatusCode, setSelectedStatusCode] = useState(() =>
@@ -206,6 +210,30 @@ export default function useClient() {
     setOpenAEModal(false);
     setSelectedClient(null);
   }, []);
+  // Transfer — the stand-in for Delete on a client that still carries
+  // transactions: the modal moves them to another active client.
+  const handleTransferClick = useCallback((client) => {
+    setSelectedClient(client);
+    setOpenTransferModal(true);
+  }, []);
+  const handleCloseTransferModal = useCallback(() => {
+    setOpenTransferModal(false);
+    setSelectedClient(null);
+  }, []);
+  // The move itself — the modal only picks the destination and the
+  // transactions. The source id travels WITH the call, so the modal can
+  // close itself (and drop the selection) before the request is sent.
+  const handleTransferTransactions = useCallback(
+    async (sourceClientId, targetClientId, transactionIds) => {
+      if (!sourceClientId) return;
+      await ClientAPI.transferTransactions(sourceClientId, {
+        nTargetClientId: targetClientId,
+        transactionIds,
+      });
+      await fetchClientsRef.current?.(true, true); // ✅ Silent refresh
+    },
+    [],
+  );
   const handleCloseInfoModal = useCallback(() => setOpenInfoModal(false), []);
   const handleCloseDeleteModal = useCallback(() => {
     setOpenDeleteModal(false);
@@ -263,6 +291,7 @@ export default function useClient() {
     openAEModal,
     openInfoModal,
     openDeleteModal,
+    openTransferModal,
     entityToDelete,
     clients: filteredClients,
     loading,
@@ -287,6 +316,9 @@ export default function useClient() {
     handleCloseAEModal,
     handleCloseInfoModal,
     handleCloseDeleteModal,
+    handleTransferClick,
+    handleCloseTransferModal,
+    handleTransferTransactions,
     handlePageChange,
     handleRowsPerPageChange,
     handleRowClick,

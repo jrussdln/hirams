@@ -7,24 +7,20 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
 
-    // ✅ Use /hirams/ ONLY in production
+    // Use /hirams/ ONLY in production
     base: isProduction ? "/hirams/" : "/",
 
-    // ✅ Two stable vendor chunks only (React + MUI) so a deploy doesn't make
-    //    users re-download the frameworks. No catch-all "vendor" bucket — that
-    //    one measured 521 KB gzip of first paint vs 234 KB without it, because
-    //    a single eager import dragged the whole bucket into the entry graph.
     build: {
+      // Raise the warning limit so the intentional vendor chunk (661 kB)
+      // doesn't trigger the warning. Optional.
+      chunkSizeWarningLimit: 700,
+
       rollupOptions: {
         output: {
-          // manualChunks(id) {
-          //   if (!id.includes("node_modules")) return undefined;
-          //   const p = id.replace(/\\/g, "/");
-          //   if (/\/(react|react-dom|react-router|react-router-dom|scheduler|react-is)\//.test(p))
-          //     return "vendor-react";
-          //   if (/\/(@mui|@emotion)\//.test(p)) return "vendor-mui";
-          //   return undefined; // everything else → Rollup's own chunking
-          // },
+          // Merge tiny chunks (< ~10 kB) into neighbors to cut file count
+          experimentalMinChunkSize: 10_000,
+
+          // Stable vendor chunk: React + MUI
           manualChunks(id) {
             if (!id.includes("node_modules")) return undefined;
             const p = id.replace(/\\/g, "/");
@@ -40,7 +36,7 @@ export default defineConfig(({ mode }) => {
       },
     },
 
-    // ✅ Dev-only proxy (removed automatically in production)
+    // Dev-only proxy (removed automatically in production)
     server: isProduction
       ? undefined
       : {

@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\ApiController;
 use App\Http\Requests\PurchaseOrderOption\LatestPurchaseOrderOptionsHistoryRequest;
 use App\Http\Requests\PurchaseOrderOption\AddToCartPurchaseOrderOptionRequest;
 use App\Http\Requests\PurchaseOrderOption\RemoveFromCartPurchaseOrderOptionRequest;
+use App\Http\Requests\PurchaseOrderOption\MoveTargetsPurchaseOrderOptionRequest;
+use App\Http\Requests\PurchaseOrderOption\MovePurchaseOrderOptionRequest;
 use App\Services\Purchasing\PurchaseOptionsService;
 use App\Services\Purchasing\PurchaseOrderOptionService;
 use Exception;
@@ -70,6 +72,58 @@ class PurchaseOrderOptionsController extends ApiController
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json(['message' => 'Failed to remove from cart.', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * The cart-stage POs one item can move to — same transaction · company
+     * · supplier · Account Officer. The move itself is the same family as
+     * the master transfers: listed targets first, the POST afterwards.
+     */
+    public function moveTargets(MoveTargetsPurchaseOrderOptionRequest $request): JsonResponse
+    {
+        try {
+            $result = $this->service->moveTargets((int) $request->route('nPurchaseItemId'), $request->validated());
+
+            if ($result['status'] === 403) {
+                return response()->json(['message' => 'Unauthorized. Not the assigned Account Officer.'], 403);
+            }
+
+            return response()->json(['message' => 'Move targets retrieved successfully.', 'targets' => $result['targets'] ?? []], 200);
+        } catch (ModelNotFoundException) {
+            return response()->json(['message' => 'Purchase option or transaction not found.'], 404);
+        } catch (Exception $e) {
+            return response()->json(['message' => 'Failed to load move targets.', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Move an item — with its PO line — to another cart-stage purchase
+     * order of the same transaction · company · supplier · Account Officer.
+     */
+    public function move(MovePurchaseOrderOptionRequest $request): JsonResponse
+    {
+        try {
+            $result = $this->service->move($request->validated());
+
+            if ($result['status'] === 403) {
+                return response()->json(['message' => 'Unauthorized. Not the assigned Account Officer.'], 403);
+            }
+
+            if ($result['status'] === 404) {
+                return response()->json(['message' => $result['message']], 404);
+            }
+
+            if ($result['status'] === 422) {
+                return response()->json(['message' => $result['message'] ?? 'Items can only move to a matching purchase order.'], 422);
+            }
+
+            return response()->json(['message' => 'Moved to purchase order successfully.'], 200);
+        } catch (ModelNotFoundException) {
+            return response()->json(['message' => 'Purchase option or transaction not found.'], 404);
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to move item.', 'error' => $e->getMessage()], 500);
         }
     }
 
