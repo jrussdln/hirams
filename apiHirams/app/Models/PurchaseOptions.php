@@ -18,10 +18,10 @@ class PurchaseOptions extends Model
     public $timestamps = false;
     // The EWT TYPE of the line — the formula its EWT is built from:
     //   null → DEFAULT (the supplier's own flags decide)
-    //   'A'  → 0% of Q
-    //   'B'  → 1% of Q
-    //   'C'  → 2% of Q
-    //   'D'  → 1% of Q / 1.12 (VAT net)
+    //   'A'  → 0% of TC
+    //   'B'  → 1% of TC
+    //   'C'  → 2% of TC
+    //   'D'  → 1% of TC / 1.12 (VAT net)
     // It replaces the hand-typed dEWT amount as the source of truth.
     protected $attributes = [
         'cEWTType' => null,

@@ -124,8 +124,8 @@ export default function useMapping() {
   const [jev_status, setJevStatus] = useState({});
   const [itemPurchasingStatus, setItemPurchasingStatus] = useState({});
   const [itemPurchasingStatusFinance, setItemPurchasingStatusFinance] = useState({});
-  // The EWT types: A = 0% of Q, B = 1% of Q, C = 2% of Q,
-  // D = 1% of Q / 1.12 (VAT net)
+  // The EWT types: A = 0% of TC, B = 1% of TC, C = 2% of TC,
+  // D = 1% of TC / 1.12 (VAT net), E = 2% of TC / 1.12 (VAT net).
   const [ewtBypassType, setEwtBypassType] = useState({});
 
   // The purchase price status — A = Active (the price counts),

@@ -10,12 +10,12 @@ use Illuminate\Support\Facades\Schema;
  *
  *   NULL  → DEFAULT — the supplier's own flags decide (bEWT gate, goods
  *           1% / service 2%, VAT gross-down when the supplier is vattable)
- *   'A'   → 0% of Q                                (bypass: no EWT)
- *   'B'   → 1% of Q                                (bypass: gross)
- *   'C'   → 2% of Q                                (bypass: gross)
- *   'D'   → 1% of Q / 1.12 (VAT net)               (bypass: net of VAT)
+ *   'A'   → 0% of TC                                (bypass: no EWT)
+ *   'B'   → 1% of TC                                (bypass: gross)
+ *   'C'   → 2% of TC                                (bypass: gross)
+ *   'D'   → 1% of TC / 1.12 (VAT net)               (bypass: net of VAT)
  *
- * Q = nQuantity x dUnitPrice.
+ * TC = Total Cost (nQuantity x dUnitPrice).
  *
  * The dEWT column stays for now as the denormalised copy of the computed
  * value (raw readers still sum it) — it goes away once every read path

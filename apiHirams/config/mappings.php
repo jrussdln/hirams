@@ -40,16 +40,19 @@ return [
     ],
     // EWT bypass type — a per-line override of the DEFAULT EWT formula
     // (see App\Helpers\FormulaHelper::calculateEWT).
-    //   Q = Qty x UnitPrice
-    //   A => Q x 0%              → 0.00 (no withholding on this line)
-    //   B => Q x 1%              → gross x 1%
-    //   C => Q x 2%              → gross x 2%
-    //   D => (Q / 1.12) x 1%     → net-of-VAT x 1%
+    //   TC = Total Cost (Qty x UnitPrice)
+    //   A => TC x 0%              → 0.00 (no withholding on this line)
+    //   B => TC x 1%              → gross x 1%
+    //   C => TC x 2%              → gross x 2%
+    //   D => (TC / 1.12) x 1%     → net-of-VAT x 1%
+    //   E => (TC / 1.12) x 2%     → net-of-VAT x 2%
     'ewt_bypass_type' => [
-        'A' => '0% of Q',
-        'B' => '1% of Q',
-        'C' => '2% of Q',
-        'D' => '1% of Q / 1.12 (VAT net)',
+        'A' => '0% of TC',
+        'B' => '1% of TC',
+        'C' => '2% of TC',
+        'D' => '1% of TC / 1.12 (VAT net)',
+        'E' => '2% of TC / 1.12 (VAT net)',
+
     ],
     'proc_source' => [
         'P' => 'PhilGEPS',

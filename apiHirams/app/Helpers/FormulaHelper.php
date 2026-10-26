@@ -123,16 +123,16 @@ class FormulaHelper
      * EWT (Expanded Withholding Tax) — the DEFAULT matrix.
      *
      *   #  Supplier           Item      Formula             Result
-     *   1  EWT, NON-VAT       Goods     Q x 1%              Q x 0.01
-     *   2  EWT, NON-VAT       Service   Q x 2%              Q x 0.02
+     *   1  EWT, NON-VAT       Goods     TC x 1%             TC x 0.01
+     *   2  EWT, NON-VAT       Service   TC x 2%             TC x 0.02
      *   3  NON-EWT, VAT       Goods     -                   0.00
      *   4  NON-EWT, VAT       Service   -                   0.00
-     *   5  EWT, VAT           Goods     (Q / 1.12) x 1%     Q x 0.008928...
-     *   6  EWT, VAT           Service   (Q / 1.12) x 2%     Q x 0.017857...
+     *   5  EWT, VAT           Goods     (TC / 1.12) x 1%    TC x 0.008928...
+     *   6  EWT, VAT           Service   (TC / 1.12) x 2%    TC x 0.017857...
      *   7  NON-EWT, NON-VAT   Goods     -                   0.00
      *   8  NON-EWT, NON-VAT   Service   -                   0.00
      *
-     * Q = quantity x unitPrice.
+     * TC = Total Cost (quantity x unitPrice).
      *
      * The three ingredients, in the order they are applied:
      *   1. bEWT  - the supplier's EWT flag. Not an EWT supplier → nothing
@@ -142,12 +142,12 @@ class FormulaHelper
      *               so every line of a PO carries the same rate.
      *   3. bVAT  - the supplier's VAT flag. A VAT-registered supplier bills
      *               VAT on top, and VAT is not the payee's income, so the
-     *               base is the VAT-exclusive amount (Q / 1.12). A non-VAT
-     *               supplier has no VAT to strip, so the base is Q itself.
+     *               base is the VAT-exclusive amount (TC / 1.12). A non-VAT
+     *               supplier has no VAT to strip, so the base is TC itself.
      *
      * NOTE: the 1.12 gross-down assumes the price is VAT-INCLUSIVE. If the
      * price in the system is the VAT-exclusive amount (VAT added later by
-     * the supplier's invoice), the base must be Q with no division - that
+     * the supplier's invoice), the base must be TC with no division - that
      * is a business decision, so it is kept in one place here.
      */
     public const EWT_RATE_GOODS   = 0.01;
@@ -158,20 +158,22 @@ class FormulaHelper
      * The EWT TYPES (the per-line override of the default matrix).
      *
      *   null → DEFAULT — the matrix above decides
-     *   'A'  → 0% of Q
-     *   'B'  → 1% of Q
-     *   'C'  → 2% of Q
-     *   'D'  → 1% of Q / 1.12 (VAT net)
+     *   'A'  → 0% of TC
+     *   'B'  → 1% of TC
+     *   'C'  → 2% of TC
+     *   'D'  → 1% of TC / 1.12 (VAT net)
+     *   'E'  → 2% of TC / 1.12 (VAT net)
      *
      * A type OVERRIDES the supplier's bEWT / bVAT flags entirely: 'A' is
-     * no EWT even for an EWT supplier, and 'B' / 'C' / 'D' are the bypass
-     * rates even for a non-EWT or non-vattable one.
+     * no EWT even for an EWT supplier, and 'B' / 'C' / 'D' / 'E' are the
+     * bypass rates even for a non-EWT or non-vattable one.
      */
-    public const EWT_TYPE_DEFAULT   = null;
-    public const EWT_TYPE_BYPASS_0  = 'A';
-    public const EWT_TYPE_BYPASS_1  = 'B';
+    public const EWT_TYPE_DEFAULT    = null;
+    public const EWT_TYPE_BYPASS_0   = 'A';
+    public const EWT_TYPE_BYPASS_1   = 'B';
     public const EWT_TYPE_BYPASS_2   = 'C';
     public const EWT_TYPE_BYPASS_VAT = 'D';
+    public const EWT_TYPE_BYPASS_VAT_2 = 'E';
 
     /**
      * The EWT types the API accepts on the wire.
@@ -183,8 +185,9 @@ class FormulaHelper
         return [
             self::EWT_TYPE_BYPASS_0,
             self::EWT_TYPE_BYPASS_1,
-            self::EWT_TYPE_BYPASS_VAT,
             self::EWT_TYPE_BYPASS_2,
+            self::EWT_TYPE_BYPASS_VAT,
+            self::EWT_TYPE_BYPASS_VAT_2,
         ];
     }
 
@@ -208,6 +211,11 @@ class FormulaHelper
             case self::EWT_TYPE_BYPASS_VAT:
                 return round(
                     ($totalCost / self::EWT_VAT_FACTOR) * self::EWT_RATE_GOODS,
+                    2
+                );
+            case self::EWT_TYPE_BYPASS_VAT_2:
+                return round(
+                    ($totalCost / self::EWT_VAT_FACTOR) * self::EWT_RATE_SERVICE,
                     2
                 );
             case self::EWT_TYPE_BYPASS_2:

@@ -747,10 +747,11 @@ const PurchaseOptionRow = ({
   // default ("") is never named: it needs no label, the supplier's own
   // flags decide.
   const ewtTypeLabels = {
-    A: "0% of Q",
-    B: "1% of Q",
-    C: "2% of Q",
-    D: "1% of Q / 1.12 (VAT net)",
+    A: "0% of TC",
+    B: "1% of TC",
+    C: "2% of TC",
+    D: "1% of TC / 1.12 (VAT net)",
+    E: "2% of TC / 1.12 (VAT net)",
     ...(ewtTypeLabelsProp || {}),
   };
   const ewtType = String(option.cEWTType || "");

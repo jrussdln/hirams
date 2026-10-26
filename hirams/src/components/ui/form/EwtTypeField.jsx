@@ -16,15 +16,16 @@ import { fmtPHP } from "../../../utils/formatters/formatter.js";
 // Default) has no code — the line falls back to the default formula, the
 // one the supplier's own flags decide.
 const EWT_TYPE_DEFAULT = "";
-const EWT_TYPE_OPTIONS = ["", "A", "B", "C", "D"];
+const EWT_TYPE_OPTIONS = ["", "A", "B", "C", "D", "E"];
 
 // Fallback labels — the same wording as the `ewt_bypass_type` mapping in
 // apiHirams/config/mappings.php, used until the mapping arrives.
 const FALLBACK_LABELS = {
-  A: "0% of Q",
-  B: "1% of Q",
-  C: "2% of Q",
-  D: "1% of Q / 1.12 (VAT net)",
+  A: "0% of TC",
+  B: "1% of TC",
+  C: "2% of TC",
+  D: "1% of TC / 1.12 (VAT net)",
+  E: "2% of TC / 1.12 (VAT net)",
 };
 
 const useColors = (c) => ({
@@ -53,15 +54,16 @@ const useColors = (c) => ({
  *
  *   Default → the supplier's own flags decide (bEWT gate, goods 1% /
  *             service 2%, VAT gross-down when the supplier is vattable)
- *   A       → 0% of Q
- *   B       → 1% of Q
- *   C       → 2% of Q
- *   D       → 1% of Q / 1.12 (VAT net)
+ *   A       → 0% of TC
+ *   B       → 1% of TC
+ *   C       → 2% of TC
+ *   D       → 1% of TC / 1.12 (VAT net)
+ *   E       → 2% of TC / 1.12 (VAT net)
  *
  * Controlled: the selected type lives in the parent form as `cEWTType`.
  *
  * The formula that produced the value lives in the FIELD LABEL (as
- * "EWT (1% of Q / 1.12 (VAT net))"), so the box itself only holds the
+ * "EWT (1% of TC / 1.12 (VAT net))"), so the box itself only holds the
  * amount and the picker, both on one row, side by side.
  *
  * The field IS a MUI small TextField — the very same one FormGrid renders
@@ -69,10 +71,10 @@ const useColors = (c) => ({
  * outline, same label treatment: the height can never drift away from the
  * neighbours, whatever MUI does to its inputs.
  *
- * @param value     the current type ("" = Default, "A" | "B" | "C" | "D")
+ * @param value     the current type ("" = Default, "A" | "B" | "C" | "D" | "E")
  * @param amount    the computed EWT amount to display
- * @param onChange  (type) => void — type is "" | "A" | "B" | "C" | "D"
- * @param labels    the `ewt_bypass_type` mapping { A, B, C, D } (optional)
+ * @param onChange  (type) => void — type is "" | "A" | "B" | "C" | "D" | "E"
+ * @param labels    the `ewt_bypass_type` mapping { A, B, C, D, E } (optional)
  * @param compact   the small variant, for the rows of a list/modal
  */
 export default function EwtTypeField({
@@ -99,7 +101,7 @@ export default function EwtTypeField({
   const currentLabel =
     current === EWT_TYPE_DEFAULT ? "Default" : typeLabels[current] || current;
 
-  // The label carries the formula, e.g. "EWT (1% of Q / 1.12 (VAT net))".
+  // The label carries the formula, e.g. "EWT (1% of TC / 1.12 (VAT net))".
   // The Default type has no formula of its own, so it stays bare.
   const displayLabel =
     label && current !== EWT_TYPE_DEFAULT ? `${label} (${currentLabel})` : label;
