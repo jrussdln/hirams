@@ -11,6 +11,7 @@ import {
   AccountCircleOutlined,
   PhotoCameraOutlined,
   RemoveShoppingCartOutlined,
+  PictureAsPdfOutlined,
 } from "@mui/icons-material";
 
 // ── Shared color variants ─────────────────────────────────────────────────
@@ -371,6 +372,19 @@ export const TRANSACTION_CONFIRM_STYLES = {
     title: "Add Transaction",
     desc: "Is this transaction a Pre-Canvass? Pre-Canvass jobs gather their items through canvassing before the procurement begins.",
     confirmLabel: "Pre-Canvass",
+  },
+};
+
+// ── Print preview confirm dialogs ────────────────────────────────────────
+// Wired in components/ui/print-preview/PrintPreview.jsx — the "Save as PDF"
+// toolbar button asks before it generates the .pdf download.
+export const PRINT_PREVIEW_CONFIRM_STYLES = {
+  save_pdf: {
+    variant: "green",
+    Icon: PictureAsPdfOutlined,
+    title: "Save as PDF?",
+    desc: "A .pdf file of this document will be generated and downloaded to your device. The page layout follows your print settings.",
+    confirmLabel: "Yes, Save PDF",
   },
 };
 

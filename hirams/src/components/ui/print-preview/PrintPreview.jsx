@@ -9,6 +9,7 @@ import {
   Grid,
   IconButton,
   Menu,
+  Typography,
 } from "@mui/material";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 import { useNavigate } from "react-router-dom";
@@ -35,6 +36,14 @@ import MiniBaseButton from "../form/MiniBaseButton.jsx";
 import { EditableCell, PrintEditableContext } from "./EditableCell.jsx";
 import WarningAmberOutlined from "@mui/icons-material/WarningAmberOutlined";
 import CloseOutlined from "@mui/icons-material/CloseOutlined";
+import ModalContainer from "../../layouts/modal/ModalContainer.jsx";
+import {
+  PRINT_PREVIEW_CONFIRM_STYLES,
+  resolveConfirmStyle,
+} from "../../../utils/style/sharedConfirmStyles.jsx";
+import { toCanvas } from "html-to-image";
+import { jsPDF } from "jspdf";
+import { getFontEmbedCSS } from "../../../utils/print/getFontEmbedCSS.js";
 // EditableCell now lives in its own file (./EditableCell.jsx) — re-exported
 // here so existing `import { EditableCell } from ".../PrintPreview"` call
 // sites keep working without changes.
@@ -72,6 +81,7 @@ export default function PrintPreview({
   defaultOrientation = "portrait",
   defaultMargin = "Normal",
   maxWidth = "800px",
+  pdfFileName = "document",
 }) {
   const navigate = useNavigate();
   const theme = useTheme();
@@ -79,6 +89,9 @@ export default function PrintPreview({
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
   const c = useColors(base);
   const printRef = useRef(null);
+  // Per-page PDF capture nodes (one per rendered PDF page), collected
+  // via ref callbacks during render.
+  const pdfPageRefs = useRef([]);
 
   // ─── TOOLBAR BUTTON HELPER ───
   // Every header/footer action button is a MiniBaseButton. "active" picks
@@ -232,6 +245,98 @@ export default function PrintPreview({
       );
     },
   });
+
+  // ─── SAVE AS PDF ───
+  // The toolbar button opens a confirm dialog (same machinery as every
+  // other confirm in the app); YES on that dialog renders the hidden print
+  // document to a canvas (html-to-image) and packs it into a real .pdf
+  // file (jsPDF), paginated to the chosen paper size, then downloads it.
+  const pdfConfirmStyle = React.useMemo(
+    () => resolveConfirmStyle(PRINT_PREVIEW_CONFIRM_STYLES.save_pdf, isDark),
+    [isDark],
+  );
+  const [pdfConfirmOpen, setPdfConfirmOpen] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+
+  const handleGeneratePdf = useCallback(async () => {
+    // One capture node per PDF page (rendered only while the confirm
+    // dialog is open — see the hidden PDF-pages strip below).
+    const nodes = pdfPageRefs.current.slice(0, totalPages).filter(Boolean);
+    if (pdfBusy || nodes.length === 0) return;
+    setPdfBusy(true);
+    try {
+      const captureOptions = {
+        pixelRatio: 2, // crisp text, sane file size
+        backgroundColor: "#ffffff",
+        // Skip html-to-image's own font embedding: it reads every
+        // stylesheet, and cross-origin ones (Google Fonts) throw on
+        // cssRules access. Hand it the font CSS pre-embedded instead
+        // (see utils/print/getFontEmbedCSS.js).
+        fontEmbedCSS: await getFontEmbedCSS(),
+        // A broken image (e.g. a company logo that 404s) would abort the
+        // whole capture — leave it out of the render instead.
+        filter: (domNode) =>
+          !(domNode.tagName === "IMG" && domNode.naturalWidth === 0),
+        // html-to-image turns unfetchable images into an empty src,
+        // whose error event rejects the whole capture. Resolve instead —
+        // the image just comes out blank in the PDF.
+        onImageErrorHandler: () => undefined,
+      };
+
+      // Logos etc. must be fully decoded before the capture.
+      const images = nodes.flatMap((n) =>
+        Array.from(n.querySelectorAll("img")),
+      );
+      await Promise.all(
+        images.map((img) =>
+          img.complete
+            ? Promise.resolve()
+            : new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+              }),
+        ),
+      );
+
+      const pdf = new jsPDF({
+        orientation: isLandscape ? "l" : "p",
+        unit: "mm",
+        format: [PRINT_W_MM, PRINT_H_MM],
+      });
+
+      // Each PDF page is captured from its own node that mirrors the
+      // print view exactly — margins, repeated header, that page's
+      // slice of the content, and the footer — so the PDF paginates
+      // identically to the print view preview instead of blindly
+      // slicing a continuous canvas mid-row.
+      for (let i = 0; i < nodes.length; i++) {
+        if (i > 0)
+          pdf.addPage([PRINT_W_MM, PRINT_H_MM], isLandscape ? "l" : "p");
+        const pageCanvas = await toCanvas(nodes[i], captureOptions);
+        pdf.addImage(
+          pageCanvas.toDataURL("image/png"),
+          "PNG",
+          0,
+          0,
+          PRINT_W_MM,
+          PRINT_H_MM,
+        );
+      }
+      pdf.save(`${pdfFileName}.pdf`);
+      setPdfConfirmOpen(false);
+    } catch (err) {
+      console.error("Failed to generate PDF:", err);
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [
+    pdfBusy,
+    totalPages,
+    isLandscape,
+    PRINT_W_MM,
+    PRINT_H_MM,
+    pdfFileName,
+  ]);
 
   const marginPx = parseFloat(marginPreset.preview) * MM_TO_PX;
   const usablePageHeight = Math.max(
@@ -528,6 +633,15 @@ export default function PrintPreview({
                     label="Print"
                     onClick={handlePrint}
                     disabled={viewMode !== "print"}
+                  />
+                  {/* Same print pipeline as Print — the browser's dialog
+                      is opened with the exact page size/margins already
+                      applied, and "Save as PDF" is the destination there. */}
+                  <ToolbarButton
+                    icon={<DownloadOutlined />}
+                    label={pdfBusy ? "Saving…" : "Save as PDF"}
+                    onClick={() => setPdfConfirmOpen(true)}
+                    disabled={viewMode !== "print" || pdfBusy}
                   />
                 </>
               ) : (
@@ -911,6 +1025,7 @@ export default function PrintPreview({
             style={{
               width: `${PRINT_W_MM}mm`,
               filter: colorMode === "grayscale" ? "grayscale(1)" : "none",
+              background: "#ffffff",
             }}
           >
             {header}
@@ -918,6 +1033,68 @@ export default function PrintPreview({
             {footer}
           </div>
         </Box>
+        {/* ─── HIDDEN PDF PAGES — one page-sized node per PDF page, each
+             mirroring the print view exactly (margin padding, repeated
+             header, that page's slice of the content, footer). Mounted
+             only while the save-as-PDF confirm dialog is open, since
+             rendering the full content once per page is heavy. ─── */}
+        {pdfConfirmOpen && (
+          <Box
+            sx={{
+              position: "fixed",
+              top: 0,
+              left: "-10000px",
+              width: `${PRINT_W_MM}mm`,
+            }}
+          >
+            {Array.from({ length: totalPages }, (_, i) => i).map((i) => {
+              const sliceH = Math.min(
+                usablePageHeight,
+                Math.max(
+                  0,
+                  contentTotalHeight - i * usablePageHeight,
+                ),
+              );
+              return (
+                <div
+                  key={i}
+                  ref={(el) => {
+                    pdfPageRefs.current[i] = el;
+                  }}
+                  style={{
+                    width: `${PRINT_W_MM}mm`,
+                    height: `${PRINT_H_MM}mm`,
+                    boxSizing: "border-box",
+                    padding: marginPreset.print,
+                    filter:
+                      colorMode === "grayscale" ? "grayscale(1)" : "none",
+                    background: "#ffffff",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  {header}
+                  <div
+                    style={{
+                      height: sliceH,
+                      overflow: "hidden",
+                      position: "relative",
+                    }}
+                  >
+                    <div
+                      style={{
+                        transform: `translateY(-${i * usablePageHeight}px)`,
+                      }}
+                    >
+                      {children}
+                    </div>
+                  </div>
+                  {footer}
+                </div>
+              );
+            })}
+          </Box>
+        )}
         {/* ─── SUBFOOTER (pagination + zoom, print view only) ─── */}
 
         <Box
@@ -1050,6 +1227,169 @@ export default function PrintPreview({
             </Box>
           </Box>
         </Box>
+
+        {/* ─── SAVE AS PDF CONFIRM — YES generates and downloads the .pdf ─── */}
+        {pdfConfirmOpen && pdfConfirmStyle && (
+          <ModalContainer
+            open={pdfConfirmOpen}
+            handleClose={() => {
+              if (!pdfBusy) setPdfConfirmOpen(false);
+            }}
+            contentOnly
+            disableBackdropClick
+            width={{ xs: "90%", sm: 480 }}
+          >
+            <Box
+              sx={{
+                borderRadius: 3,
+                overflow: "hidden",
+                bgcolor: base.slate.outerBg,
+                border: `1px solid ${base.slate.border}`,
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background: pdfConfirmStyle.bg,
+                  px: 3,
+                  py: 4,
+                  gap: 2,
+                  animation: "fadeSlideIn 0.18s ease",
+                  "@keyframes fadeSlideIn": {
+                    from: { opacity: 0, transform: "scale(0.97)" },
+                    to: { opacity: 1, transform: "scale(1)" },
+                  },
+                }}
+              >
+                {/* Icon */}
+                <Box
+                  sx={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: "16px",
+                    background: base.slate.outerBg,
+                    border: `1.5px solid ${pdfConfirmStyle.border}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: `0 4px 16px ${pdfConfirmStyle.dotColor}22`,
+                  }}
+                >
+                  <pdfConfirmStyle.Icon
+                    sx={{ fontSize: "1.4rem", color: pdfConfirmStyle.iconColor }}
+                  />
+                </Box>
+
+                {/* Title + description */}
+                <Box sx={{ textAlign: "center" }}>
+                  <Typography
+                    sx={{
+                      fontSize: "0.95rem",
+                      fontWeight: 800,
+                      color: pdfConfirmStyle.color,
+                      lineHeight: 1.3,
+                      mb: 0.75,
+                    }}
+                  >
+                    {pdfConfirmStyle.title}
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontSize: "0.7rem",
+                      color: base.gray.textSecondary,
+                      lineHeight: 1.6,
+                      maxWidth: 260,
+                      mx: "auto",
+                    }}
+                  >
+                    {pdfConfirmStyle.desc}
+                  </Typography>
+                </Box>
+
+                {/* Actions — Yes = generate + download; No = dismiss */}
+                <Box
+                  sx={{
+                    display: "flex",
+                    gap: 1,
+                    width: "100%",
+                    maxWidth: 320,
+                  }}
+                >
+                  <Box
+                    onClick={handleGeneratePdf}
+                    sx={{
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      py: 0.875,
+                      borderRadius: "8px",
+                      background: pdfConfirmStyle.confirmBg,
+                      cursor: pdfBusy ? "wait" : "pointer",
+                      opacity: pdfBusy ? 0.7 : 1,
+                      transition: "all 0.15s",
+                      boxShadow: `0 2px 8px ${pdfConfirmStyle.dotColor}44`,
+                      "&:hover": {
+                        opacity: pdfBusy ? 0.7 : 0.9,
+                        transform: pdfBusy ? "none" : "translateY(-0.5px)",
+                      },
+                      "&:active": {
+                        opacity: pdfBusy ? 0.7 : 0.85,
+                        transform: "translateY(0)",
+                      },
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        color: base.gray.textOnFill,
+                      }}
+                    >
+                      {pdfBusy ? "Generating…" : pdfConfirmStyle.confirmLabel}
+                    </Typography>
+                  </Box>
+
+                  <Box
+                    onClick={() => {
+                      if (!pdfBusy) setPdfConfirmOpen(false);
+                    }}
+                    sx={{
+                      flex: 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      py: 0.875,
+                      borderRadius: "8px",
+                      background: base.slate.btnBg,
+                      border: `0.5px solid ${base.slate.btnBorder}`,
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                      "&:hover": {
+                        background: base.slate.btnHoverBg,
+                        borderColor: base.slate.border,
+                      },
+                      "&:active": { opacity: 0.8 },
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontSize: "0.72rem",
+                        fontWeight: 700,
+                        color: base.slate.btnText,
+                      }}
+                    >
+                      No, cancel
+                    </Typography>
+                  </Box>
+                </Box>
+              </Box>
+            </Box>
+          </ModalContainer>
+        )}
       </Box>
     </PrintEditableContext.Provider>
   );

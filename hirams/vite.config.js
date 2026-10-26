@@ -41,6 +41,15 @@ export default defineConfig(({ mode }) => {
       ? undefined
       : {
           proxy: {
+            // Media must be matched BEFORE /api — it goes to the LOCAL
+            // backend, not the production one below. Serving images
+            // same-origin through the proxy avoids CORS, Firefox's
+            // local-network restrictions, and NS_ERROR_DOM_NETWORK_ERR
+            // races with PHP's built-in dev server entirely.
+            "/api/media": {
+              target: "http://127.0.0.1:8000",
+              changeOrigin: true,
+            },
             "/api": {
               target: "https://lgu.net.ph/apiHirams/public",
               changeOrigin: true,

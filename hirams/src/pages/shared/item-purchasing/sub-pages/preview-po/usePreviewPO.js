@@ -88,6 +88,11 @@ export default function usePreviewPO() {
     firstOption?.purchase_option?.transaction_item?.transaction?.company ?? {};
   const supplier = firstOption?.purchase_option?.supplier ?? {};
 
+  // The page header/subtitle: "POCODE - SupplierNickname" (the PDF file
+  // name uses the same pair). The transaction codes live in the item rows.
+  const supplierNickname =
+    supplier?.strSupplierNickName || supplier?.strSupplierName || "";
+
   const contactName =
     firstOption?.purchase_option?.supplier_contact?.strName ?? null;
 
@@ -105,15 +110,26 @@ export default function usePreviewPO() {
       .toUpperCase();
     const itemName = (p?.transaction_item?.strName ?? "").toUpperCase();
     const desc = brandModel || itemName || "—";
+    // The transaction code this row's option came from. A PO can group
+    // options from SEVERAL transactions, so every row carries its own —
+    // it no longer rides in the page subtitle.
+    const transactionCode = (
+      p?.transaction_item?.transaction?.strCode ?? ""
+    ).toUpperCase();
     // The item name rides BELOW the brand · model line as the cell's
     // small italic subline — but only while brand · model is actually
-    // leading, since the fallback already shows the name itself.
-    const subName = brandModel && itemName ? itemName : "";
+    // leading, since the fallback already shows the name itself. The
+    // transaction code joins the same subline so it lands in every row.
+    let subName = brandModel && itemName ? itemName : "";
+    if (transactionCode) {
+      subName = subName ? `${subName} · ${transactionCode}` : transactionCode;
+    }
 
     return {
       no: idx + 1,
       desc,
       subName,
+      transactionCode,
       uom: (p.strUOM ?? "").toUpperCase(),
       qty,
       unitPrice,
@@ -147,8 +163,21 @@ export default function usePreviewPO() {
         return String(code);
     }
   })();
+  // The PDF export's file name: SupplierNickname-POCODE (filesystem-
+  // unsafe characters stripped, since the PO no. can contain slashes).
+  const poCode = String(po?.strPurchaseOrderNo ?? "PO");
+  const pdfFileName = `${supplierNickname}-${poCode}`.replace(
+    /[\\/:*?"<>|]/g,
+    "",
+  );
   return {
     poNo: po?.strPurchaseOrderNo ?? "—",
+
+    // Save-as-PDF file name: SupplierNickname-POCODE
+    pdfFileName,
+
+    // The page subtitle: "POCODE - SupplierNickname"
+    supplierNickname,
     date: new Date().toLocaleDateString("en-PH", {
       year: "numeric",
       month: "short",

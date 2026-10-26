@@ -1,7 +1,16 @@
 <?php
 
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => [
+        'api/*',
+        'sanctum/csrf-cookie',
+        // Static image files (logos, profile pictures) are fetched by the
+        // frontend's html-to-image PDF export to inline them into the
+        // canvas — those fetches need CORS headers too.
+        'logo/*',
+        'profile/*',
+        'images/*',
+    ],
     'allowed_methods' => ['*'],
     // 'allowed_origins' => [
     //     'http://localhost:5173',

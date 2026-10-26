@@ -868,6 +868,7 @@ function POFooterTable({
 }
 
 export default function PreviewPOView({
+  supplierNickname = "",
   companyName = DEFAULTS.companyName,
   companyAddress = DEFAULTS.companyAddress,
   companyEmail = DEFAULTS.companyEmail,
@@ -888,6 +889,7 @@ export default function PreviewPOView({
   subtotal: subtotalProp,
   total: totalProp,
   payable: payableProp,
+  pdfFileName = "document",
   preparedBy = DEFAULTS.preparedBy,
   preparedByRole = DEFAULTS.preparedByRole,
   checkedBy = DEFAULTS.checkedBy,
@@ -906,12 +908,17 @@ export default function PreviewPOView({
   return (
     <PageLayout
       title="PO Preview"
-      subtitle="Quick overview"
+      // "POCODE - SupplierNickname" — same pair as the PDF file name.
+      // The transaction/company codes live in the item rows themselves.
+      subtitle={
+        [poNo, supplierNickname].filter(Boolean).join(" - ") || "PO Preview"
+      }
       upDownIndicator={false}
     >
       <PrintAreaStructure
         onExport={() => console.log("wire up export")}
         onDisableDatesChange={setDatesDisabled}
+        pdfFileName={pdfFileName}
         header={
           <POHeaderTable
             companyName={companyName}

@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\Finance\JevEntriesController;
 use App\Http\Controllers\Api\Finance\JournalAccountController;
 use App\Http\Controllers\Api\Masters\MappingController;
 use App\Http\Controllers\Api\Masters\PricingSetController;
+use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\Purchasing\PurchaseOptionsController;
 use App\Http\Controllers\Api\Purchasing\PurchaseOrderController;
 use App\Http\Controllers\Api\Purchasing\PurchaseOrderOptionsController;
@@ -53,6 +54,15 @@ Route::prefix('auth')->group(function () {
     Route::post('reset-password', [AuthController::class, 'resetPassword']);
     Route::post('send-otp', [AuthController::class, 'sendOtp']);
     Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
+});
+
+// Static media (company logos, profile pictures) served through the API
+// so they always carry the api/* CORS headers — direct requests to
+// /logo/... are answered by the web server before Laravel runs and end
+// up without them, which broke the PDF export's image inlining.
+Route::prefix('media')->group(function () {
+    Route::get('logo/{filename}', [MediaController::class, 'logo']);
+    Route::get('profile/{filename}', [MediaController::class, 'profile']);
 });
 
 Route::prefix('users')->group(function () {
