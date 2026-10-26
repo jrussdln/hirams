@@ -119,6 +119,10 @@ export function EditableCell({
   placeholder = "",
   initialValue = "",
   formatDisplay,
+  // Optional quiet second line under the value — small, italicized and
+  // lighter, e.g. the item name under a brand · model description. Left
+  // empty it costs nothing.
+  subline = "",
 }) {
   const {
     editingEnabled,
@@ -174,9 +178,27 @@ export function EditableCell({
             display: "block",
             width: "100%",
             textAlign: hasValue ? align : "center",
+            // Tight leading so a multi-line cell (value + subline) hugs.
+            lineHeight: 1.2,
           }}
         >
           {displayText}
+          {subline && (
+            <span
+              style={{
+                display: "block",
+                fontSize: "0.55rem",
+                fontStyle: "italic",
+                fontWeight: 400,
+                opacity: 0.8,
+                marginTop: 0,
+                letterSpacing: "0.01em",
+                lineHeight: 1.15,
+              }}
+            >
+              {subline}
+            </span>
+          )}
           {editingEnabled && (
             <EditAffordance
               IconComponent={IconComponent}

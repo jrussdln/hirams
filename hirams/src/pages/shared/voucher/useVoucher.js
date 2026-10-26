@@ -149,9 +149,14 @@ export default function useVoucher() {
     };
     window.addEventListener("voucher_data_updated", onUpdated);
     window.addEventListener("voucher_data_deleted", onDeleted);
+    // A purchase-option change lands from the other screens too — an APPROVED
+    // price change (Transactions' price-change modal) re-prices the lines the
+    // voucher list totals, so the snapshot cannot keep the old price.
+    window.addEventListener("purchase_option_data_updated", onUpdated);
     return () => {
       window.removeEventListener("voucher_data_updated", onUpdated);
       window.removeEventListener("voucher_data_deleted", onDeleted);
+      window.removeEventListener("purchase_option_data_updated", onUpdated);
     };
   }, []);
 

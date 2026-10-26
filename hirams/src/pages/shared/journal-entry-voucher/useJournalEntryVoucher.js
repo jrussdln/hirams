@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import JevAPI from "../../../api/endpoints/jev.api.js";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 import { fmtPHP } from "../../../utils/formatters/formatter.js";
-import { fmtDate, fmtDateTime } from "../../../utils/helpers/timeZone.js";
+import { fmtDateTime } from "../../../utils/helpers/timeZone.js";
 import { getItem, setItem } from "../../../utils/storage/localStorage.js";
+import { withSpinner } from "../../../utils/helpers/swal.jsx";
 
 // The sidebar owns the picked JEV type: JevNav writes it here and announces
 // every change with a "jev_type_changed" event — the same contract the
 // Voucher / Client sections use for their status codes.
 const SESSION_KEY = "selectedJevTypeCode";
 
-// "No Type" — the one JEV type this page can CREATE: JevListView shows
-// its Add JEV button (and the per-row pencil) on that list alone, and
-// JevAEModal always writes this code. Mirrors jev_types in
+// "No Type" — the one JEV type this page can CREATE: the view shows its
+// Add JEV button on that list alone, and Add writes this code before
+// landing the new journal on /jev-update. Mirrors jev_types in
 // apiHirams/config/mappings.php; JevNav picks the entry up from the same
 // mapping, so the sidebar sub-item and this list always agree.
 export const NO_TYPE_CODE = "N";
@@ -21,16 +22,12 @@ export const NO_TYPE_CODE = "N";
 // Listing of the JEVs of ONE type — the type is chosen in the sidebar's
 // "Journal Entry Voucher" section, not by a filter on the page.
 //
-// Each row opens the JEV in the shared viewer modal
-// (JevEntriesViewModal), where its entries can be managed, and carries a
+// Each row opens the journal on its own page (/jev-update?id=…) and carries a
 // Delete — the JEV itself may be removed ONLY while it is Pending or
-// Cancelled; an Active one shows nothing (JevListView withholds the
-// button, this hook re-checks it too so a stale row can't slip past).
-//
-// The ONLY JEVs this page creates are No Type ones: NO_TYPE_CODE below
-// gates the Add JEV button and the per-row Edit, both of which open
-// JevAEModal (date only — see its header).
-export default function useJevList() {
+// Cancelled; an Active one shows nothing (the view withholds the button,
+// this hook re-checks it too so a stale row can't slip past).
+export default function useJournalEntryVoucher() {
+  const navigate = useNavigate();
   const {
     jev_types,
     jev_status,
@@ -53,13 +50,10 @@ export default function useJevList() {
   // "all" or a raw jev_status code (A / C / P) — page-local, unlike the type,
   // which the sidebar owns.
   const [statusFilter, setStatusFilter] = useState("all");
-  const [jevModal, setJevModal] = useState(null);
-  const [jevModalOpen, setJevModalOpen] = useState(false);
-  const [jevCreateMode, setJevCreateMode] = useState(false);
-  // ── Delete ────────────────────────────────────────────────────────────
-  // JevListView only offers the button for a Pending / Cancelled row;
-  // the guard repeats here because the list re-renders off a payload
-  // fetched once (the status could have moved to Active since).
+  // ── Delete ───────────────────────────────────────────────────────────
+  // The view only offers the button for a Pending / Cancelled row; the
+  // guard repeats here because the list re-renders off a payload fetched
+  // once (the status could have moved to Active since).
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [entityToDelete, setEntityToDelete] = useState(null);
 
@@ -76,12 +70,6 @@ export default function useJevList() {
   // Same contract as inventory's / settings': the button only opens the
   // dialog, handleConfirmAction runs the action it was opened for.
   const [confirmAction, setConfirmAction] = useState(null);
-
-  // ── Add / Edit ────────────────────────────────────────────────────────
-  // `jevAETarget` is the JEV being edited — null while adding, which is
-  // what tells JevAEModal to show the date alone.
-  const [jevAEModalOpen, setJevAEModalOpen] = useState(false);
-  const [jevAETarget, setJevAETarget] = useState(null);
 
   const typeCodes = useMemo(() => Object.keys(jev_types || {}), [jev_types]);
   const firstCode = typeCodes[0] ?? "";
@@ -215,15 +203,19 @@ export default function useJevList() {
           // Empty string (not "—") so the table can detect a missing
           // number and render the NO_JEV_NO fallback.
           strJEVNumber: j.strJEVNumber ?? "",
-          // Only a No Type JEV owns a strTitle; the API also derives one for
-          // Received (supplier nickname) and Delivered (client) rows.
-          strTitle: j.strDisplayTitle ?? "",
+          // The journal's OWN title — every link type carries one now. The
+          // API additionally derives a name per type (strDisplayTitle: the
+          // supplier for Received, the client for Delivered, the voucher's
+          // assignee / supplier for DV and Collection); the view prints it
+          // as the secondary line under the title.
+          strTitle: j.strTitle ?? "",
+          strPayee: j.strDisplayTitle ?? "",
           total,
           totalLabel: fmtPHP(total),
           statusLabel: jev_status?.[j.cStatus] ?? j.cStatus ?? "—",
           cStatus: j.cStatus ?? "",
-          // The Actions column keys Edit off this: only a No Type row is
-          // ever edited in place (see openEditJev).
+          // A No Type row is the only kind this page can create — the gate
+          // the Add button keys off.
           cJEVLinkType: j.cJEVLinkType ?? "",
           dtOccur: fmtDateTime(j.dtOccur),
           // Whether this row may be deleted, and why not when it may not.
@@ -237,37 +229,22 @@ export default function useJevList() {
     [filteredJevs, jev_status],
   );
 
-  // ── Viewer ───────────────────────────────────────────────────────────
-  const openJevModal = useCallback((row) => {
-    const j = row?._raw ?? row;
-    if (!j?.nJEVId) return;
-    // Rebuilt WITHOUT `entries` → JevViewPanel fetches them fresh with
-    // their journal_account data (same trick AccountReportPanel uses).
-    setJevModal({
-      nJEVId: j.nJEVId,
-      strJEVNumber: j.strJEVNumber ?? "",
-      // Only a No Type JEV carries one, but the viewer rebuilds its JEV
-      // without `entries` — drop this too and the title never renders.
-      strTitle: j.strTitle ?? "",
-      dtOccur: j.dtOccur ?? "",
-      cStatus: j.cStatus ?? "",
-      cJEVLinkType: j.cJEVLinkType ?? "",
-    });
-    setJevCreateMode(false);
-    setJevModalOpen(true);
-  }, []);
+  // ── Viewer — every open lands on the journal's own page ──────────────
+  // The list's View (and the shared openJevModal entry point) open
+  // /jev-update?id=… — the full-page updater — not the viewer modal.
+  const openJevModal = useCallback(
+    (row) => {
+      const j = row?._raw ?? row;
+      if (!j?.nJEVId) return;
+      navigate(`/jev-update?id=${j.nJEVId}`);
+    },
+    [navigate],
+  );
 
-  const closeJevModal = useCallback(() => {
-    setJevModalOpen(false);
-    setJevCreateMode(false);
-  }, []);
-
-  // ── Deep link — /jev?id=… opens that very journal ───────────────────
-  // The JEV number printed by the panel header (JevViewPanel) links here,
-  // so the list has to answer the id: it opens that JEV in the viewer and
-  // moves the sidebar (and the list with it) to the type it belongs to —
-  // this page shows one type at a time, and the journal may well be of
-  // another.
+  // ── Deep link — /journal-entry-voucher?id=… opens that very journal ──
+  // The JEV number printed by the panel header (JevViewPanel) links
+  // here, so the list answers the id: it hands the journal straight to
+  // its own page.
   const [searchParams] = useSearchParams();
   const deepLinkId = searchParams.get("id");
   // The id already handled — one opening per id, so a refetch (or the
@@ -277,20 +254,10 @@ export default function useJevList() {
   useEffect(() => {
     const id = String(deepLinkId ?? "");
     if (!id || deepLinkOpenedRef.current === id) return;
-    // The list may still be loading — the journal is opened once it is
-    // there.
-    const j = jevs.find((x) => String(x.nJEVId) === id);
-    if (!j) return;
     deepLinkOpenedRef.current = id;
-    if (j.cJEVLinkType && String(j.cJEVLinkType) !== String(selectedTypeCode)) {
-      window.dispatchEvent(
-        new CustomEvent("jev_type_changed", {
-          detail: { code: String(j.cJEVLinkType) },
-        }),
-      );
-    }
-    openJevModal(j);
-  }, [deepLinkId, jevs, selectedTypeCode, openJevModal]);
+    navigate(`/jev-update?id=${id}`);
+  }, [deepLinkId, navigate]);
+
   const handleDeleteClick = useCallback(
     (row) => {
       const j = row?._raw ?? row;
@@ -302,12 +269,10 @@ export default function useJevList() {
       // is refused there, and the row's disabled button already says so.
       if (j.bDeletable === false) return;
 
-      // ADD this line:
       const num = String(j.strJEVNumber ?? "").trim();
 
       setEntityToDelete({
         type: "jev",
-        // CHANGE this line:
         data: { id: j.nJEVId, name: num || `JEV ${j.nJEVId}` },
       });
       setOpenDeleteModal(true);
@@ -319,69 +284,85 @@ export default function useJevList() {
     setOpenDeleteModal(false);
     setEntityToDelete(null);
   }, []);
-  // The viewer created the JEV: swap it from create mode to the normal
-  // view of the new record, and refresh the list / sidebar badge.
-  const handleJevCreated = useCallback((j) => {
-    if (!j?.nJEVId) {
-      setJevModalOpen(false);
-      setJevCreateMode(false);
-    } else {
-      setJevModal({
-        nJEVId: j.nJEVId,
-        strJEVNumber: j.strJEVNumber ?? "",
-        strTitle: j.strTitle ?? "",
-        dtOccur: j.dtOccur ?? "",
-        cStatus: j.cStatus ?? "P",
-        cJEVLinkType: j.cJEVLinkType ?? NO_TYPE_CODE,
-      });
-      setJevCreateMode(false);
-    }
-    window.dispatchEvent(new CustomEvent("jev_data_updated"));
-  }, []);
+
+  // ── Add JEV — confirm, then NAME it before it exists ──────────────────
+  // Confirming "Create JEV?" opens JEVAEModal — the Title / Date card in a
+  // modal, Title already focused. Save is what actually creates the record
+  // (today's date prefilled, like the old direct create), then the journal
+  // opens on /jev-update?id=….
+  const [createJevOpen, setCreateJevOpen] = useState(false);
+  const [createTitle, setCreateTitle] = useState("");
+  const [createDate, setCreateDate] = useState("");
+  const [createTitleError, setCreateTitleError] = useState("");
+  const [createDateError, setCreateDateError] = useState("");
+  // The modal focuses the Title field through this ref on open.
+  const createTitleRef = useRef(null);
+
   const openAddJev = useCallback(() => {
-    setJevModal(null); // no JEV yet
-    setJevCreateMode(true); // viewer opens in create mode
-    setJevModalOpen(true);
+    const pad = (n) => String(n).padStart(2, "0");
+    const d = new Date();
+    // Local today — never toISOString(), which can already be tomorrow.
+    const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+      d.getDate(),
+    )}`;
+    // A fresh card every open — no leftovers from a discarded edit.
+    setCreateDate(today);
+    setCreateTitle("");
+    setCreateTitleError("");
+    setCreateDateError("");
+    setCreateJevOpen(true);
   }, []);
+
+  const handleCloseCreateJev = useCallback(() => {
+    setCreateJevOpen(false);
+  }, []);
+
+  // Save on the naming modal. The create runs under the global
+  // withSpinner overlay (no loading inside the modal): the modal closes
+  // first, the spinner covers the request, and the JEV opens on
+  // /jev-update?id=… inside it — with the usual SUCCESS / ERROR Swal.
+  const handleCreateJev = useCallback(async () => {
+    const title = String(createTitle ?? "").trim();
+    const date = String(createDate ?? "").trim();
+
+    const titleMsg = !title ? "Title is required." : "";
+    const dateMsg = !date ? "Date is required." : "";
+    setCreateTitleError(titleMsg);
+    setCreateDateError(dateMsg);
+    if (titleMsg || dateMsg) return;
+
+    setCreateJevOpen(false);
+    try {
+      await withSpinner("JEV", async () => {
+        const res = await JevAPI.create({
+          cJEVLinkType: NO_TYPE_CODE,
+          strTitle: title,
+          dtOccur: `${date} 00:00:00`,
+        });
+        const created = res?.nJEVId
+          ? res
+          : res?.data?.nJEVId
+            ? res.data
+            : (res?.jev ?? null);
+        window.dispatchEvent(new CustomEvent("jev_data_updated"));
+        if (created?.nJEVId) navigate(`/jev-update?id=${created.nJEVId}`);
+      });
+    } catch (err) {
+      console.error("Failed to create the JEV:", err);
+      // No Swal — the naming modal comes back with the failure message in
+      // the Title field, so the values stay and the save can be retried.
+      setCreateTitleError("Failed to create. Please try again.");
+      setCreateJevOpen(true);
+    }
+  }, [createTitle, createDate, navigate]);
 
   // The "Add JEV" button only opens the dialog; this is what actually
   // creates it (same contract as inventory's handleConfirmAction).
-  const handleConfirmAction = useCallback(async () => {
+  const handleConfirmAction = useCallback(() => {
     const action = confirmAction;
     setConfirmAction(null);
     if (action === "create_jev") openAddJev();
   }, [confirmAction, openAddJev]);
-
-  // The viewer's JEV Info row saved. Keep the record the modal was built
-  // from in step so its own header line (type · title · date) can't go
-  // stale — the list refetches itself off jev_data_updated, but `jevModal`
-  // is this hook's state and would otherwise keep the old values.
-  const handleJevInfoSaved = useCallback((patch) => {
-    if (!patch) return;
-    setJevModal((prev) => (prev ? { ...prev, ...patch } : prev));
-  }, []);
-
-  const openEditJev = useCallback((row) => {
-    const j = row?._raw ?? row;
-    if (!j?.nJEVId) return;
-    // Type gate REMOVED: Edit is now available for ANY JEV type.
-    // Status gate also removed: Active JEVs are now editable too.
-    // (Previously this returned early for Active rows, but the user requested
-    // that Active JEVs should also be editable.)
-
-    setJevAETarget(j);
-    setJevAEModalOpen(true);
-  }, []);
-
-  const closeJevAEModal = useCallback(() => setJevAEModalOpen(false), []);
-
-  // The server's JevUpdated broadcast goes toOthers(), so this tab has to
-  // tell ITSELF the row changed: the same window event RealtimeProvider
-  // raises for every other tab — the listener above refetches the list
-  // silently and JevNav recounts its badge.
-  const handleJevAESaved = useCallback(() => {
-    window.dispatchEvent(new CustomEvent("jev_data_updated"));
-  }, []);
 
   // The row is already gone server-side: drop it locally so the table
   // doesn't flicker, then tell the sidebar its per-type badge is stale.
@@ -391,22 +372,8 @@ export default function useJevList() {
     window.dispatchEvent(new CustomEvent("jev_data_deleted"));
   }, [entityToDelete]);
 
-  // "Voucher · Petty Cash · Sep 15, 2026" — the type label from the mapping
-  // with "Disbursement" dropped, the title a No Type JEV names itself with
-  // (no voucher stands behind one), then the day the JEV occurred. Other
-  // types keep their full label ("Received Purchases", "Delivered Items",
-  // "Collection").
-  const jevSubTitle = useMemo(() => {
-    if (!jevModal) return "";
-    const typeLabel = (jev_types?.[jevModal.cJEVLinkType] ?? "").replace(
-      /^Disbursement\s+/i,
-      "",
-    );
-    const day = jevModal.dtOccur ? fmtDate(jevModal.dtOccur) : "";
-    const title =
-      jevModal.cJEVLinkType === NO_TYPE_CODE ? jevModal.strTitle : "";
-    return [typeLabel, title, day].filter(Boolean).join(" · ");
-  }, [jevModal, jev_types]);
+  // "Voucher · Petty Cash · Sep 15, 2026" — removed with the viewer modal;
+  // /jev-update titles itself.
 
   const handlePageChange = useCallback((_, p) => setPage(p), []);
 
@@ -415,9 +382,17 @@ export default function useJevList() {
     setPage(0);
   }, []);
 
+  // ── Row click / View ────────────────────────────────────────────────
+  // Opens the journal on its own page (/jev-update?id=…), not the viewer
+  // modal — the full-page updater is this page's View. The deep link
+  // below keeps going through the viewer modal (see openJevModal).
   const handleRowClick = useCallback(
-    (row) => openJevModal(row),
-    [openJevModal],
+    (row) => {
+      const j = row?._raw ?? row;
+      if (!j?.nJEVId) return;
+      navigate(`/jev-update?id=${j.nJEVId}`);
+    },
+    [navigate],
   );
 
   const handleStatusFilterChange = useCallback((e) => {
@@ -449,10 +424,18 @@ export default function useJevList() {
     handleRowsPerPageChange,
     handleRowClick,
     openJevModal,
-    closeJevModal,
-    jevModal,
-    jevModalOpen,
-    jevSubTitle,
+    // Add JEV — the naming modal opened by the confirmation dialog
+    createJevOpen,
+    createTitle,
+    createDate,
+    setCreateTitle,
+    setCreateDate,
+    createTitleError,
+    createDateError,
+    createTitleRef,
+    openAddJev,
+    handleCreateJev,
+    handleCloseCreateJev,
     // Delete — pending / cancelled JEVs only (see handleDeleteClick)
     openDeleteModal,
     entityToDelete,
@@ -464,16 +447,6 @@ export default function useJevList() {
     setStatusTarget,
     statusAnchorEl,
     setStatusAnchorEl,
-    // Add / Edit — No Type JEVs only (see NO_TYPE_CODE)
-    jevAEModalOpen,
-    jevAETarget,
-    openAddJev,
-    openEditJev,
-    closeJevAEModal,
-    handleJevAESaved,
-    jevCreateMode,
-    handleJevCreated,
-    handleJevInfoSaved,
     // Confirmation - create_jev (see handleConfirmAction)
     confirmAction,
     setConfirmAction,

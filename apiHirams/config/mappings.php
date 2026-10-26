@@ -43,11 +43,13 @@ return [
     //   Q = Qty x UnitPrice
     //   A => Q x 0%              → 0.00 (no withholding on this line)
     //   B => Q x 1%              → gross x 1%
-    //   C => (Q / 1.12) x 1%     → net-of-VAT x 1%
+    //   C => Q x 2%              → gross x 2%
+    //   D => (Q / 1.12) x 1%     → net-of-VAT x 1%
     'ewt_bypass_type' => [
         'A' => '0% of Q',
         'B' => '1% of Q',
-        'C' => '1% of Q / 1.12 (VAT net)',
+        'C' => '2% of Q',
+        'D' => '1% of Q / 1.12 (VAT net)',
     ],
     'proc_source' => [
         'P' => 'PhilGEPS',

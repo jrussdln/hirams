@@ -225,7 +225,7 @@ export const SECTIONS = [
       },
       {
         title: "Journal Entry Vouchers",
-        to: "/jev",
+        to: "/journal-entry-voucher",
         text: "Review and finalize JEVs.",
       },
       {

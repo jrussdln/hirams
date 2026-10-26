@@ -53,7 +53,8 @@ const TransactionForCollection = lazyPage("/transaction-for-collection"); //DONE
 const TransactionVoucher = lazyPage("/voucher"); //DONE - NV
 const VoucherUpdateView = lazyPage("/voucher-update");
 const JournalAccount = lazyPage("/journal-account"); //DONE - NV
-const JournalEntryVoucher = lazyPage("/jev");
+const JournalEntryVoucher = lazyPage("/journal-entry-voucher");
+const JEVUpdate = lazyPage("/jev-update");
 const ItemPurchasingView = lazyPage("/item-purchasing"); //DONE - NV
 const ItemPurchasingUpdateView = lazyPage("/item-purchasing-update"); //DONE - NV
 const PreviewPO = lazyPage("/preview-po");
@@ -252,7 +253,8 @@ export default function AppRoute() {
                       { path: "/assignee", element: <Assignee /> },
                       { path: "/inventory", element: <Inventory /> },
                       { path: "/journal-account", element: <JournalAccount /> },
-                      { path: "/jev", element: <JournalEntryVoucher /> },
+                      { path: "/journal-entry-voucher", element: <JournalEntryVoucher /> },
+                      { path: "/jev-update", element: <JEVUpdate /> },
                       {
                         path: "/voucher-update",
                         element: <VoucherUpdateView />,

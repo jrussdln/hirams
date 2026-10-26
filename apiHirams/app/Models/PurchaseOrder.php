@@ -36,4 +36,14 @@ class PurchaseOrder extends Model
         return $this->hasMany(PurchaseOrderOption::class, 'nPurchaseOrderId', 'nPurchaseOrderId');
     }
 
+    /**
+     * The supplier-type vouchers this PO was charged to. A PO that has
+     * been paid out carries a DV — the bridge rows in tblvoucher_suppliers
+     * are what say which voucher(s) it went through.
+     */
+    public function voucherSuppliers()
+    {
+        return $this->hasMany(VoucherSupplier::class, 'nPurchaseOrderId', 'nPurchaseOrderId');
+    }
+
 }

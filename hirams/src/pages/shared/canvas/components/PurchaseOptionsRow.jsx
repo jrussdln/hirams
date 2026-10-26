@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useTheme } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
-import { Box, Paper, Typography, Checkbox, Tooltip } from "@mui/material";
+import { Box, Paper, Typography, Checkbox, Tooltip, IconButton } from "@mui/material";
 import {
   Edit,
   Delete,
@@ -11,10 +11,12 @@ import {
   RemoveShoppingCart,
   ShoppingCart,
   Visibility,
+  SyncOutlined,
 } from "@mui/icons-material";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import BaseButton from "../../../../components/ui/form/BaseButton";
 import PurchaseOrderAPI from "../../../../api/endpoints/purchase-order.api.js";
+import PurchaseOptionAPI from "../../../../api/endpoints/purchase-option.api.js";
 import PurchaseCartUpdateModal from "../../item-purchasing/modal/PurchaseCartUpdateModal.jsx";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import {
@@ -747,7 +749,8 @@ const PurchaseOptionRow = ({
   const ewtTypeLabels = {
     A: "0% of Q",
     B: "1% of Q",
-    C: "1% of Q / 1.12 (VAT net)",
+    C: "2% of Q",
+    D: "1% of Q / 1.12 (VAT net)",
     ...(ewtTypeLabelsProp || {}),
   };
   const ewtType = String(option.cEWTType || "");
@@ -811,6 +814,35 @@ const PurchaseOptionRow = ({
       console.error("Failed to remove from cart:", err);
     } finally {
       setRemoving(false);
+    }
+  };
+
+  // ── SYNC — adopt the pending (renegotiated) price straight from the row.
+  // The owner sees the PENDING tag on the unit price and can take the
+  // proposal as-is: the backend writes the pending value into dUnitPrice,
+  // detects the adoption and clears the pending fields + stamps dtCanvass.
+  const [syncingUnitPrice, setSyncingUnitPrice] = useState(false);
+  const [adoptedSync, setAdoptedSync] = useState(null);
+
+  const handleSyncUnitPrice = async () => {
+    if (!hasPendingPrice || syncingUnitPrice) return;
+    setSyncingUnitPrice(true);
+    try {
+      const res = await PurchaseOptionAPI.syncPriceChange(
+        option.nPurchaseItemId,
+      );
+      const adopted = res?.data?.item;
+      if (adopted) {
+        setAdoptedSync({
+          nPurchaseItemId: option.nPurchaseItemId,
+          dUnitPrice: adopted.dUnitPrice ?? adopted.dPurchaseUnitPrice,
+          dtCanvass: adopted.dtCanvass,
+        });
+      }
+    } catch (err) {
+      console.error("PurchaseOptionRow: sync failed:", err);
+    } finally {
+      setSyncingUnitPrice(false);
     }
   };
 
@@ -1101,7 +1133,9 @@ const PurchaseOptionRow = ({
 
               A PENDING purchase price takes the lead every other second:
               the request is called out, and the price that actually
-              counts stays on screen the rest of the time. */}
+              counts stays on screen the rest of the time. While it is
+              pending the owner can also SYNC — take the proposed price as
+              their own straight from the row. */}
           <Box
             sx={{
               flex: isPurchase ? 2 : 1.5,
@@ -1114,7 +1148,8 @@ const PurchaseOptionRow = ({
               minWidth: 0,
             }}
           >
-            {hasPendingPrice ? (
+            {hasPendingPrice &&
+              adoptedSync?.nPurchaseItemId !== option.nPurchaseItemId ? (
               // A small tag ABOVE the price — always there. The REQUESTED
               // price is in its tooltip: the price on the row never moves.
               <Tooltip
@@ -1136,9 +1171,44 @@ const PurchaseOptionRow = ({
                 </Typography>
               </Tooltip>
             ) : null}
-            <Typography sx={{ fontSize: "0.7rem", lineHeight: 1.15 }}>
-              ₱ {fmtPHP(option.dUnitPrice)}
-            </Typography>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: 0.25,
+                minWidth: 0,
+              }}
+            >
+              <Typography sx={{ fontSize: "0.7rem", lineHeight: 1.15 }}>
+                ₱ {fmtPHP(
+                  adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
+                    ? adoptedSync.dUnitPrice
+                    : option.dUnitPrice,
+                )}
+              </Typography>
+              {hasPendingPrice &&
+                adoptedSync?.nPurchaseItemId !== option.nPurchaseItemId && (
+                <Tooltip
+                  title="Sync — adopt this pending price. The backend clears the proposal and stamps the canvass date."
+                >
+                  <IconButton
+                    size="small"
+                    onClick={handleSyncUnitPrice}
+                    disabled={syncingUnitPrice}
+                    aria-label="Sync pending price"
+                    sx={{
+                      width: 20,
+                      height: 20,
+                      color: colors.pendingText,
+                      "&:hover": { backgroundColor: colors.rowHoverBg },
+                    }}
+                  >
+                    <SyncOutlined fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Box>
             <Typography
               sx={{
                 fontSize: "0.58rem",
@@ -1146,7 +1216,11 @@ const PurchaseOptionRow = ({
                 color: colors.textSecondary,
               }}
             >
-              {option.dtCanvass ? fmtDate(option.dtCanvass) : "—"}
+              {adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
+                ? fmtDate(adoptedSync.dtCanvass)
+                : option.dtCanvass
+                  ? fmtDate(option.dtCanvass)
+                  : "—"}
             </Typography>
           </Box>
 
@@ -1156,7 +1230,12 @@ const PurchaseOptionRow = ({
                   the request and the price that counts switch together,
                   so the row never shows a unit price that does not add
                   up. */}
-              ₱ {fmtPHP(option.nQuantity * option.dUnitPrice)}
+              ₱ {fmtPHP(
+                option.nQuantity *
+                  (adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
+                    ? adoptedSync.dUnitPrice
+                    : option.dUnitPrice),
+              )}
             </Typography>
           </Box>
 
@@ -1174,7 +1253,15 @@ const PurchaseOptionRow = ({
             }}
           >
             <Typography sx={{ fontSize: "0.7rem", lineHeight: 1.15 }}>
-              ₱ {fmtPHP(ewtOfOption(option))}
+              ₱ {fmtPHP(
+                ewtOfOption({
+                  ...option,
+                  dUnitPrice:
+                    adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
+                      ? adoptedSync.dUnitPrice
+                      : option.dUnitPrice,
+                }),
+              )}
             </Typography>
             {ewtTypeLabel && (
               <Typography

@@ -8,7 +8,9 @@ import {
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer.jsx";
 import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
 import AccountChainSelect from "../components/AccountChainSelect.jsx";
-import { AmountPickContext } from "../components/AmountPickContext.js";
+import {
+  AmountPickContext,
+} from "../../../../components/ui/form/AmountPick.jsx";
 import POListPanel from "../../voucher/components/POListPanel.jsx";
 import AssigneeListPanel from "../../voucher/components/AssigneeListPanel.jsx";
 import useKeysLabels from "../../../../hooks/useKeysLabels.js";
@@ -109,7 +111,16 @@ function SupplierCompanyBreadcrumb({
   );
 }
 
-export default function JevEntryAEModal({
+/**
+ * The JEV entry form — Add Entry / Edit Entry, one journal-account line.
+ *
+ * Opening contexts (every one hands in its own context):
+ *   • JEV entry CRUD — the caller supplies supplierLinks/supplierInfo
+ *     (V / C JEVs), itemsPanel (R / D JEVs), logsPanel or assigneeLinks.
+ *   • Other JEV (N) — no voucher stands behind it, so no particulars
+ *     list is rendered above the fields.
+ */
+export default function JEVEntryAEModal({
   open,
   onClose,
   side,
@@ -343,10 +354,14 @@ export default function JevEntryAEModal({
               voucher={{ strNumber: voucherNumber }}
               companyName={companyName}
             />
-          ) : (
+          ) : supplierLinks.length > 0 ? (
             /* The same particulars the voucher page shows — the supplier's
                name, address and TIN travel with the links, so the list is
-               not a bare list of PO numbers here. */
+               not a bare list of PO numbers here.
+
+               An Other JEV (N) has NO voucher behind it, so it gets
+               nothing here — an empty "No purchase orders linked."
+               panel would only confuse. */
             <POListPanel
               supplierLinks={supplierLinks}
               isJEVPage
@@ -362,7 +377,7 @@ export default function JevEntryAEModal({
               supplierAddress={supplierInfo?.strAddress ?? ""}
               supplierTIN={supplierInfo?.strTIN ?? ""}
             />
-          )}
+          ) : null}
           <Box ref={formRef}>
             <FormGrid
               fields={formFields}

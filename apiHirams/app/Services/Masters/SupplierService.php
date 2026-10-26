@@ -4,11 +4,14 @@ namespace App\Services\Masters;
 
 use App\Events\OptionUpdated;
 use App\Events\SupplierUpdated;
+use App\Events\VoucherUpdated;
 use App\Models\PurchaseOptions;
 use App\Models\Supplier;
+use App\Models\Voucher;
 use App\Services\CrudService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection as SupportCollection;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -80,7 +83,15 @@ class SupplierService extends CrudService
      */
     public function purchaseOptions(int $supplierId): SupportCollection
     {
-        return PurchaseOptions::with(['transactionItem.transaction'])
+        // latestHistory feeds the status chip; the voucherSuppliers bridge
+        // rows find the DV the option's PO was charged to — newest one
+        // wins, so the constraint on the query orders it there.
+        return PurchaseOptions::with([
+            'transactionItem.transaction.latestHistory',
+            'purchaseOrderOption.purchaseOrder.voucherSuppliers'
+                => fn ($q) => $q->orderByDesc('nVoucherId'),
+            'purchaseOrderOption.purchaseOrder.voucherSuppliers.voucher',
+        ])
             ->where('nSupplierId', $supplierId)
             ->orderByDesc('dtCanvass')
             ->orderBy('nPurchaseItemId', 'desc')
@@ -95,6 +106,11 @@ class SupplierService extends CrudService
      * only move the problem. The supplier CONTACT of each option is
      * cleared on the way: it belongs to the old supplier, so it cannot
      * stay behind on a line that now names the new one.
+     *
+     * Supplier-type vouchers are carried along too: every DV whose
+     * supplier is the one being left behind is re-pointed to the new
+     * supplier, so its supplier block keeps resolving to a real,
+     * up-to-date record instead of a voucher about to be deleted.
      *
      * @param  array<int>  $optionIds  the options to move — empty means ALL
      *                                  of the supplier's options.
@@ -112,31 +128,55 @@ class SupplierService extends CrudService
             throw new RuntimeException('The destination supplier must be different from the supplier being transferred.');
         }
 
-        $query = PurchaseOptions::where('nSupplierId', $supplierId);
+        $moved = DB::transaction(function () use ($supplierId, $targetSupplierId, $optionIds) {
+            $query = PurchaseOptions::where('nSupplierId', $supplierId);
 
-        if ($optionIds !== []) {
-            $query->whereIn('nPurchaseItemId', $optionIds);
-        }
+            if ($optionIds !== []) {
+                $query->whereIn('nPurchaseItemId', $optionIds);
+            }
 
-        $options = $query->with('transactionItem')->get();
+            $options = $query->with('transactionItem')->get();
 
-        $moved = 0;
+            $count = 0;
 
-        foreach ($options as $option) {
-            $option->update([
-                'nSupplierId'        => $targetSupplierId,
-                'nSupplierContactId' => null,
-            ]);
+            foreach ($options as $option) {
+                $option->update([
+                    'nSupplierId'        => $targetSupplierId,
+                    'nSupplierContactId' => null,
+                ]);
 
-            broadcast(new OptionUpdated(
-                'updated',
-                (int) $option->nPurchaseItemId,
-                (int) $option->nTransactionItemId,
-                (int) ($option->transactionItem?->nTransactionId ?? 0)
-            ))->toOthers();
+                broadcast(new OptionUpdated(
+                    'updated',
+                    (int) $option->nPurchaseItemId,
+                    (int) $option->nTransactionItemId,
+                    (int) ($option->transactionItem?->nTransactionId ?? 0)
+                ))->toOthers();
 
-            $moved++;
-        }
+                $count++;
+            }
+
+            // The supplier-type vouchers stamped with the old supplier
+            // follow it over — nTypeId is the supplier id when cType = 'S'.
+            $supplierType = array_search(
+                'Supplier',
+                config('mappings.voucher_type', []),
+                true,
+            );
+
+            Voucher::where('cType', $supplierType)
+                ->where('nTypeId', $supplierId)
+                ->get()
+                ->each(function (Voucher $voucher) use ($targetSupplierId) {
+                    $voucher->update(['nTypeId' => $targetSupplierId]);
+
+                    broadcast(new VoucherUpdated(
+                        'updated',
+                        (int) $voucher->nVoucherId
+                    ))->toOthers();
+                });
+
+            return $count;
+        });
 
         return $moved;
     }
@@ -161,8 +201,21 @@ class SupplierService extends CrudService
      */
     private function formatOption(PurchaseOptions $option): array
     {
-        $item       = $option->transactionItem;
+        $item        = $option->transactionItem;
         $transaction = $item?->transaction;
+        $status      = $transaction?->latestHistory?->nStatus;
+        // The DV the option's PO was charged to — through the
+        // voucher_suppliers bridge (PO → voucher). Only a voucher that
+        // actually carries a number counts: its presence is what makes
+        // the row "vouchered", and the number is the echo-line below
+        // brand · model.
+        $voucher     = $option->purchaseOrderOption
+            ?->purchaseOrder
+            ?->voucherSuppliers
+            ->map(fn ($row) => $row->voucher)
+            ->filter(fn ($v) => $v && $v->strNumber)
+            ->first();
+        $statusLabels = config('mappings.status_transaction', []);
 
         return [
             'nPurchaseItemId'    => $option->nPurchaseItemId,
@@ -182,6 +235,12 @@ class SupplierService extends CrudService
             'strItemUOM'         => $item?->strUOM,
             'strTransactionTitle' => $transaction?->strTitle,
             'strTransactionCode'  => $transaction?->strCode,
+            'status'             => $status !== null
+                ? ($statusLabels[(string) $status] ?? null)
+                : null,
+            'status_code'        => $status,
+            'strDVNumber'        => $voucher?->strNumber,
+            'voucher_status'     => $voucher?->cStatus,
         ];
     }
 }

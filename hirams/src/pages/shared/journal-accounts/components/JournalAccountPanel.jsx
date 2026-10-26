@@ -165,7 +165,7 @@ const Chip = ({ tone, colors, icon, children }) => (
 );
 
 // "1,234.00" / "-1,234.00" — negatives keep the sign; colour comes from isNeg.
-// Same formatting AccountReportPanel uses, so both views agree on the number.
+// Same formatting LedgerPanel uses, so both views agree on the number.
 const formatBalance = (net) => {
   const isNeg = net < 0;
   const value = Math.abs(net).toLocaleString(undefined, {
@@ -193,7 +193,7 @@ const AccountTreeNode = ({
   fundIds,
   balanceById,
   // Finance reads the chart — its row keeps only the read actions
-  // (Journal Entries); Add / Edit / Delete are withheld from it.
+  // (Ledger); Add / Edit / Delete are withheld from it.
   showRowActions = true,
 }) => {
   const hasChildren = node.children.length > 0;
@@ -411,7 +411,7 @@ const AccountTreeNode = ({
             </Typography>
           )}
         </Box>
-        {/* Finance's row carries only the read action (Journal Entries) —
+        {/* Finance's row carries only the read action (Ledger) —
             the maintained chart belongs to management, so Add / Edit fold
             away on that role. */}
         <Box
@@ -439,7 +439,7 @@ const AccountTreeNode = ({
             </ActionButton>
           )}
           <ActionButton
-            label="Journal Entries"
+            label="Ledger"
             color={colors.violet.text}
             hoverBg={colors.violet.bg}
             onClick={() => onViewReport(node)}
@@ -453,7 +453,7 @@ const AccountTreeNode = ({
         {/* The row's final 26px slot: 22px circle + 4px margin. It holds the
             chevron when the node has children, and DELETE when it is a leaf
             nobody depends on — a 26px button taking the SAME total width.
-            That is what keeps Add / Edit / Journal Entries on one x,
+            That is what keeps Add / Edit / Ledger on one x,
             aligned vertically down the whole tree. */}
         <Box
           aria-hidden={showDelete ? undefined : true}
@@ -605,7 +605,7 @@ const EmptyState = ({ icon, title, hint, action, colors }) => (
 /* ─── Panel ─────────────────────────────────────────────────────────── */
 // The Journal Accounts content itself — toolbar, tree, drag & drop and its
 // own modals. JournalAccountsView renders this unless an account report is
-// open, in which case it swaps in AccountReportPanel.
+// open, in which case it swaps in LedgerPanel.
 export default function JournalAccountPanel({
   search,
   setSearch,
@@ -627,7 +627,7 @@ export default function JournalAccountPanel({
   // JEV entry lines — an account with entries can't be deleted
   jevEntries = [],
   // JEV status key treated as "active" (cStatus) when totalling balances —
-  // kept in sync with the value AccountReportPanel receives
+  // kept in sync with the value LedgerPanel receives
   jevActiveKey = "A",
   // JEV status key meaning "Cancelled" — those lines never block Delete
   // (the API deletes them with the account)
@@ -680,7 +680,7 @@ export default function JournalAccountPanel({
     [jevEntries, jevCancelledKey],
   );
 
-  // ── Remaining balance per account (mirrors AccountReportPanel) ──────
+  // ── Remaining balance per account (mirrors LedgerPanel) ──────
   // Only entries whose JEV is still ACTIVE (jevActiveKey, i.e. cStatus
   // "A") count; each account's figure rolls up its own lines plus every
   // linked account beneath it.

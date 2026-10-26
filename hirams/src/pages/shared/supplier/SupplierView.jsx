@@ -20,7 +20,7 @@ import SupplierAEModal from "./modal/SupplierAEModal";
 import ContactModal from "./modal/ContactModal";
 import BankModal from "./modal/BankModal";
 import InfoSupplierModal from "./modal/InfoSupplierModal";
-import TransferSupplierModal from "./modal/TransferSupplierModal";
+import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import {
@@ -300,7 +300,7 @@ export default function SupplierView({
                 }}
               />
             ),
-            !isActive && isManagement && row.optionsCount > 0 && (
+            isManagement && row.optionsCount > 0 && (
               // A supplier that still carries purchase options cannot be
               // deleted — the options would be left pointing at nothing.
               // Transfer moves them to another supplier instead.
@@ -450,7 +450,7 @@ export default function SupplierView({
         entityToDelete={entityToDelete}
         onSuccess={handleDeleteSuccess}
       />
-      <TransferSupplierModal
+      <RecordConnectionModal
         open={openTransferModal}
         handleClose={handleCloseTransferModal}
         supplier={selectedSupplier}

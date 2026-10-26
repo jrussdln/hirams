@@ -12,7 +12,7 @@ export const InventoryAPI = {
     api.post("/inventory/create-jev-delivered", { nPurchaseItemId }),
   createJevForPending: (nPurchaseItemId) =>
     api.post("/inventory/create-jev", { nPurchaseItemId }),
-  getInventory: () => api.get("/inventory/get-inventory"),
+  getInventory: (config) => api.get("/inventory/get-inventory", config),
   getAll: () => api.get("/inventory"), // keep if used elsewhere
   createInventory: (payload) => api.post("inventory", payload), // ← add this
   updateInventory: (id, payload) => api.put(`inventory/${id}`, payload),

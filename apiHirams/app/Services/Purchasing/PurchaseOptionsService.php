@@ -8,6 +8,7 @@ use App\Models\PurchaseOptions;
 use App\Models\Supplier;
 use App\Models\TransactionItems;
 use App\Services\CrudService;
+use Exception;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection as SupportCollection;
 use Illuminate\Support\Facades\DB;
@@ -239,6 +240,196 @@ class PurchaseOptionsService extends CrudService
             ->where('bAddOn', 1)
             ->get()
             ->map(fn($option) => $this->formatOption($option));
+    }
+
+    // -------------------------------------------------------------------------
+    // Purchase price change requests — the PENDING purchase prices that were
+    // recorded when a FOR PURCHASE stage renegotiated an included option's
+    // price (see update()). They only count once APPROVED (status 'A').
+    // -------------------------------------------------------------------------
+
+    /**
+     * Every price change and its outcome — the rows of the price-change
+     * panel, now ALL THREE sections:
+     *   • PENDING   ('P') — waiting for approve / reject
+     *   • APPROVED  ('A') — the proposed price is the price that counts
+     *   • REJECTED  ('C') — the renegotiation was thrown out
+     * Original canvassed rows with NO price status at all never appear.
+     * The frontend splits the sections; rows arrive flat and carry the
+     * status letter.
+     *
+     * @return SupportCollection<int, array>
+     */
+    public function priceChangeRequests(): SupportCollection
+    {
+        $statuses = PurchaseOptions::purchasePriceStatus();
+
+        return $this->newQuery()
+            ->with(['supplier', 'transactionItem.transaction'])
+            // The renegotiated-price mechanic is for INCLUDED options only —
+            // locksUnitPrice() only records a pending price for them, and a
+            // request that lived on while the option left the selection would
+            // be a decision without an effect. Only included options flow.
+            ->where('bIncluded', 1)
+            ->where(function ($query) use ($statuses) {
+                $query->where('cPurchaseUnitPriceStatus', $statuses['pending']);
+                $query->orWhere(function ($inner) use ($statuses) {
+                    // An approved REQUEST is only one that carries the
+                    // approved price — every plain canvassed row is 'A'
+                    // without a purchase price and must not appear.
+                    $inner->where('cPurchaseUnitPriceStatus', $statuses['active'])
+                        ->whereNotNull('dPurchaseUnitPrice');
+                });
+                $query->orWhere('cPurchaseUnitPriceStatus', $statuses['cancelled']);
+            })
+            ->orderBy('nTransactionItemId')
+            ->orderBy('nPurchaseItemId')
+            ->get()
+            ->map(fn($option) => $this->formatPriceChangeRequest($option));
+    }
+
+    /**
+     * APPROVE a pending price change — the proposed price becomes the price
+     * that counts (the model returns dPurchaseUnitPrice while the status is
+     * 'A'), while the canvassed price stays on the record.
+     */
+    public function approvePriceChange(int $id): PurchaseOptions
+    {
+        $option = $this->newQuery()->findOrFail($id);
+
+        if ((int) ($option->bIncluded ?? 0) !== 1) {
+            // Renegotiated pricing exists for the item's selection only — an
+            // option that left the selection (or never was) has nothing to
+            // lock or to approve.
+            throw new Exception('Only an included option has a price change to approve.');
+        }
+
+        if (
+            (string) $option->cPurchaseUnitPriceStatus !==
+            PurchaseOptions::purchasePriceStatus()['pending']
+        ) {
+            throw new Exception('This option has no pending price change.');
+        }
+
+        $option->update([
+            'cPurchaseUnitPriceStatus' =>
+                PurchaseOptions::purchasePriceStatus()['active'],
+            // The approval moment is the moment the price took effect —
+            // dtCanvass moves with it exactly like a fresh canvass would.
+            'dtCanvass' => now(),
+        ]);
+
+        $this->broadcast('updated', $option);
+
+        return $option->fresh(['supplier', 'transactionItem.transaction']);
+    }
+
+    /**
+     * REJECT a pending price change — the renegotiation is thrown out (the
+     * price status moves to 'C', Cancelled) and the canvassed price stays
+     * the one that counts exactly as it was. The rejected dPurchaseUnitPrice
+     * stays ON THE RECORD on purpose — the REJECTED section of the
+     * price-change panel shows what was proposed before it was refused.
+     */
+    public function rejectPriceChange(int $id): PurchaseOptions
+    {
+        $option = $this->newQuery()->findOrFail($id);
+
+        if ((int) ($option->bIncluded ?? 0) !== 1) {
+            throw new Exception('Only an included option has a price change to reject.');
+        }
+
+        if (
+            (string) $option->cPurchaseUnitPriceStatus !==
+            PurchaseOptions::purchasePriceStatus()['pending']
+        ) {
+            throw new Exception('This option has no pending price change.');
+        }
+
+        $option->update([
+            // The proposal dies — back to the canvassed price alone. The
+            // rejected price is kept for the panel's records.
+            'cPurchaseUnitPriceStatus' =>
+                PurchaseOptions::purchasePriceStatus()['cancelled'],
+        ]);
+
+        $this->broadcast('updated', $option);
+
+        return $option->fresh(['supplier', 'transactionItem.transaction']);
+    }
+
+    /**
+     * SYNC one pending price change from the option row itself — the owner
+     * adopts the renegotiated (pending) price straight on the line: dUnitPrice
+     * is moved onto the pending value and the backend DETECTS the adoption
+     * (the value it just wrote is the pending one, so they are the same) —
+     * which closes the cycle: the pending fields (cPurchaseUnitPriceStatus +
+     * dPurchaseUnitPrice) are REMOVED and dtCanvass moves to the moment the
+     * adopted price took effect.
+     */
+    public function syncUnitPrice(int $id): PurchaseOptions
+    {
+        $option = $this->newQuery()->findOrFail($id);
+
+        if ((int) ($option->bIncluded ?? 0) !== 1) {
+            throw new Exception('Only an included option has a price change to sync.');
+        }
+
+        if (
+            (string) $option->cPurchaseUnitPriceStatus !==
+            PurchaseOptions::purchasePriceStatus()['pending']
+        ) {
+            throw new Exception('This option has no pending price change.');
+        }
+
+        $pendingPrice = (float) ($option->getRawOriginal('dPurchaseUnitPrice') ?? 0);
+
+        // Adopt the pending price — the canvassed value is replaced by the
+        // proposed one.
+        $option->update([
+            'dUnitPrice' => $pendingPrice,
+        ]);
+
+        $option->refresh();
+
+        // The backend detects that the written value came from the pending
+        // price — i.e. the update in dPurchaseUnitPrice IS the dUnitPrice —
+        // and resolves the renegotiation: drop the proposal, move on.
+        if ((float) $option->getRawOriginal('dUnitPrice') === $pendingPrice) {
+            $option->update([
+                // The proposal is resolved — removed outright.
+                'cPurchaseUnitPriceStatus' => null,
+                'dPurchaseUnitPrice'       => null,
+                // The adopted price took effect — the canvass date moves
+                // with it, exactly like an approval would.
+                'dtCanvass'                 => now(),
+            ]);
+        }
+
+        $this->broadcast('updated', $option);
+
+        return $option->fresh(['supplier', 'transactionItem.transaction']);
+    }
+
+    /**
+     * formatOption() + the transaction coordinates and the old→new price
+     * pair the panel needs. The OLD price is the RAW canvassed one — the
+     * model's dUnitPrice accessor would keep returning the proposed price
+     * once the change is approved.
+     */
+    private function formatPriceChangeRequest($option): array
+    {
+        return $this->formatOption($option) + [
+            'nTransactionId' =>
+                $option->transactionItem?->nTransactionId ?? null,
+            'transactionCode' =>
+                $option->transactionItem?->transaction?->strCode ?? null,
+            'transactionTitle' =>
+                $option->transactionItem?->transaction?->strTitle ?? null,
+            'itemName' => $option->transactionItem?->strName ?? null,
+            'oldUnitPrice' => $option->getRawOriginal('dUnitPrice'),
+            'newUnitPrice' => $option->getRawOriginal('dPurchaseUnitPrice'),
+        ];
     }
 
     /**

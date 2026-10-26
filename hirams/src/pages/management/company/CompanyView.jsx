@@ -5,7 +5,7 @@ import CustomSearchField from "../../../components/ui/form/SearchField";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
 import CompanyAEModal from "./modal/CompanyAEModal";
-import TransferCompanyModal from "./modal/TransferCompanyModal";
+import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../../shared/transactions/modal/DeleteVerificationModal";
 import { Add, Edit, Delete, Phone, Email, DriveFileMoveOutlined } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
@@ -333,7 +333,7 @@ export default function CompanyView({
 
       {/* Transfer — the stand-in for Delete on a company that still
           carries transactions or vouchers. */}
-      <TransferCompanyModal
+      <RecordConnectionModal
         open={openTransferModal}
         handleClose={handleCloseTransferModal}
         company={selectedCompany}

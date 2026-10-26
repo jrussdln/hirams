@@ -225,6 +225,14 @@ export const VALIDATION_RULES = {
       required: true,
       message: "Client is required",
     },
+    strOfficeName: {
+      required: true,
+      message: "Office is required",
+    },
+    strOfficeNickName: {
+      required: true,
+      message: "Office Nickname is required",
+    },
 
     // --- Step 1 : Procurement ---
     strTitle: {

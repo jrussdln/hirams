@@ -3,7 +3,7 @@ import InventoryAPI from "../../../api/endpoints/inventory.api.js";
 import CompanyAPI from "../../../api/endpoints/company.api.js";
 import JevAPI from "../../../api/endpoints/jev.api.js";
 import JevEntriesAPI from "../../../api/endpoints/jev-entries.api.js";
-import { computeJevBalance } from "../jev/hooks/useJevBalance.js";
+import { computeJevBalance } from "../../../hooks/useJEVBalance.js";
 import { showSwal, withSpinner } from "../../../utils/helpers/swal.jsx";
 
 import { getItem } from "../../../utils/storage/localStorage";
@@ -244,6 +244,21 @@ export default function useInventory() {
     };
   }, [groupJevIdsKey, jevRefreshKey]);
 
+  // The group's journal records go stale the moment something edits one —
+  // the JEV Info card saving a title is the important case: a once-untitled
+  // journal must re-enable Finalize the moment it is named. jev_data_updated
+  // / jev_data_deleted are what the JEV write paths and delete modal
+  // dispatch after every server-side change.
+  useEffect(() => {
+    const bump = () => setJevRefreshKey((k) => k + 1);
+    window.addEventListener("jev_data_updated", bump);
+    window.addEventListener("jev_data_deleted", bump);
+    return () => {
+      window.removeEventListener("jev_data_updated", bump);
+      window.removeEventListener("jev_data_deleted", bump);
+    };
+  }, []);
+
   // ── PENDING ONLY ─────────────────────────────────────────────────────
   // This is the Pending JEV screen: only JEVs still at cStatus 'P' belong
   // here. Active / Cancelled ones stay linked to the rows but are dropped
@@ -355,25 +370,41 @@ export default function useInventory() {
   const unbalancedJev = pendingJevs.find(
     (j) => !jevBalances[j.nJEVId]?.balanced,
   );
+  // TITLE gate — a journal that was never named cannot be finalized (the
+  // same rule the voucher's Finalize button enforces). A group holds the
+  // first offender; the tooltip names it by number.
+  const untitledJev = pendingJevs.find(
+    (j) => !String(j.strTitle ?? "").trim(),
+  );
   // Tooltip / banner explaining WHY Finalize is disabled — names the
   // offending JEV when the group holds more than one.
   const jevBalanceMessage = !pendingJevCount
     ? ""
     : jevBalanceLoading
       ? "Checking JEV balance…"
-      : unbalancedJev
+      : untitledJev
         ? `${
             pendingJevCount > 1
-              ? `${unbalancedJev.strJEVNumber || "JEV"}: `
+              ? `${untitledJev.strJEVNumber || "JEV"}: `
               : ""
-          }${
-            jevBalances[unbalancedJev.nJEVId]?.message ||
-            "JEV totals must be equal before finalizing"
-          }`
-        : "";
+          }Title is not yet added.`
+        : unbalancedJev
+          ? `${
+              pendingJevCount > 1
+                ? `${unbalancedJev.strJEVNumber || "JEV"}: `
+                : ""
+            }${
+              jevBalances[unbalancedJev.nJEVId]?.message ||
+              "JEV totals must be equal before finalizing"
+            }`
+          : "";
   // Finalize is enabled ONLY while every pending JEV of the group balances
+  // AND carries a title.
   const canFinalizeJevs =
-    pendingJevCount > 0 && !jevBalanceLoading && !unbalancedJev;
+    pendingJevCount > 0 &&
+    !jevBalanceLoading &&
+    !untitledJev &&
+    !unbalancedJev;
 
   /**
    * Creates the JEV(s) for the visible pending batches and links them:
@@ -432,11 +463,24 @@ export default function useInventory() {
    * then flips the inventory rows those JEVs are stamped on to 'A'
    * (Active) — getInventory then rolls them out of Pending and into the
    * stock / delivered totals. Reached only through the confirmation
-   * dialog, and only while each one balances — the Finalize button's
-   * disabled state mirrors this.
+   * dialog, and only while each one balances AND carries a title — the
+   * Finalize button's disabled state mirrors this.
    */
   const handleFinalizeJevs = useCallback(async () => {
     if (finalizingJev) return;
+    // Same rule the button enforces — an untitled journal can never be
+    // finalized. Belt-and-braces against a stale row slipping past the
+    // disabled state.
+    const untitled = pendingJevs.find(
+      (j) => !String(j.strTitle ?? "").trim(),
+    );
+    if (untitled) {
+      console.error(
+        "Refusing to finalize an untitled JEV:",
+        untitled.strJEVNumber || untitled.nJEVId,
+      );
+      return;
+    }
     const ids = pendingJevs.map((j) => j.nJEVId);
     if (!ids.length) return;
 

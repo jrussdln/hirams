@@ -41,11 +41,17 @@ function ExportCanvasModal({
   selectedSet = null,
   clientName,
   lockedPricings = {},
+  // PRE-CANVASS export: prices come from the CHOSEN pricing set —
+  // no markup question. Map of nTransactionItemId → dUnitSellingPrice.
+  pricesFromPricingSet = null,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const c = getThemeColors(isDark);
   const colors = useColors(c);
+
+  const isPresetExport = pricesFromPricingSet != null;
+  const presetPrices = pricesFromPricingSet || {};
 
   const [percentage, setPercentage] = useState("");
   const [error, setError] = useState("");
@@ -76,9 +82,12 @@ function ExportCanvasModal({
       setError("");
       setExporting(false);
       setExportDone(false);
-      setTimeout(() => inputRef.current?.focus(), 100);
+      // No markup field to focus on the Pre-Canvass pricing-set export.
+      if (!isPresetExport) {
+        setTimeout(() => inputRef.current?.focus(), 100);
+      }
     }
-  }, [open]);
+  }, [open, isPresetExport]);
 
   const totalCapital = items.reduce(
     (sum, item) =>
@@ -93,6 +102,24 @@ function ExportCanvasModal({
   );
 
   const previewItems = (() => {
+    // Pricing-set export — the selling price per item IS the pricing set's
+    // stored dUnitSellingPrice; no markup is applied on top of it.
+    if (isPresetExport) {
+      return items
+        .filter((i) => {
+          const qty = Number(i.qty || 0);
+          const unit = Number(presetPrices[i.id] || 0);
+          return qty > 0 && unit > 0;
+        })
+        .map((item) => {
+          const qty = Number(item.qty || 0);
+          const unitSelling = Number(presetPrices[item.id] || 0);
+          const sellingTotal = Math.round(unitSelling) * qty;
+          const itemABC = getItemABC(item);
+          return { item, sellingTotal, itemABC, isLocked: false };
+        });
+    }
+
     const pct = Number(percentage);
     if (!percentage || isNaN(pct) || pct <= 0) return null;
 
@@ -138,6 +165,17 @@ function ExportCanvasModal({
     : null;
 
   const buildUnitSellingPrices = () => {
+    // Pricing-set export — hand the set's prices through as-is.
+    if (isPresetExport) {
+      const presetPricesMap = {};
+      items.forEach((item) => {
+        const qty = Number(item.qty || 0);
+        const unit = Number(presetPrices[item.id] || 0);
+        if (qty > 0 && unit > 0) presetPricesMap[item.id] = unit;
+      });
+      return presetPricesMap;
+    }
+
     const pct = Number(percentage);
     const newPrices = {};
     items.forEach((item) => {
@@ -172,6 +210,12 @@ function ExportCanvasModal({
   };
 
   const handleApply = async () => {
+    // Pre-Canvass pricing-set export — there is no markup to validate.
+    if (isPresetExport) {
+      const unitSellingPrices = buildUnitSellingPrices();
+      return runExport(unitSellingPrices);
+    }
+
     const pct = Number(percentage);
 
     if (!percentage || isNaN(pct) || pct <= 0) {
@@ -180,7 +224,10 @@ function ExportCanvasModal({
     }
 
     const unitSellingPrices = buildUnitSellingPrices();
+    return runExport(unitSellingPrices);
+  };
 
+  const runExport = async (unitSellingPrices) => {
     abortRef.current = new AbortController();
     setExporting(true);
     setExportDone(false);
@@ -223,17 +270,19 @@ function ExportCanvasModal({
 
   if (!open) return null;
 
-  const eligibleCount = items.filter((i) => {
-    if (lockedPricings[i.id]) return false;
-    const qty = Number(i.qty || 0);
-    const inc = i.purchaseOptions
-      .filter((o) => o.bIncluded)
-      .reduce(
-        (s, o) => s + Number(o.nQuantity || 0) * Number(o.dUnitPrice || 0),
-        0,
-      );
-    return qty > 0 && inc > 0;
-  }).length;
+  const eligibleCount = isPresetExport
+    ? previewItems?.length ?? 0
+    : items.filter((i) => {
+        if (lockedPricings[i.id]) return false;
+        const qty = Number(i.qty || 0);
+        const inc = i.purchaseOptions
+          .filter((o) => o.bIncluded)
+          .reduce(
+            (s, o) => s + Number(o.nQuantity || 0) * Number(o.dUnitPrice || 0),
+            0,
+          );
+        return qty > 0 && inc > 0;
+      }).length;
 
   const lockedCount = items.filter((i) => !!lockedPricings[i.id]).length;
 
@@ -280,77 +329,84 @@ function ExportCanvasModal({
         onCancel={handleClose}
       >
         <Box sx={{ px: { xs: 1, sm: 2 }, py: 1 }}>
-          {/* Header */}
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1,
-              mb: 2,
-              pb: 1,
-              borderBottom: `2px solid ${colors.accent}`,
-            }}
-          >
-            <Box
-              sx={{
-                backgroundColor: colors.accent,
-                borderRadius: "6px",
-                p: 0.6,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Percent sx={{ color: iconColor, fontSize: "1rem" }} />
-            </Box>
-            <Typography
-              sx={{
-                fontWeight: 700,
-                fontSize: { xs: "0.75rem", sm: "0.85rem" },
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                color: colors.accent,
-              }}
-            >
-              Markup Percentage
-            </Typography>
-          </Box>
+          {/* Markup header + input — only on the regular canvas export */}
+          {!isPresetExport && (
+            <>
+              {/* Header */}
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  mb: 2,
+                  pb: 1,
+                  borderBottom: `2px solid ${colors.accent}`,
+                }}
+              >
+                <Box
+                  sx={{
+                    backgroundColor: colors.accent,
+                    borderRadius: "6px",
+                    p: 0.6,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Percent sx={{ color: iconColor, fontSize: "1rem" }} />
+                </Box>
+                <Typography
+                  sx={{
+                    fontWeight: 700,
+                    fontSize: { xs: "0.75rem", sm: "0.85rem" },
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    color: colors.accent,
+                  }}
+                >
+                  Markup Percentage
+                </Typography>
+              </Box>
 
-          {/* Input */}
-          <TextField
-            fullWidth
-            size="small"
-            label="Markup Percentage"
-            value={percentage}
-            onChange={handleChange}
-            error={!!error}
-            helperText={error}
-            placeholder="e.g. 45"
-            inputRef={inputRef}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Percent sx={{ fontSize: "0.85rem", color: colors.accent }} />
-                </InputAdornment>
-              ),
-            }}
-            sx={{
-              mb: 2,
-              "& .MuiInputBase-input": {
-                fontWeight: 600,
-                fontSize: "0.85rem",
-                color: colors.textPrimary,
-              },
-              "& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline": {
-                borderColor: colors.accentBorder,
-              },
-              "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline":
-                {
-                  borderColor: colors.accent,
-                },
-              "& .MuiInputLabel-root.Mui-focused": { color: colors.accent },
-            }}
-          />
+              {/* Input */}
+              <TextField
+                fullWidth
+                size="small"
+                label="Markup Percentage"
+                value={percentage}
+                onChange={handleChange}
+                error={!!error}
+                helperText={error}
+                placeholder="e.g. 45"
+                inputRef={inputRef}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Percent
+                        sx={{ fontSize: "0.85rem", color: colors.accent }}
+                      />
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{
+                  mb: 2,
+                  "& .MuiInputBase-input": {
+                    fontWeight: 600,
+                    fontSize: "0.85rem",
+                    color: colors.textPrimary,
+                  },
+                  "& .MuiOutlinedInput-root .MuiOutlinedInput-notchedOutline": {
+                    borderColor: colors.accentBorder,
+                  },
+                  "& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline":
+                    {
+                      borderColor: colors.accent,
+                    },
+                  "& .MuiInputLabel-root.Mui-focused": { color: colors.accent },
+                }}
+              />
+            </>
+          )}
 
           {/* Preview */}
           {previewTotal !== null && (
@@ -392,7 +448,9 @@ function ExportCanvasModal({
                   borderTop: true,
                 },
                 {
-                  label: `Total Selling Price (${percentage}% markup)`,
+                  label: isPresetExport
+                    ? "Total Selling Price (Pricing Set)"
+                    : `Total Selling Price (${percentage}% markup)`,
                   value: fmt(previewTotal),
                   color: colors.accent,
                   fontWeight: 700,
@@ -464,76 +522,6 @@ function ExportCanvasModal({
                 </Box>
               ))}
 
-              {/* Per-item ABC breakdown */}
-              {itemsWithOwnABC.length > 0 && previewItems && (
-                <Box
-                  sx={{
-                    borderTop: `1px solid ${previewDivider}`,
-                    pt: 0.5,
-                    mt: 0.25,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 0.4,
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontSize: "0.65rem",
-                      fontWeight: 700,
-                      color: colors.textLabel,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.4px",
-                    }}
-                  >
-                    Per-item ABC check
-                  </Typography>
-                  {previewItems
-                    .filter(({ itemABC }) => itemABC !== null)
-                    .map(({ item, sellingTotal, itemABC, isLocked }) => (
-                      <Box
-                        key={item.id}
-                        sx={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                        }}
-                      >
-                        <Typography
-                          sx={{
-                            fontSize: "0.65rem",
-                            color: colors.textLabel,
-                            maxWidth: "55%",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {item.name || `Item ${item.id}`}
-                          {isLocked && (
-                            <span
-                              style={{
-                                color: colors.textLocked,
-                                marginLeft: 3,
-                              }}
-                            >
-                              🔒
-                            </span>
-                          )}
-                        </Typography>
-                        <Typography
-                          sx={{
-                            fontSize: "0.65rem",
-                            fontWeight: 700,
-                            color: colors.profit,
-                          }}
-                        >
-                          ✓ ₱{fmt(sellingTotal)}
-                          {" → "}₱{fmt(itemABC)}
-                        </Typography>
-                      </Box>
-                    ))}
-                </Box>
-              )}
             </Box>
           )}
 

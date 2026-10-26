@@ -195,6 +195,10 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('suggestions', [PurchaseOptionsController::class, 'getSuggestions']);
         Route::post('calculate-ewt', [PurchaseOptionsController::class, 'calculateEWT']);
         Route::put('{id}/update-specs', [PurchaseOptionsController::class, 'updateSpecs']);
+        Route::get('price-change-requests', [PurchaseOptionsController::class, 'priceChangeRequests']);
+        Route::put('{id}/approve-price-change', [PurchaseOptionsController::class, 'approvePriceChange']);
+        Route::put('{id}/reject-price-change', [PurchaseOptionsController::class, 'rejectPriceChange']);
+        Route::put('{id}/sync-price-change', [PurchaseOptionsController::class, 'syncPriceChange']);
     });
     Route::apiResource('purchase-options', PurchaseOptionsController::class);
 

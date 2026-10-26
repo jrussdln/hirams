@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
+  Box,
   Stepper,
   Step,
   StepLabel,
-  Box,
   Typography,
   Link,
   useTheme,
@@ -23,6 +23,9 @@ import getThemeColors from "../../../../utils/style/getThemeColors.js";
 // ── Theme Token Map — only tokens THIS component actually uses ──
 const useColors = (c) => ({
   navyText: c.navy.text, // brand navy — "New Client?" link (was color="primary")
+  // Pre-Canvass banner strip (the same info-chip pair the dashboard uses)
+  bannerBg: c.blue.infoChipBg,
+  bannerText: c.blue.infoChipText,
 });
 
 const steps = ["Basic Information", "Procurement Details", "Schedule Details"];
@@ -36,6 +39,10 @@ function TransactionAEModal({
   procMode,
   procSource,
   currentUserId,
+  // The Add flow's type choice, made in TransactionConfirmationModal
+  // BEFORE this modal opens. Edit ignores it — the record's stored
+  // bIsPreCanvas wins there.
+  initialPreCanvas = false,
 }) {
   const navigate = useNavigate();
   // ── THEME: standard wiring — PROMPT 1 pattern ──
@@ -48,6 +55,9 @@ function TransactionAEModal({
   const [formData, setFormData] = useState({
     nCompanyId: "",
     nClientId: "",
+    strOfficeName: "",
+    strOfficeNickName: "",
+    bIsPreCanvas: !!initialPreCanvas,
     strTitle: "",
     strRefNumber: "",
     dTotalABC: "",
@@ -99,6 +109,9 @@ function TransactionAEModal({
         nCompanyId: transaction.company?.nCompanyId || "",
         nClientId: transaction.client?.nClientId || "",
         nAssignedAO: transaction.nAssignedAO || "",
+        strOfficeName: transaction.strOfficeName || "",
+        strOfficeNickName: transaction.strOfficeNickName || "",
+        bIsPreCanvas: !!transaction.bIsPreCanvas,
         strTitle: transaction.strTitle || "",
         strRefNumber: transaction.strRefNumber || "",
         dTotalABC: transaction.dTotalABC || "",
@@ -126,6 +139,12 @@ function TransactionAEModal({
     if (!open) return; // don't fetch if modal isn't open
 
     setDataReady(false); // reset on each open
+    // The Add flow's type choice (Pre-Canvass) arrives as a prop —
+    // apply it fresh on every open so a previous session's type
+    // doesn't leak into the next Add.
+    if (!isEditMode) {
+      setFormData((prev) => ({ ...prev, bIsPreCanvas: !!initialPreCanvas }));
+    }
 
     (async () => {
       try {
@@ -153,7 +172,7 @@ function TransactionAEModal({
         setDataReady(true); // ← only true once both are loaded
       }
     })();
-  }, [open]); // ← re-fetch when modal opens
+  }, [open, initialPreCanvas, isEditMode]); // ← re-fetch when the modal opens
   // Add this useEffect after the existing ones, before handleChange
   useEffect(() => {
     if (!open) return;
@@ -240,6 +259,8 @@ function TransactionAEModal({
     if (step === 1)
       fieldsToCheck = [
         "strTitle",
+        "strOfficeName",
+        "strOfficeNickName",
         "cItemType",
         "cProcMode",
         "cProcSource",
@@ -375,10 +396,21 @@ function TransactionAEModal({
               </Typography>
             ),
           },
-        ]
-      : step === 1
+        ] : step === 1
         ? [
             { label: "Title", name: "strTitle", xs: 12 },
+            {
+              // The transacting office — required. Its nickname rides
+              // along in the list's Client cell as "clientNick (OfficeNick)".
+              label: "Office",
+              name: "strOfficeName",
+              xs: 6,
+            },
+            {
+              label: "Office Nickname",
+              name: "strOfficeNickName",
+              xs: 6,
+            },
             {
               label: "Item Type",
               name: "cItemType",
@@ -475,6 +507,28 @@ function TransactionAEModal({
       cancelLabel={activeStep > 0 ? "Previous" : "Cancel"}
       saveLabel={activeStep < steps.length - 1 ? "Next" : "Save"}
     >
+      {/* ── Transaction type banner — the Pre-Canvass choice was made in
+          the confirm dialog (Add) or comes from the record (Edit). ── */}
+      {formData.bIsPreCanvas && (
+        <Box
+          sx={{
+            mb: 2,
+            px: 1.5,
+            py: 0.75,
+            borderRadius: "8px",
+            bgcolor: colors.bannerBg,
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{ color: colors.bannerText, fontWeight: 600 }}
+          >
+            Pre-Canvass — items will be gathered through canvassing before
+            procurement.
+          </Typography>
+        </Box>
+      )}
+
       <Box sx={{ mb: 3 }}>
         <Stepper activeStep={activeStep} alternativeLabel>
           {steps.map((label) => (

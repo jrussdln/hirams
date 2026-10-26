@@ -317,6 +317,9 @@ export default function useItemPurchasing() {
       "purchase_order_option_data_deleted",
       handleOptionUpdate,
     );
+    // A price change approved elsewhere (Transactions' price-change modal)
+    // re-prices the option lines these cards total — refetch, snapshot be.
+    window.addEventListener("purchase_option_data_updated", handleOptionUpdate);
     window.addEventListener("voucher_data_updated", handleVoucherUpdated);
     window.addEventListener("voucher_data_deleted", handleVoucherDeleted);
     return () => {
@@ -328,6 +331,10 @@ export default function useItemPurchasing() {
       );
       window.removeEventListener(
         "purchase_order_option_data_deleted",
+        handleOptionUpdate,
+      );
+      window.removeEventListener(
+        "purchase_option_data_updated",
         handleOptionUpdate,
       );
       window.removeEventListener("voucher_data_updated", handleVoucherUpdated);

@@ -8,7 +8,7 @@ import {
 import { fmtPHP } from "../../../../utils/formatters/formatter";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import AssigneeRowPanel from "./AssigneeRowPanel";
-import PickableValue from "../../jev/components/AmountPick.jsx";
+import PickableValue from "../../../../components/ui/form/AmountPick.jsx";
 import AddItemButton from "./AddItemButton.jsx";
 import { contactFallbacks } from "./contactFallbacks.js";
 

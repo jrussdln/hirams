@@ -4,7 +4,7 @@ export const JevAPI = {
   getAll: () => api.get("/jev"),
   // { V: 12, R: 3, … } — grouped totals for the sidebar sub-items.
   getCounts: () => api.get("/jev/counts"),
-  getById: (id) => api.get(`/jev/${id}`),
+  getById: (id, config) => api.get(`/jev/${id}`, config),
   getByLink: (link) => api.get(`/jev/by-link/${link}`),
   create: (data) => api.post("/jev", data),
   update: (id, data) => api.put(`/jev/${id}`, data),

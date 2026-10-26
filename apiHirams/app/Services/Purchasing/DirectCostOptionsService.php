@@ -99,6 +99,7 @@ class DirectCostOptionsService extends CrudService
                     'status'        => $statusLabels !== null
                         ? ($transactionStatuses[(string) $statusLabels] ?? null)
                         : null,
+                    'status_code'   => $statusLabels,
                     'amount'        => $cost->dAmount,
                     'dtCreated'     => $transaction->dtDocSubmission,
                 ];

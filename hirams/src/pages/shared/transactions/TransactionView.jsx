@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import PageLayout from "../../../components/layouts/page/content-page";
 import CustomTable from "../../../components/ui/form/Table";
 import CustomSearchField from "../../../components/ui/form/SearchField";
@@ -7,18 +7,22 @@ import ProgressBar from "../../../components/ui/form/ProgressBar";
 import RevertModal from "./modal/RevertModal";
 import TransactionHistoryModal from "./modal/TransactionHistoryModal";
 import TransactionAEModal from "./modal/TransactionAEModal";
+import TransactionConfirmationModal from "./modal/TransactionConfirmationModal";
+import { isPreCanvassEnabled } from "../../../config/featureFlags.js";
 import DeleteVerificationModal from "./modal/DeleteVerificationModal";
 import DirectCostModal from "./modal/DirectCostModal";
 import ATransactionInfoModal from "./modal/TransactionInfoModal";
 import ArchiveModal from "../archive/modal/ArchiveModal";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
+import PriceChangeRequestModal from "./modal/PriceChangeRequestModal";
+import PurchaseOptionAPI from "../../../api/endpoints/purchase-option.api";
 import { getDueDateColor } from "../../../utils/helpers/dueDateColor";
 import {
   NO_TRANSACTION_ABC,
   NOT_YET_ASSIGNED,
   OPEN_DATE,
 } from "../../../constants/tableDataFallbacks";
-import { Box, Typography, useTheme, Tooltip } from "@mui/material";
+import { Box, Typography, useTheme, Tooltip, IconButton, Badge } from "@mui/material";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import {
   Add,
@@ -36,6 +40,7 @@ import {
   AssignmentInd,
   ContactPage,
   PriceCheck,
+  PriceChangeOutlined,
   Sell,
   Archive,
   ShoppingCart,
@@ -54,9 +59,13 @@ const useColors = (c) => ({
   shadowLow: c.shadow.low,
   textMuted: c.gray.textMuted,
   textPrimary: c.gray.textPrimary,
+  textSecondary: c.gray.textSecondary,
   border: c.slate.border,
+  slateHover: c.slate.hover,
   // inline client → company badge on the Draft Transaction column
   blue: { bg: c.blue.bg, text: c.blue.text },
+  // inline "PRE-CANVAS" tag — indigo so it never reads as the blue client ➟ company pill
+  indigo: { bg: c.indigo.bg, text: c.indigo.text },
   green: {
     paid: c.green.paid,
     paidBorder: c.green.paidBorder,
@@ -317,15 +326,10 @@ function buildActions(row, opts) {
           actionColor="view"
           onClick={handleView}
         />
-        {(isPricing ||
-          isForCanvas ||
-          isCanvasVerification ||
-          isForCollection ||
-          isForPurchase) && (
+        {(isPricing || isForPurchase) && (
           <BaseButton
             icon={<RequestQuote />}
-            tooltip="Direct Cost"
-            size="small"
+            tooltip="Direct Cost"            size="small"
             actionColor="breakdown"
             onClick={(e) => {
               e.stopPropagation();
@@ -570,7 +574,7 @@ function buildActions(row, opts) {
             }}
           />
         )}
-        {(isPricing || isForCollection) && (
+        {(isPricing) && (
           <BaseButton
             icon={<RequestQuote />}
             tooltip="Direct Cost"
@@ -887,6 +891,48 @@ function TransactionView(props) {
     (_, row) => buildActions(row, actionOpts),
     [actionOpts],
   );
+
+  // ── Price change requests ────────────────────────────────────────────
+  // The FOR PURCHASE / FOR DELIVERY stages are where an included option's
+  // price is renegotiated, so the requests panel opens from those views.
+  const [isPriceChangeModalOpen, setIsPriceChangeModalOpen] = useState(false);
+  const [pendingPriceChangeCount, setPendingPriceChangeCount] = useState(0);
+  // The Add flow's two-step gate: the confirm dialog ("Pre-Canvass or
+  // Normal Transaction?") runs first, its answer becomes the AEModal's
+  // initialPreCanvas. View-local — the edit flow never touches it.
+  const [isTypeConfirmOpen, setIsTypeConfirmOpen] = useState(false);
+  const [addPreCanvas, setAddPreCanvas] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPendingPriceChangeCount = async () => {
+      if (cancelled) return;
+      try {
+        const res = await PurchaseOptionAPI.getPriceChangeRequests();
+        const requests = res?.priceChangeRequests ?? res?.items ?? res?.purchaseOptions ?? [];
+        // Filter only pending requests (status 'P')
+        const pendingRequests = requests.filter(
+          (r) => String(r.cPurchaseUnitPriceStatus ?? "").toUpperCase() === "P"
+        );
+        setPendingPriceChangeCount(pendingRequests.length);
+      } catch (err) {
+        console.error("Failed to fetch price change requests count:", err);
+      }
+    };
+    fetchPendingPriceChangeCount();
+    // Refetch every 30 seconds to keep count updated
+    const interval = setInterval(fetchPendingPriceChangeCount, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+  const isPurchaseOrDeliveryStage = useMemo(() => {
+    if (!selectedStatusCode) return false;
+    return Boolean(
+      actionOpts.forPurchaseKey?.includes(selectedStatusCode) ||
+        actionOpts.forDeliveryKey?.includes(selectedStatusCode),
+    );
+  }, [actionOpts, selectedStatusCode]);
   // For Assignment → Canvass Verification: Company, Submission and Created
   // carry nothing useful at these stages, so they're dropped.
   const hideEarlyStageCols = useMemo(() => {
@@ -1038,6 +1084,22 @@ function TransactionView(props) {
                           {hasClient ? row.clientName : ""}
                           {hasClient && hasCompany ? " ➟ " : ""}
                           {hasCompany ? row.companyName : ""}
+                        </span>
+                      )}
+                      {/* Pre-Canvass tag — back beside the client ➟ company
+                          badge on transactions created as Pre-Canvass.
+                          Gated behind isPreCanvassEnabled (not final). */}
+                      {isPreCanvassEnabled &&
+                        Number(row.bIsPreCanvas) === 1 && (
+                        <span
+                          className="shrink-0 px-1 py-px text-[0.5rem] font-semibold uppercase leading-none rounded-full"
+                          style={{
+                            backgroundColor: colors.indigo.bg,
+                            color: colors.indigo.text,
+                            border: `1px solid ${colors.border}`,
+                          }}
+                        >
+                          Pre-Canvass
                         </span>
                       )}
                     </div>
@@ -1433,6 +1495,48 @@ function TransactionView(props) {
           />
         </div>
         <SyncMenu onSync={() => fetchTransactions({ bustCache: true })} />
+        {isPurchaseOrDeliveryStage && (
+          <Tooltip title="Price Change Requests">
+            <IconButton
+              size="small"
+              onClick={() => setIsPriceChangeModalOpen(true)}
+              sx={{
+                color: colors.textSecondary,
+                border: `1px solid ${colors.border}`,
+                borderRadius: "999px",
+                transition: "all 0.2s ease",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                "&:hover": {
+                  bgcolor: colors.slateHover,
+                  color: colors.blue.text,
+                  borderColor: colors.blue.text,
+                },
+              }}
+            >
+              <Badge
+                badgeContent={pendingPriceChangeCount}
+                color="error"
+                sx={{
+                  "& .MuiBadge-badge": {
+                    backgroundColor: "#d32f2f",
+                    color: "#fff",
+                    fontSize: "0.5rem",
+                    fontWeight: 700,
+                    height: 16,
+                    minWidth: 16,
+                    padding: "0 2px",
+                    right: -6,
+                    top: -2,
+                  },
+                }}
+              >
+                <PriceChangeOutlined fontSize="small" />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+        )}
         {(isProcurement || isManagement) && (
           <BaseButton
             label="Transaction"
@@ -1442,11 +1546,23 @@ function TransactionView(props) {
             variant="contained"
             onClick={() => {
               setSelectedTransaction(null);
-              setIsAEModalOpen(true);
+              // Pre-Canvass is feature-flagged — until
+              // isPreCanvassEnabled is flipped, Add opens straight as a
+              // Normal Transaction with no type question.
+              isPreCanvassEnabled
+                ? setIsTypeConfirmOpen(true)
+                : setIsAEModalOpen(true);
             }}
           />
         )}
       </section>
+
+      {/* Pending purchase-price changes — grouped by transaction, one row
+          per item option with old → new price plus an approve per item. */}
+      <PriceChangeRequestModal
+        open={isPriceChangeModalOpen}
+        onClose={() => setIsPriceChangeModalOpen(false)}
+      />
 
       <section
         style={{
@@ -1516,6 +1632,24 @@ function TransactionView(props) {
         />
       )}
 
+      {/* ── Add Transaction confirm — asks "Pre-Canvass or not?" ──────
+          Only the ADD flow goes through this; Edit keeps its own
+          bIsPreCanvas and never sees this dialog. */}
+      <TransactionConfirmationModal
+        open={isTypeConfirmOpen}
+        onClose={() => setIsTypeConfirmOpen(false)}
+        onPreCanvas={() => {
+          setIsTypeConfirmOpen(false);
+          setAddPreCanvas(true);
+          setIsAEModalOpen(true);
+        }}
+        onNormal={() => {
+          setIsTypeConfirmOpen(false);
+          setAddPreCanvas(false);
+          setIsAEModalOpen(true);
+        }}
+      />
+
       {isAEModalOpen && (
         <TransactionAEModal
           open={isAEModalOpen}
@@ -1531,6 +1665,7 @@ function TransactionView(props) {
           procMode={procMode}
           procSource={procSource}
           currentUserId={userId}
+          initialPreCanvas={addPreCanvas}
         />
       )}
 

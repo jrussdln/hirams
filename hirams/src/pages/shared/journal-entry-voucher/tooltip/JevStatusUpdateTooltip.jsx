@@ -11,7 +11,7 @@ import { useTheme } from "@mui/material/styles";
 import TooltipContainer from "../../../../components/layouts/tooltip/TooltipContainer.jsx";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import JevAPI from "../../../../api/endpoints/jev.api.js";
-import useJevBalance from "../hooks/useJevBalance.js";
+import useJEVBalance from "../../../../hooks/useJEVBalance.js";
 import { withSpinner, showSwal } from "../../../../utils/helpers/swal.jsx";
 
 const useColors = (c) => ({
@@ -96,7 +96,7 @@ export default function JevStatusUpdateTooltip({
 
   // The verdict JevEntriesViewModal works from (empty id while closed →
   // no fetch, no verdict — the gate stays shut until one arrives).
-  const balance = useJevBalance(open && jev?.nJEVId ? jev.nJEVId : "", 0, false);
+  const balance = useJEVBalance(open && jev?.nJEVId ? jev.nJEVId : "", 0, false);
 
   // Unknown counts as blocked: a still-loading or failed check may never
   // pass for "balanced" — the rule demoteIfUnbalanced runs on close.
@@ -148,7 +148,8 @@ export default function JevStatusUpdateTooltip({
         await JevAPI.update(targetId, { cStatus: next });
       });
       // The server's JevUpdated broadcast is toOthers() — this tab has to
-      // tell ITSELF the row changed, same as handleJevAESaved does.
+      // tell ITSELF the row changed, which the page hook's listener
+      // turns into a silent refetch.
       window.dispatchEvent(new CustomEvent("jev_data_updated"));
       await showSwal("SUCCESS", {}, { entity, action: `set to ${label}` });
       onSuccess?.(next);

@@ -76,7 +76,8 @@ const initialFormData = {
   specs: "",
   unitPrice: "",
   // The EWT TYPE — which formula the line's EWT is built from.
-  // "" = Default, "A" = 0% of Q, "B" = 1% of Q, "C" = 1% of Q / 1.12.
+  // "" = Default, "A" = 0% of Q, "B" = 1% of Q, "C" = 2% of Q,
+  // "D" = 1% of Q / 1.12 (VAT net).
   cEWTType: "",
   bIncluded: true,
   // A new option joins the item's SELECTION. The Add-On switch moves it

@@ -20,14 +20,21 @@ class PurchaseOptions extends Model
     //   null → DEFAULT (the supplier's own flags decide)
     //   'A'  → 0% of Q
     //   'B'  → 1% of Q
-    //   'C'  → 1% of Q / 1.12 (VAT net)
+    //   'C'  → 2% of Q
+    //   'D'  → 1% of Q / 1.12 (VAT net)
     // It replaces the hand-typed dEWT amount as the source of truth.
     protected $attributes = [
         'cEWTType' => null,
     ];
-    // The EWT is derived, not stored — it is appended to the payload so
-    // every API response still carries a dEWT key.
-    protected $appends = ['dEWT'];
+    /**
+     * The EWT is derived, not stored — it is appended to the payload so
+     * every API response still carries a dEWT key. dUnitPrice rides in the
+     * appends too — see the accessor below for WHY (the appended read goes
+     * through getAttribute(), so the accessor is applied even during
+     * serialization, where a classic accessor key would never match).
+     * @var array
+     */
+    protected $appends = ['dEWT', 'dUnitPrice'];
     // Fillable columns
     protected $fillable = [
         'nTransactionItemId',
@@ -104,6 +111,20 @@ class PurchaseOptions extends Model
      * Every READ of dUnitPrice goes through here, so the API, the totals
      * and the EWT all price a line the same way. The raw canvassed price
      * stays available through getRawOriginal('dUnitPrice').
+     *
+     * The accessor must be IDEMPOTENT and read the CANVASSED base through
+     * getRawOriginal(): it is listed in $appends, so serialization re-runs
+     * it over the already-resolved attribute — reading $this->attributes
+     * (the raw column) directly would drift once; getRawOriginal cannot.
+     *
+     * WHY the appends trick: this is Laravel's classic accessor idiom,
+     * but a classic accessor's serialization key is snake-cased
+     * ("d_unit_price") and never matches the camelCase column
+     * "dUnitPrice" — so toArray()/toJson() used to serialize the RAW
+     * canvassed price, and the PO and voucher priced every line at the
+     * OLD price even after a change was approved. Listing it in $appends
+     * re-reads through getAttribute() at serialize time, which always
+     * applies the accessor.
      */
     public function getDUnitPriceAttribute($value = null)
     {
@@ -118,7 +139,9 @@ class PurchaseOptions extends Model
             return (float) $purchasePrice;
         }
 
-        return $value === null ? null : (float) $value;
+        $rawValue = $this->getRawOriginal('dUnitPrice');
+
+        return $rawValue === null ? null : (float) $rawValue;
     }
 
     // ✅ A purchase option belongs to a transaction item

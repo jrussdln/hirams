@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Schema;
  *           1% / service 2%, VAT gross-down when the supplier is vattable)
  *   'A'   → 0% of Q                                (bypass: no EWT)
  *   'B'   → 1% of Q                                (bypass: gross)
- *   'C'   → 1% of Q / 1.12 (VAT net)               (bypass: net of VAT)
+ *   'C'   → 2% of Q                                (bypass: gross)
+ *   'D'   → 1% of Q / 1.12 (VAT net)               (bypass: net of VAT)
  *
  * Q = nQuantity x dUnitPrice.
  *

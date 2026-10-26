@@ -21,7 +21,7 @@ class StorePurchaseOptionsRequest extends ApiRequest
             'specs'                    => 'nullable|string|max:20000',
             'unitPrice'                => 'required|numeric|min:0',
             'ewt'                      => 'nullable|numeric|min:0',
-            'cEWTType'                 => 'nullable|string|in:A,B,C',
+            'cEWTType'                 => 'nullable|string|in:A,B,C,D',
             'bIncluded'                => 'nullable|integer|in:0,1',
             'bAddOn'                   => 'nullable|integer|in:0,1',
             'nSupplierContactId'       => 'nullable|integer',

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Box, Typography, useTheme } from "@mui/material";
 import {
   AccountBalanceOutlined,
@@ -13,7 +14,6 @@ import {
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import { toCents } from "../../../../utils/helpers/money.js";
 import CustomTable from "../../../../components/ui/form/Table.jsx";
-import JevEntriesViewModal from "../../jev/modal/JevEntriesViewModal.jsx";
 import TransferEntryModal from "../modal/TransferEntryModal.jsx";
 import VoucherAPI from "../../../../api/endpoints/voucher.api.js";
 import InventoryAPI from "../../../../api/endpoints/inventory.api.js";
@@ -209,6 +209,12 @@ const EntryBranch = ({
             : null
           : null;
 
+      // The journal's own title — every link type carries one now, so it
+      // leads the Particulars cell. A journal saved without one keeps the
+      // older resolution (payee → received supplier → counterpart account).
+      const jevTitle =
+        String(e?.jev?.strTitle ?? "").trim() || null;
+
       return {
         id: e.nJEVEntryId ?? `entry-${i}`,
         // Kept under its own name too — TransferEntryModal reads
@@ -227,16 +233,10 @@ const EntryBranch = ({
         jevRef: e?.jev ?? null,
         payee,
         receivedSupplier,
-        // A voucher-backed JEV leads with its payee's nickname, a Received
-        // Purchases JEV with "Received Purchases from {supplier}"; everything
-        // else falls back to the counterpart account name.
-        particulars:
-          payee ??
-          (receivedSupplier
-            ? `Received Purchases from ${receivedSupplier}`
-            : null) ??
-          counterparts[0] ??
-          "—",
+        // The JEV's strTitle IS the Particulars cell. When the journal was
+        // saved without one, the cell says so instead of falling back to
+        // the payee / supplier / counterpart chain.
+        particulars: jevTitle ?? "Title is not yet added.",
         counterparts,
         from: isOut ? amt : 0, // money out
         to: !isOut ? amt : 0, // money in
@@ -351,7 +351,7 @@ const EntryBranch = ({
       },
       {
         key: "particulars",
-        label: "Particulars",
+        label: "Title",
         xs: 2.2,
         render: (_, row) => (
           <Box
@@ -517,7 +517,7 @@ const EntryBranch = ({
 // Stable "no window chosen" value so memo deps don't change identity each render
 const EMPTY_RANGE = { from: null, to: null, quick: null };
 
-function AccountReportPanel({
+function LedgerPanel({
   account,
   allAccounts = [],
   jevEntries = [],
@@ -526,16 +526,21 @@ function AccountReportPanel({
   // Raw key of the "Received Purchases" JEV type — its Particulars cell is
   // built from the inventory behind it ("Received Purchases from {supplier}").
   jevReceivedPurchasesKey = "",
-  // Inclusive { from, to } window chosen in AccountReportiFilterModal
+  // Inclusive { from, to } window chosen in LedgerFilterModal
   // before the panel opened (nulls = entire history).
   dateRange = EMPTY_RANGE,
-  // Reopens AccountReportiFilterModal on the header's date chip so the
+  // Reopens LedgerFilterModal on the header's date chip so the
   // window can be changed while the report is already on screen.
   onEditRange = null,
   // Role flags — handed to JevEntriesViewModal as `entryCrud` so its entry
   // rows are editable here just like on the JEV list page.
   isManagement = false,
   isFinanceOfficer = false,
+  // JEV number click override — when the host embeds the updater IN this
+  // screen (JournalAccountsView swaps the ledger for JEVUpdatePanel), it
+  // hands this down and the click never leaves the page. Without it the
+  // click falls back to the /jev-update route.
+  onOpenJevPage = null,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -646,47 +651,24 @@ function AccountReportPanel({
       return next;
     });
 
-  // ── JEV viewer ─────────────────────────────────────────────────────────
-  // Clicking a JEV number in an entry table opens the whole JEV (every
-  // entry of it, both sides) instead of just this account's own line.
-  // `jevModal` survives closing so the modal's fade-out never blanks the
-  // content — `jevModalOpen` alone drives visibility.
-  const [jevModal, setJevModal] = useState(null);
-  const [jevModalOpen, setJevModalOpen] = useState(false);
+  // ── JEV viewer — where the journal opens ───────────────────────────────
+  // Clicking a JEV number in an entry table opens the whole JEV on
+  // /jev-update?id=… (the full-page updater) — UNLESS the host hands its
+  // own `onOpenJevPage` (JournalAccountsView embeds the updater panel in
+  // this screen instead of leaving), in which case the host decides.
+  const navigate = useNavigate();
 
-  const openJevModal = ({ nJEVId, jev }) => {
+  const openJevModal = ({ nJEVId }) => {
     if (!nJEVId) return;
-    setJevModal({
-      // Rebuilt WITHOUT `entries` → JevViewPanel fetches them fresh with
-      // their journal_account data (same trick JevViewSection uses).
-      nJEVId,
-      strJEVNumber: jev?.strJEVNumber ?? "",
-      // Only a No Type JEV carries one. Not shown here (this caller passes
-      // no `entryCrud`, so the JEV Info row is hidden) but kept so the
-      // rebuilt record always matches the real one.
-      strTitle: jev?.strTitle ?? "",
-      dtOccur: jev?.dtOccur ?? "",
-      cStatus: jev?.cStatus ?? "",
-      cJEVLinkType: jev?.cJEVLinkType ?? "",
-    });
-    setJevModalOpen(true);
+    if (onOpenJevPage) {
+      onOpenJevPage(nJEVId);
+      return;
+    }
+    navigate(`/jev-update?id=${nJEVId}`);
   };
 
-  // "Voucher · DV-2026-0012" — the JEV's type label with "Disbursement"
-  // dropped (the voucher behind it already says what kind it is). Every
-  // other type keeps its full label: "Received Purchases", "Delivered
-  // Items", "Collection". The modal appends the voucher number itself.
-  const jevSubTitle = useMemo(() => {
-    if (!jevModal) return "";
-    const label =
-      jevTypeOptions.find(
-        (t) => String(t.key) === String(jevModal.cJEVLinkType),
-      )?.label ?? "";
-    return label.replace(/^Disbursement\s+/i, "");
-  }, [jevModal, jevTypeOptions]);
-
   // ── Date filter — the inclusive window chosen in
-  // AccountReportiFilterModal before this panel was opened ────────────────
+  // LedgerFilterModal before this panel was opened ────────────────
   const range = dateRange || EMPTY_RANGE;
   const dateFilterActive = !!(range.from || range.to);
 
@@ -930,6 +912,10 @@ function AccountReportPanel({
     },
   };
 
+  // The header's totals overlay only renders over a non-zero net — the
+  // account name narrows only when it is actually on screen.
+  const showHeaderTotals = (grandTotalsById[account?.id]?.net ?? 0) !== 0;
+
   return (
     <>
       {/* ── Report body ──────────────────────────────────────────── */}
@@ -937,6 +923,7 @@ function AccountReportPanel({
         {/* ── Account being reported ──────────────────────────────── */}
         <Box
           sx={{
+            position: "relative", // anchor of the totals overlay
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
@@ -949,7 +936,15 @@ function AccountReportPanel({
           }}
         >
           <Box
-            sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              minWidth: 0,
+              // The totals overlay owns the right side of the banner — the
+              // name ellipsizes before it can ever run under the columns.
+              maxWidth: showHeaderTotals ? "45%" : "100%",
+            }}
           >
             <Box
               sx={{
@@ -1010,78 +1005,102 @@ function AccountReportPanel({
               </Box>
             </Box>
           </Box>
-          {(() => {
-            // All-time totals — the date window filters the entry rows below,
-            // never these numbers.
-            const { from, to, net } = grandTotalsById[account?.id] ?? {
-              from: 0,
-              to: 0,
-              net: 0,
-            };
-            // A zero total is not worth a chip — "Balance: 0.00" only adds noise.
-            if (net === 0) return null;
-            const cols = [
-              { label: "From", value: from / 100, color: colors.red.text },
-              { label: "To", value: to / 100, color: colors.green.text },
-              {
-                label: "Total",
-                value: net,
-                color: net < 0 ? colors.red.text : colors.green.text,
-              },
-            ];
-            return (
-              <Box
-                component="span"
-                title={`From ₱${fmtAmt(from / 100)} · To ₱${fmtAmt(to / 100)}`}
-                sx={{
-                  display: "flex",
-                  alignItems: "flex-end",
-                  gap: 2.5,
-                  px: 0.8,
-                  py: 0.3,
-                  flexShrink: 0,
-                }}
-              >
-                {cols.map((c) => (
-                  <Box
-                    key={c.label}
-                    sx={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-end",
-                      gap: 0.1,
-                    }}
-                  >
-                    <Typography
+              {/* All-time totals — the date window filters the entry rows
+                  below, never these numbers. A zero total is not worth
+                  showing — "Total: 0.00" only adds noise. */}
+              {showHeaderTotals &&
+                (() => {
+                  const { from, to, net } = grandTotalsById[account?.id] ?? {
+                    from: 0,
+                    to: 0,
+                    net: 0,
+                  };
+                  const cols = [
+                    { label: "From", value: from / 100, color: colors.red.text },
+                    { label: "To", value: to / 100, color: colors.green.text },
+                    {
+                      label: "Total",
+                      value: net,
+                      color: net < 0 ? colors.red.text : colors.green.text,
+                    },
+                  ];
+                  return (
+                    <Box
+                      title={`From ₱${fmtAmt(from / 100)} · To ₱${fmtAmt(to / 100)}`}
                       sx={{
-                        fontSize: "0.55rem",
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.4px",
-                        color: colors.violet.text,
-                        whiteSpace: "nowrap",
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        // Pulled well left of the strict column mirror — the
+                        // figures group sits toward the middle of the banner.
+                        left: "0px",
+                        right: "49px",
+                        display: "flex",
+                        alignItems: "stretch",
+                        gap: 1,
+                        pointerEvents: "none",
                       }}
                     >
-                      {c.label}
-                    </Typography>
-                    <Typography
-                      sx={{
-                        fontSize: "0.68rem",
-                        fontWeight: 700,
-                        fontVariantNumeric: "tabular-nums",
-                        color: c.color,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {c.value < 0 ? "-" : ""}
-                      {fmtAmt(Math.abs(c.value))}
-                    </Typography>
-                  </Box>
-                ))}
-              </Box>
-            );
-          })()}
-        </Box>
+                      {/* Mirror of the entries table's row geometry — the
+                          same 40px row-number column, the same 8px gaps and
+                          the same column flex ratios as EntryBranch's
+                          columns, so each figure lands exactly on the column
+                          its label names: From over From, To over To and
+                          Total over Balance. Insets: the top branch sits
+                          ml 24px / mr 1.25 and the table wraps rows in a
+                          1px border + px 1.5 — hence left 37px, right 23px. */}
+                      <Box sx={{ width: 40, flexShrink: 0 }} />
+                      <Box sx={{ flex: "1.1 1 0", minWidth: 0 }} />
+                      <Box sx={{ flex: "1.4 1 0", minWidth: 0 }} />
+                      <Box sx={{ flex: "2.2 1 0", minWidth: 0 }} />
+                      {cols.map((c) => (
+                        <Box
+                          key={c.label}
+                          sx={{
+                            flex: "1.2 1 0",
+                            minWidth: 0,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "flex-end",
+                            justifyContent: "center",
+                            gap: 0.1,
+                          }}
+                        >
+                          <Typography
+                            sx={{
+                              fontSize: "0.55rem",
+                              fontWeight: 700,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.4px",
+                              color: colors.violet.text,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {c.label}
+                          </Typography>
+                          <Typography
+                            sx={{
+                              fontSize: "0.68rem",
+                              fontWeight: 700,
+                              fontVariantNumeric: "tabular-nums",
+                              color: c.color,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {c.value < 0 ? "-" : ""}
+                            {fmtAmt(Math.abs(c.value))}
+                          </Typography>
+                        </Box>
+                      ))}
+                      {/* The Transfer column — present only when the table
+                          below has one (finance's read drops that column). */}
+                      {!!handleTransferEntry && (
+                        <Box sx={{ flex: "0.9 1 0", minWidth: 0 }} />
+                      )}
+                    </Box>
+                  );
+                })()}
+          </Box>
 
         {entriesByAccount[account?.id]?.length > 0 && (
           <EntryBranch
@@ -1198,7 +1217,7 @@ function AccountReportPanel({
                 />
               </Box>
 
-              {/* Date window chosen in AccountReportiFilterModal — clicking the
+              {/* Date window chosen in LedgerFilterModal — clicking the
                   chip reopens that same modal to change the range in place. */}
               <Box
                 component={onEditRange ? "button" : "div"}
@@ -1206,8 +1225,8 @@ function AccountReportPanel({
                 onClick={onEditRange ?? undefined}
                 title={
                   onEditRange
-                    ? "Change the date range of this report"
-                    : "Date range of this report"
+                    ? "Change the date range of this ledger"
+                    : "Date range of this ledger"
                 }
                 aria-label={onEditRange ? "Change date range" : undefined}
                 sx={{
@@ -1300,6 +1319,26 @@ function AccountReportPanel({
                   return (
                     <Box key={rowKey}>
                       <Box
+                        role={foldable ? "button" : undefined}
+                        tabIndex={foldable ? 0 : undefined}
+                        aria-expanded={foldable ? !isCollapsed : undefined}
+                        onClick={(e) => {
+                          // Clicks on the round toggle (or any future
+                          // interactive element) already toggle themselves —
+                          // letting them bubble would toggle twice.
+                          if (e.target.closest("button")) return;
+                          if (foldable) toggleRow(rowKey);
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            foldable &&
+                            (e.key === "Enter" || e.key === " ") &&
+                            e.target === e.currentTarget
+                          ) {
+                            e.preventDefault();
+                            toggleRow(rowKey);
+                          }
+                        }}
                         sx={{
                           display: "flex",
                           alignItems: "center",
@@ -1313,7 +1352,14 @@ function AccountReportPanel({
                             : "none",
                           borderBottom: `1px solid ${colors.divider}`,
                           transition: "background .15s",
+                          cursor: foldable ? "pointer" : "default",
+                          outline: "none",
                           "&:hover": { background: colors.hoverBg },
+                          ...(foldable && {
+                            "&:focus-visible": {
+                              boxShadow: `inset 0 0 0 1px ${colors.blue.border}`,
+                            },
+                          }),
                         }}
                       >
                         <Box
@@ -1400,9 +1446,8 @@ function AccountReportPanel({
                             to: 0,
                             net: 0,
                           };
-                          // Same rule as the header chip: no number when there
-                          // is nothing to show — a row of "0.00"s is noise.
-                          if (net === 0) return null;
+                          // Zero prints explicitly: a balance of 0.00 is a
+                          // fact about the account, not noise.
                           const { text } = formatBalance(net);
                           return (
                             <Typography
@@ -1429,7 +1474,7 @@ function AccountReportPanel({
                           );
                         })()}
 
-                        {foldable && (
+                        {foldable ? (
                           <Box
                             component="button"
                             type="button"
@@ -1477,6 +1522,14 @@ function AccountReportPanel({
                               <ExpandMore sx={{ fontSize: "0.8rem" }} />
                             )}
                           </Box>
+                        ) : (
+                          // No toggle on this row — an invisible slot of the
+                          // same size keeps the balance on the same right
+                          // edge as every row that has a toggle.
+                          <Box
+                            aria-hidden
+                            sx={{ flexShrink: 0, width: 20, height: 20 }}
+                          />
                         )}
                       </Box>
 
@@ -1509,14 +1562,7 @@ function AccountReportPanel({
         )}
       </Box>
 
-      {/* ── JEV number click → every entry of that JEV ─────────────── */}
-      <JevEntriesViewModal
-        open={jevModalOpen}
-        onClose={() => setJevModalOpen(false)}
-        jev={jevModal}
-        subTitle={jevSubTitle}
-        entryCrud={{ isManagement, isFinanceOfficer }}
-      />
+      {/* ── JEV number click → the journal's own page (/jev-update) ──── */}
 
       {/* ── Entry row Transfer → re-assign that entry line to another
           journal account. Only the entry moves — the accounts and the
@@ -1532,4 +1578,4 @@ function AccountReportPanel({
   );
 }
 
-export default AccountReportPanel;
+export default LedgerPanel;

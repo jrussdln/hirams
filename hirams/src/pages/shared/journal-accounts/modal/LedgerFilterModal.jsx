@@ -8,23 +8,23 @@ import {
 /**
  * Date filter shown BEFORE the account report opens.
  *
- * Clicking "View report" on a row in JournalAccountPanel opens this modal
+ * Clicking "Ledger" on a row in JournalAccountPanel opens this modal
  * first; its body is the very same content <FilterDate> uses — the
  * Today / Yesterday / This ▾ quick picks over an always-visible From / To
  * row. "Today" is pre-selected when nothing has been applied yet (or after
  * Back reset the window); the previously applied range wins when there is
  * one. Nothing is committed until "Apply", which hands the chosen range
  * back through onApply({ from, to, quick }) — the caller then opens
- * AccountReportPanel with it. "Cancel" leaves the report closed.
+ * LedgerPanel with it. "Cancel" leaves the report closed.
  *
- *   <AccountReportiFilterModal
+ *   <LedgerFilterModal
  *     open={filterOpen}
  *     value={dateRange}
  *     onClose={closeFilter}
  *     onApply={openReport}
  *   />
  */
-function AccountReportiFilterModal({ open, onClose, value = null, onApply }) {
+function LedgerFilterModal({ open, onClose, value = null, onApply }) {
   const [draft, setDraft] = useState(() => {
     const [from, to] = quickRange("month");
     return { from, to, quick: "month" };
@@ -58,7 +58,7 @@ function AccountReportiFilterModal({ open, onClose, value = null, onApply }) {
     <ModalContainer
       open={open}
       handleClose={onClose}
-      title="Journal Entries Filter"
+      title="Ledger Filter"
       subTitle="Choose the date range"
       onSave={handleApply}
       saveLabel="Apply"
@@ -75,4 +75,4 @@ function AccountReportiFilterModal({ open, onClose, value = null, onApply }) {
   );
 }
 
-export default AccountReportiFilterModal;
+export default LedgerFilterModal;

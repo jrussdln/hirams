@@ -131,6 +131,94 @@ class PurchaseOptionsController extends ApiController
         }
     }
 
+    /**
+     * The PENDING purchase-price changes — the rows of the price-change
+     * request panel (item options grouped by transaction).
+     */
+    public function priceChangeRequests(): JsonResponse
+    {
+        try {
+            $requests = $this->service->priceChangeRequests();
+
+            return response()->json([
+                'message'         => __('messages.retrieve_success', ['name' => 'Price change requests']),
+                'priceChangeRequests' => $requests,
+            ]);
+        } catch (Exception $e) {
+            return $this->handleException($e, 'retrieve_failed', 'Price change requests');
+        }
+    }
+
+    /**
+     * APPROVE one pending price change — the proposed price becomes the
+     * price that counts for that option.
+     */
+    public function approvePriceChange(int $id): JsonResponse
+    {
+        try {
+            $purchaseOption = $this->service->approvePriceChange($id);
+
+            return response()->json([
+                'message' => __('messages.update_success', ['name' => 'Price change approved']),
+                'item'    => $purchaseOption,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'message' => __('messages.not_found', ['name' => 'Purchase option']),
+                'error'   => $e->getMessage(),
+            ], 404);
+        } catch (Exception $e) {
+            return $this->handleException($e, 'update_failed', 'Price change');
+        }
+    }
+
+    /**
+     * REJECT one pending price change — the renegotiation is thrown out
+     * (status 'C', Cancelled) and the canvassed price stays in force.
+     */
+    public function rejectPriceChange(int $id): JsonResponse
+    {
+        try {
+            $purchaseOption = $this->service->rejectPriceChange($id);
+
+            return response()->json([
+                'message' => __('messages.update_success', ['name' => 'Price change rejected']),
+                'item'    => $purchaseOption,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'message' => __('messages.not_found', ['name' => 'Purchase option']),
+                'error'   => $e->getMessage(),
+            ], 404);
+        } catch (Exception $e) {
+            return $this->handleException($e, 'update_failed', 'Price change');
+        }
+    }
+
+    /**
+     * SYNC one pending price change — the option row adopts the pending
+     * (requested) price: dUnitPrice moves onto it, the pending fields are
+     * cleared and the canvass date moves to the moment it took effect.
+     */
+    public function syncPriceChange(int $id): JsonResponse
+    {
+        try {
+            $purchaseOption = $this->service->syncUnitPrice($id);
+
+            return response()->json([
+                'message' => __('messages.update_success', ['name' => 'Price change synced']),
+                'item'    => $purchaseOption,
+            ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'message' => __('messages.not_found', ['name' => 'Purchase option']),
+                'error'   => $e->getMessage(),
+            ], 404);
+        } catch (Exception $e) {
+            return $this->handleException($e, 'update_failed', 'Price change');
+        }
+    }
+
     public function updateSpecs(UpdateSpecsPurchaseOptionsRequest $request, int $id): JsonResponse
     {
         try {

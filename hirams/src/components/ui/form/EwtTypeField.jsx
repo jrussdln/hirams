@@ -16,14 +16,15 @@ import { fmtPHP } from "../../../utils/formatters/formatter.js";
 // Default) has no code — the line falls back to the default formula, the
 // one the supplier's own flags decide.
 const EWT_TYPE_DEFAULT = "";
-const EWT_TYPE_OPTIONS = ["", "A", "B", "C"];
+const EWT_TYPE_OPTIONS = ["", "A", "B", "C", "D"];
 
 // Fallback labels — the same wording as the `ewt_bypass_type` mapping in
 // apiHirams/config/mappings.php, used until the mapping arrives.
 const FALLBACK_LABELS = {
   A: "0% of Q",
   B: "1% of Q",
-  C: "1% of Q / 1.12 (VAT net)",
+  C: "2% of Q",
+  D: "1% of Q / 1.12 (VAT net)",
 };
 
 const useColors = (c) => ({
@@ -54,7 +55,8 @@ const useColors = (c) => ({
  *             service 2%, VAT gross-down when the supplier is vattable)
  *   A       → 0% of Q
  *   B       → 1% of Q
- *   C       → 1% of Q / 1.12 (VAT net)
+ *   C       → 2% of Q
+ *   D       → 1% of Q / 1.12 (VAT net)
  *
  * Controlled: the selected type lives in the parent form as `cEWTType`.
  *
@@ -67,10 +69,10 @@ const useColors = (c) => ({
  * outline, same label treatment: the height can never drift away from the
  * neighbours, whatever MUI does to its inputs.
  *
- * @param value     the current type ("" = Default, "A" | "B" | "C")
+ * @param value     the current type ("" = Default, "A" | "B" | "C" | "D")
  * @param amount    the computed EWT amount to display
- * @param onChange  (type) => void — type is "" | "A" | "B" | "C"
- * @param labels    the `ewt_bypass_type` mapping { A, B, C } (optional)
+ * @param onChange  (type) => void — type is "" | "A" | "B" | "C" | "D"
+ * @param labels    the `ewt_bypass_type` mapping { A, B, C, D } (optional)
  * @param compact   the small variant, for the rows of a list/modal
  */
 export default function EwtTypeField({

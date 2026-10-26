@@ -160,16 +160,18 @@ class FormulaHelper
      *   null → DEFAULT — the matrix above decides
      *   'A'  → 0% of Q
      *   'B'  → 1% of Q
-     *   'C'  → 1% of Q / 1.12 (VAT net)
+     *   'C'  → 2% of Q
+     *   'D'  → 1% of Q / 1.12 (VAT net)
      *
      * A type OVERRIDES the supplier's bEWT / bVAT flags entirely: 'A' is
-     * no EWT even for an EWT supplier, and 'B' / 'C' are 1% even for a
-     * non-EWT or non-vattable one.
+     * no EWT even for an EWT supplier, and 'B' / 'C' / 'D' are the bypass
+     * rates even for a non-EWT or non-vattable one.
      */
     public const EWT_TYPE_DEFAULT   = null;
     public const EWT_TYPE_BYPASS_0  = 'A';
     public const EWT_TYPE_BYPASS_1  = 'B';
-    public const EWT_TYPE_BYPASS_VAT = 'C';
+    public const EWT_TYPE_BYPASS_2   = 'C';
+    public const EWT_TYPE_BYPASS_VAT = 'D';
 
     /**
      * The EWT types the API accepts on the wire.
@@ -182,6 +184,7 @@ class FormulaHelper
             self::EWT_TYPE_BYPASS_0,
             self::EWT_TYPE_BYPASS_1,
             self::EWT_TYPE_BYPASS_VAT,
+            self::EWT_TYPE_BYPASS_2,
         ];
     }
 
@@ -207,6 +210,8 @@ class FormulaHelper
                     ($totalCost / self::EWT_VAT_FACTOR) * self::EWT_RATE_GOODS,
                     2
                 );
+            case self::EWT_TYPE_BYPASS_2:
+                return round($totalCost * self::EWT_RATE_SERVICE, 2);
         }
 
         // ── DEFAULT — the matrix above ────────────────────────────────

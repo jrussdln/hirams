@@ -9,7 +9,7 @@ import {
 import { fmtPHP, fmtQty } from "../../../../utils/formatters/formatter";
 import { ewtOfOption, totalEWT } from "../../../../utils/helpers/calculateEWT.js";
 import getThemeColors from "../../../../utils/style/getThemeColors";
-import PickableValue from "../../jev/components/AmountPick.jsx";
+import PickableValue from "../../../../components/ui/form/AmountPick.jsx";
 import AddItemButton from "./AddItemButton.jsx";
 import { contactFallbacks } from "./contactFallbacks.js";
 
@@ -202,7 +202,7 @@ export default function PORowPanel({
               <Typography
                 onClick={(e) => {
                   e.stopPropagation();
-                  onNavigate?.(link.nPurchaseOrderId);
+                  onNavigate?.(link.nPurchaseOrderId, link.purchase_order?.nStatus);
                 }}
                 title={onNavigate ? "Open this purchase order" : undefined}
                 sx={{
@@ -341,7 +341,7 @@ export default function PORowPanel({
               <Typography
                 onClick={(e) => {
                   e.stopPropagation();
-                  onNavigate?.(link.nPurchaseOrderId);
+                  onNavigate?.(link.nPurchaseOrderId, link.purchase_order?.nStatus);
                 }}
                 title={onNavigate ? "Open this purchase order" : undefined}
                 sx={{

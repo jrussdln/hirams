@@ -671,6 +671,22 @@ function PricingSetPanel({
           }
         />
       )}
+      {/* Direct Cost lives here now — moved out of the transactions
+          action column for the pricing statuses. */}
+      <BaseButton
+        label="Direct Cost"
+        icon={icons.breakdown}
+        onClick={() => setDirectCostModalOpen(true)}
+        disabled={loading || setsLoading || statusChangedAlert}
+        actionColor="breakdown"
+        tooltip={
+          statusChangedAlert
+            ? statusChangedTooltip
+            : loading || setsLoading
+              ? "Loading, please wait..."
+              : ""
+        }
+      />
       {showVerify && (
         <BaseButton
           label="Verify"

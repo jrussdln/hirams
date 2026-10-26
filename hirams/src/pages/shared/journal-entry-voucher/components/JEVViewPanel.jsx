@@ -10,15 +10,22 @@ import {
   KeyboardArrowUp,
   KeyboardArrowDown,
 } from "@mui/icons-material";
-import JevEntryAEModal from "../modal/JevEntryAEModal.jsx";
-import AccountChainSelect from "./AccountChainSelect.jsx";
-import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
-import { warmAccountCache } from "./journalAccountCache.js";
+import JevAPI from "../../../../api/endpoints/jev.api.js";
 import JevEntriesAPI from "../../../../api/endpoints/jev-entries.api.js";
 import { fmtPHP, fmtDate } from "../../../../utils/formatters/formatter.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import useKeysLabels from "../../../../hooks/useKeysLabels.js";
 import { loadMappings } from "../../../../utils/storage/mappingCache.js";
+import JEVEntryAEModal from "../modal/JEVEntryAEModal.jsx";
+import JEVTitleDateUpdate from "./JEVTitleDateUpdate.jsx";
+import { warmAccountCache } from "./AccountChainSelect.jsx";
+
+// ── Helper functions for date editing ──────────────────────────────────
+const toInputDate = (val) => String(val ?? "").slice(0, 10);
+const withTime = (date, original) => {
+  const time = String(original ?? "").slice(11, 19);
+  return `${date} ${/^\d{2}:\d{2}:\d{2}$/.test(time) ? time : "00:00:00"}`;
+};
 
 const useColors = (c) => ({
   slate: {
@@ -112,17 +119,6 @@ export default function JevViewPanel({
   // and depend on it) or "all" (the JEV list page, where entries are
   // managed whatever the status is).
   entryStatusGate = "pending",
-  // Inline entry form — the shared JEV viewer (JevEntriesViewModal)
-  // sits on top of the page's own modal, so a second modal inside it
-  // would stack three deep. Where this is set, Add / Edit Entry takes
-  // the place of the From / To columns instead of opening
-  // JevEntryAEModal, and `onEntryFormChange(payload)` hands the viewer
-  // what its own footer needs: the Back / Save buttons, their labels,
-  // and the busy flag (null when no entry is being written). The
-  // viewer hides its "Journal Entry Voucher" heading for as long as
-  // that payload is set — saving or cancelling restores both.
-  inlineEntryForm = false,
-  onEntryFormChange,
   isJevBalanced,
   jevBalanceLoading,
   isAssigneeType,
@@ -154,17 +150,25 @@ export default function JevViewPanel({
   // the journal's identity (the inventory item details) folds them away.
   defaultOpen = true,
   // The JEV number in the header is a LINK: it opens that very journal on
-  // the JEV page (/jev?id=…). A caller that does not want a link there
-  // (the number is plain text, not a link) turns it off.
+  // the full-page viewer (/jev-update?id=…). A caller that does not want a
+  // link there (the number is plain text, not a link) turns it off.
   jevLinkable: jevLinkableProp = true,
+  // Open the header's title / date fields on mount. Used right after a
+  // JEV is created — the user has to name it before doing anything else.
+  startEditing = false,
 }) {
   const theme = useTheme();
   const navigate = useNavigate();
-  // Riding on the JEV list page (/jev) itself, the number needs no link —
-  // its target IS the screen it sits on — even for finance / management.
+  // Riding on a screen that already shows this journal — the JEV list page
+  // (/journal-entry-voucher) or its full-page viewer (/jev-update) — the
+  // number needs no link: its target IS the screen it sits on, even for
+  // finance / management.
   const location = useLocation();
   const onJevPage =
-    location.pathname === "/jev" || location.pathname.startsWith("/jev/");
+    location.pathname === "/journal-entry-voucher" ||
+    location.pathname.startsWith("/journal-entry-voucher/") ||
+    location.pathname === "/jev-update" ||
+    location.pathname.startsWith("/jev-update/");
   const isDark = theme.palette.mode === "dark";
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useMemo(() => useColors(base), [base]);
@@ -182,7 +186,8 @@ export default function JevViewPanel({
   // reach the screen. The cache is read straight from storage first, so
   // the very first paint already carries the words.
   const jevId = jev?.nJEVId;
-  // The JEV number navigates (it opens /jev?id=…) for FINANCE and
+  // The JEV number navigates (it opens /jev-update?id=…) for
+  // FINANCE and
   // MANAGEMENT only — every other role reads it as plain text. Callers
   // may hand the flags in; otherwise the signed-in user's roles decide.
   // (?? lets an explicit false from a caller stand, and a caller that
@@ -191,8 +196,8 @@ export default function JevViewPanel({
     (isFinanceOfficer ?? keys.isFinanceOfficer) ||
     (isManagement ?? keys.isManagement);
   // A link needs an id to point at — without one it stays plain text. And
-  // on /jev itself the panel is already showing that very journal, so the
-  // number is plain text there for everyone.
+  // on the JEV list page or /jev-update the panel is already showing that
+  // very journal, so the number is plain text there for everyone.
   const jevLinkable =
     jevLinkableProp && !!jevId && canNavigate && !onJevPage;
 
@@ -223,6 +228,21 @@ export default function JevViewPanel({
   const [loading, setLoading] = useState(!jev?.entries);
   // The header's triangle opens and closes the From / To columns.
   const [contentOpen, setContentOpen] = useState(defaultOpen !== false);
+  const [titleEditing, setTitleEditing] = useState(!!startEditing);
+  const [titleValue, setTitleValue] = useState(
+    startEditing ? (jev?.strTitle ?? "") : "",
+  );
+  const [dateValue, setDateValue] = useState(
+    startEditing ? toInputDate(jev?.dtOccur ?? "") : "",
+  );
+  const [titleError, setTitleError] = useState("");
+  const [dateError, setDateError] = useState("");
+  const [infoSaving, setInfoSaving] = useState(false);
+  const [savedDate, setSavedDate] = useState(null);
+  const [savedTitle, setSavedTitle] = useState(null);
+  // Focuses the Title field whenever the header's edit mode opens (the
+  // newly created JEV, or a click on EDIT TITLE).
+  const titleInputRef = useRef(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [formSide, setFormSide] = useState("from");
@@ -252,6 +272,78 @@ export default function JevViewPanel({
       setLoading(false);
     }
   }, [jevId]);
+
+  // A different journal in this panel must never inherit the previous one's
+  // in-progress edit or its locally saved title / date. A freshly created
+  // JEV opens straight into its fields (startEditing) instead.
+  useEffect(() => {
+    setTitleEditing(!!startEditing);
+    setTitleValue(startEditing ? (jev?.strTitle ?? "") : "");
+    setDateValue(startEditing ? toInputDate(jev?.dtOccur ?? "") : "");
+    setTitleError("");
+    setDateError("");
+    setSavedDate(null);
+    setSavedTitle(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jevId]);
+
+  // Put the caret in the Title field as soon as edit mode opens. The tick
+  // lets it win over the modal's own focus trap.
+  useEffect(() => {
+    if (!titleEditing) return;
+    const t = setTimeout(() => titleInputRef.current?.focus(), 50);
+    return () => clearTimeout(t);
+  }, [titleEditing]);
+
+  const startEditInfo = () => {
+    setTitleValue(savedTitle ?? jev?.strTitle ?? "");
+    setDateValue(toInputDate(savedDate ?? jev?.dtOccur ?? ""));
+    setTitleError("");
+    setDateError("");
+    setTitleEditing(true);
+  };
+
+  const cancelEditInfo = () => {
+    setTitleEditing(false);
+    setTitleValue("");
+    setDateValue("");
+    setTitleError("");
+    setDateError("");
+  };
+
+  const saveInfo = async () => {
+    const date = String(dateValue ?? "").trim();
+    const title = String(titleValue ?? "").trim();
+
+    const dateMsg = date ? "" : "Date is required.";
+    const titleMsg = !title ? "Title is required." : "";
+
+    setDateError(dateMsg);
+    setTitleError(titleMsg);
+    if (dateMsg || titleMsg) return;
+
+    setInfoSaving(true);
+    try {
+      const dtOccur = withTime(date, savedDate ?? jev?.dtOccur ?? "");
+      await JevAPI.update(jevId, {
+        dtOccur,
+        strTitle: title,
+      });
+      setSavedDate(dtOccur);
+      setSavedTitle(title);
+      setTitleEditing(false);
+      setTitleValue("");
+      setDateValue("");
+      window.dispatchEvent(new CustomEvent("jev_data_updated"));
+    } catch (err) {
+      console.error("Failed to update JEV info:", err);
+      const message = err?.response?.data?.message || "Failed to update. Please try again.";
+      setDateError(message);
+      setTitleError(message);
+    } finally {
+      setInfoSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!jev?.entries) fetchEntries();
@@ -301,6 +393,37 @@ export default function JevViewPanel({
           border: colors.green.border,
           text: colors.green.text,
         };
+
+  // The status chip sits in the header's action row, left of the Edit
+  // Title button.
+  const statusBadge = (
+    <Box
+      sx={{
+        display: "inline-flex",
+        alignItems: "center",
+        px: 0.6,
+        py: 0.2,
+        borderRadius: "99px",
+        background: statusTint.bg,
+        border: `1px solid ${statusTint.border}`,
+        flexShrink: 0,
+      }}
+    >
+      <Typography
+        sx={{
+          fontSize: "0.5rem",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.04em",
+          color: statusTint.text,
+          lineHeight: 1,
+        }}
+      >
+        {statusMap?.[jev?.cStatus] ?? jev?.cStatus ?? "—"}
+      </Typography>
+    </Box>
+  );
+
   const toTotal = useMemo(
     () =>
       toEntries.reduce((sum, e) => sum + Math.abs(Number(e.dAmount || 0)), 0),
@@ -346,6 +469,13 @@ export default function JevViewPanel({
     [formSide, toAccountIds, fromAccountIds],
   );
 
+  // ── Entry triggers ───────────────────────────────────────────────────
+  // Add / Edit Entry ALWAYS opens the built-in JEVEntryAEModal modal —
+  // the inline form hand-off (onEntryAction → JEVTitleDateUpdate) is retired.
+  const handleEntryAction = ({ type, side, entry = null }) => {
+    type === "add" ? openAdd(side) : openEdit(entry, side);
+  };
+
   const openAdd = (side) => {
     setFormSide(side);
     setEditingEntry(null);
@@ -374,51 +504,8 @@ export default function JevViewPanel({
     setSaveError("");
   };
 
-  // ── Inline form plumbing (duplicated from JevEntryAEModal) ───────────
-  // Same two fields the modal shows — Account Title and Amount — driven
-  // by the shared FormGrid so they render identically, just without the
-  // modal around them.
-  const handleAccountChange = useCallback((id) => {
-    setFormData((prev) => ({ ...prev, nJournalAccountId: id }));
-    setSaveError("");
-  }, []);
-
-  // FormGrid has already shaped the value (the peso field keeps its own
-  // display formatting); only the named key moves.
-  const handleFormChange = useCallback(({ target: { name, value } }) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setSaveError("");
-  }, []);
-
-  const inlineFields = [
-    {
-      name: "account_wrapper",
-      type: "custom",
-      label: "Account Title",
-      xs: 12,
-      render: () => (
-        <Box sx={{ mb: 0.5 }}>
-          <AccountChainSelect
-            value={formData.nJournalAccountId}
-            preloadedAccount={formData.journalAccount}
-            onChange={handleAccountChange}
-            error={formErrors.nJournalAccountId}
-            // This form never reads { isFund, balance }, so the fund
-            // lookup is skipped — the account is committed on pick.
-            resolveFundInfo={false}
-          />
-        </Box>
-      ),
-    },
-    {
-      name: "amount",
-      label: "Amount",
-      type: "peso",
-      xs: 12,
-      placeholder: "0.00",
-    },
-  ];
-
+  // The modal path owns its validation and
+  // save through handleSaveEntry below.
   const handleSaveEntry = async () => {
     const errs = {};
     const grandTotal = Number(particularsGrandTotal) || 0;
@@ -474,27 +561,36 @@ export default function JevViewPanel({
 
     // Spinner lives INSIDE the modal, not over the whole screen: the
     // form stays put and its own ModalContainer renders `loading`
-    // (JevEntryAEModal passes `saving` straight in; the inline card
-    // publishes it through the footer hand-off, where the viewer's
-    // ModalContainer picks it up). `withSpinner`'s Swal overlay would
-    // have covered the modal instead — and the form used to be closed
-    // first, so the modal's spinner never even got to show.
+    // (JEVEntryAEModal passes `saving` straight in). `withSpinner`'s
+    // Swal overlay would have covered the modal instead — and the form
+    // used to be closed first, so the modal's spinner never even got
+    // to show.
     // No Swal either end: success is the form closing over the
     // refreshed entries, failure is the message under the fields.
     setSaveError("");
     setSaving(true);
     try {
+      // 25s so a wedged request can never hold the viewer's footer (and
+      // its content lock) hostage for the axios-wide 120s.
+      const timeout = { timeout: 25000 };
       editingEntry
-        ? await JevEntriesAPI.update(editingEntry.nJEVEntryId, {
-            nJEVId: jevId,
-            nJournalAccountId: formData.nJournalAccountId,
-            dAmount: signedAmount,
-          })
-        : await JevEntriesAPI.create({
-            nJEVId: jevId,
-            nJournalAccountId: formData.nJournalAccountId,
-            dAmount: signedAmount,
-          });
+        ? await JevEntriesAPI.update(
+            editingEntry.nJEVEntryId,
+            {
+              nJEVId: jevId,
+              nJournalAccountId: formData.nJournalAccountId,
+              dAmount: signedAmount,
+            },
+            timeout,
+          )
+        : await JevEntriesAPI.create(
+            {
+              nJEVId: jevId,
+              nJournalAccountId: formData.nJournalAccountId,
+              dAmount: signedAmount,
+            },
+            timeout,
+          );
       await fetchEntries();
       notifyEntryUpdated(); // sync voucher-level balance in the same tab
       closeForm();
@@ -557,36 +653,6 @@ export default function JevViewPanel({
   const canPrintCheque =
     !!isClosedOrPaidVoucher && !!showPrintCheque && !!onPrintCheque;
 
-  // ── Footer hand-off (inline mode) ────────────────────────────────────
-  // Back / Save are NOT on the card — they sit in the VIEWER's modal
-  // footer, so this panel publishes what that footer needs: the labels,
-  // whether the save is in flight, and two thunks that resolve to the
-  // CURRENT handlers when clicked (they read latestRef, which every
-  // render republishes, so the footer never acts on a stale form).
-  const latestRef = useRef({});
-  latestRef.current = {
-    save: handleSaveEntry,
-    cancel: closeForm,
-    saving,
-    isEdit: !!editingEntry,
-  };
-
-  useEffect(() => {
-    if (!inlineEntryForm) return;
-    onEntryFormChange?.(
-      formOpen
-        ? {
-            saving,
-            isEdit: !!editingEntry,
-            save: () => latestRef.current.save(),
-            cancel: () => latestRef.current.cancel(),
-          }
-        : null,
-    );
-    // The viewer passes setState, so this is stable; `formOpen`,
-    // `saving` and `editingEntry` are the only things it must re-read.
-  }, [inlineEntryForm, onEntryFormChange, formOpen, saving, editingEntry]);
-
   const renderColumn = (label, icon, list, side, total, grid) => (
     <Box
       sx={{
@@ -636,7 +702,7 @@ export default function JevViewPanel({
         {canManageEntries && (
           <IconButton
             size="small"
-            onClick={() => openAdd(side)}
+            onClick={() => handleEntryAction({ type: "add", side })}
             sx={{
               width: "auto",
               height: 24,
@@ -779,7 +845,7 @@ export default function JevViewPanel({
                 >
                   <IconButton
                     size="small"
-                    onClick={() => openEdit(entry, side)}
+                    onClick={() => handleEntryAction({ type: "edit", side, entry })}
                     sx={{
                       width: 18,
                       height: 18,
@@ -812,120 +878,54 @@ export default function JevViewPanel({
     </Box>
   );
 
-  // ── The form that stands in for the columns ──────────────────────────
-  // Card in the columns' own shape: a header naming what is being edited
-  // and which side, then the two fields and the To = From line — the
-  // content of JevEntryAEModal, without a second modal stacked under the
-  // viewer. Its actions are NOT here: Back / Save live in the viewer's
-  // modal footer (see the hand-off above).
-  const renderInlineEntryForm = () => (
-    <Box
-      sx={{
-        borderRadius: "12px",
-        border: `0.5px solid ${colors.slate.border}`,
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          px: 1.5,
-          py: 0.75,
-          bgcolor: colors.slate.itemHeaderBg,
-          borderBottom: `0.5px solid ${colors.slate.border}`,
-        }}
-      >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.6 }}>
-          <Typography
-            sx={{
-              fontSize: "0.7rem",
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              color: colors.gray.textHeading,
-            }}
-          >
-            {editingEntry ? "Edit Entry" : "Add Entry"}
-          </Typography>
-          <Typography
-            sx={{
-              fontSize: "0.6rem",
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              color: formSide === "from" ? colors.red.text : colors.green.text,
-            }}
-          >
-            {formSide === "from" ? "From" : "To"}
-          </Typography>
-        </Box>
-      </Box>
-
-      <Box sx={{ p: 1.5 }}>
-        <FormGrid
-          fields={inlineFields}
-          switches={[]}
-          formData={formData}
-          errors={formErrors}
-          handleChange={handleFormChange}
-          autoFocus={true}
-        />
-
-        {/* To / From state — the line the entry form used to print */}
-        {balanceHint && (
-          <Typography
-            sx={{
-              mt: 0.75,
-              px: 0.5,
-              fontSize: "0.62rem",
-              fontWeight: 600,
-              color: balanceHint.balanced ? colors.green.text : colors.red.text,
-            }}
-          >
-            {balanceHint.text}
-          </Typography>
-        )}
-
-        {/* Save failure — the only feedback now that there is no Swal */}
-        {saveError && (
-          <Typography
-            sx={{
-              mt: 0.75,
-              px: 0.5,
-              fontSize: "0.62rem",
-              fontWeight: 600,
-              color: colors.red.text,
-            }}
-          >
-            {saveError}
-          </Typography>
-        )}
-      </Box>
-
-      {/* No buttons here: Back / Save live in the viewer's modal footer,
-          published through onEntryFormChange (see the hand-off above). */}
-    </Box>
-  );
-
   return (
-    <Box
-      sx={{
-        borderRadius: "10px",
-        border: `0.5px solid ${colors.slate.border}`,
-        background: colors.slate.outerBg,
-        overflow: "hidden",
-      }}
-    >
-      {/* HEADER — the journal's own number, type and status, in the same
-          shape as the voucher's card header: the number and its status
-          badge on the first line, the type under it, and a triangle on the
-          right that opens and closes the From / To columns. */}
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+      {/* ── JEV Info card — the Title / Date form ABOVE the panel ──
+          While it is open the panel itself stays hidden: the card is
+          the only thing on screen until Save / Close. */}
+      {titleEditing && (
+        <JEVTitleDateUpdate
+          titleValue={titleValue}
+          dateValue={dateValue}
+          onTitleChange={(e) => {
+            setTitleValue(e.target.value);
+            if (titleError) setTitleError("");
+          }}
+          onDateChange={(e) => {
+            setDateValue(e.target.value);
+            if (dateError) setDateError("");
+          }}
+          titleError={titleError}
+          dateError={dateError}
+          saving={infoSaving}
+          titleInputRef={titleInputRef}
+          onSave={saveInfo}
+          onCancel={cancelEditInfo}
+        />
+      )}
+
+      {/* ── The JEV view panel itself — hidden while the JEV Info card
+          above is open ── */}
+      {!titleEditing && (
+        <Box
+          sx={{
+            borderRadius: "10px",
+            border: `0.5px solid ${colors.slate.border}`,
+            background: colors.slate.outerBg,
+            overflow: "hidden",
+          }}
+        >
+      {/* HEADER — the journal's own number, title and status, in the same
+          shape as the voucher's card header: the number, the title with its
+          status badge, the type under it, and a triangle on the right that
+          opens and closes the From / To columns. */}
       {showHeader && (
         <Box
-          onClick={() => setContentOpen((v) => !v)}
+          onClick={() => {
+            // The header folds the From / To columns; the title / date
+            // fields live on the card above, so editing never blocks it.
+            setContentOpen((v) => !v);
+          }}
           sx={{
             display: "flex",
             // The triangle sits in the middle of the header, not at its top.
@@ -941,81 +941,94 @@ export default function JevViewPanel({
           }}
         >
           <Box sx={{ flex: 1, minWidth: 0 }}>
+            {/* The JEV code hides while editing — its fields live in the
+                JEV Info card above the panel, and Save / Cancel sit in
+                this header for the duration. */}
+            {!titleEditing && (
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.5,
+                }}
+              >
+                <Typography
+                  component={jevLinkable ? "button" : "span"}
+                  onClick={
+                    jevLinkable
+                      ? (e) => {
+                          // The header folds the From / To columns on its own —
+                          // the link must not fold them on the way out.
+                          e.stopPropagation();
+                          navigate(`/jev-update?id=${jevId}`);
+                        }
+                      : undefined
+                  }
+                  title={jevLinkable ? "Open this JEV" : undefined}
+                  sx={{
+                    // Same look as the DV number on the voucher card.
+                    fontSize: { xs: "0.5rem", sm: "0.55rem", md: "0.58rem" },
+                    fontWeight: 700,
+                    // Blue when it opens the journal — it is a link then.
+                    color: jevLinkable
+                      ? colors.blue.text
+                      : colors.gray.textMuted,
+                    textTransform: "uppercase",
+                    lineHeight: 1,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    display: jevLinkable ? "inline-block" : "inherit",
+                    width: jevLinkable ? "fit-content" : "auto",
+                    p: 0,
+                    border: "none",
+                    background: "transparent",
+                    fontFamily: "inherit",
+                    cursor: jevLinkable ? "pointer" : "inherit",
+                    "&:hover": jevLinkable
+                      ? { textDecoration: "underline" }
+                      : undefined,
+                  }}
+                >
+                  {jev?.strJEVNumber || "—"}
+                </Typography>
+              </Box>
+            )}
+
+            {/* What it is — the kind of journal, then the specific type.
+                While the Title / Date fields are open (EDIT TITLE) the
+                header keeps showing them — the fields live in the JEV
+                Info card ABOVE this panel now. */}
             <Box
               sx={{
                 display: "flex",
                 alignItems: "center",
                 gap: 0.5,
+                mt: 0.2,
               }}
             >
               <Typography
-                component={jevLinkable ? "button" : "span"}
-                onClick={
-                  jevLinkable
-                    ? (e) => {
-                        // The header folds the From / To columns on its own —
-                        // the link must not fold them on the way out.
-                        e.stopPropagation();
-                        navigate(`/jev?id=${jevId}`);
-                      }
-                    : undefined
-                }
-                title={jevLinkable ? "Open this JEV" : undefined}
                 sx={{
-                  // Same look as the DV number on the voucher card.
-                  fontSize: { xs: "0.5rem", sm: "0.55rem", md: "0.58rem" },
-                  fontWeight: 700,
-                  // Blue when it opens the journal — it is a link then.
-                  color: jevLinkable
-                    ? colors.blue.text
-                    : colors.gray.textMuted,
-                  textTransform: "uppercase",
+                  fontSize: { xs: "0.62rem", sm: "0.68rem", md: "0.75rem" },
+                  fontWeight: 500,
+                  color: colors.gray.textPrimary,
                   lineHeight: 1,
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                  display: jevLinkable ? "inline-block" : "inherit",
-                  width: jevLinkable ? "fit-content" : "auto",
-                  p: 0,
-                  border: "none",
-                  background: "transparent",
-                  fontFamily: "inherit",
-                  cursor: jevLinkable ? "pointer" : "inherit",
-                  "&:hover": jevLinkable
-                    ? { textDecoration: "underline" }
-                    : undefined,
                 }}
               >
-                {jev?.strJEVNumber || "—"}
+                {(savedTitle ?? jev?.strTitle) || "Title is not yet added."}
               </Typography>
             </Box>
-
-            {/* What it is — the kind of journal, then the specific type. */}
-            <Typography
-              sx={{
-                // Same size as the type label below it.
-                fontSize: { xs: "0.62rem", sm: "0.68rem", md: "0.75rem" },
-                fontWeight: 700,
-                color: colors.gray.textMuted,
-                textTransform: "uppercase",
-                letterSpacing: "0.08em",
-                lineHeight: 1,
-                mt: 0.2,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Journal Entry Voucher
-            </Typography>
 
             {/* The type — the label of the journal. */}
             <Typography
               sx={{
                 fontSize: { xs: "0.5rem", sm: "0.55rem", md: "0.58rem" },
                 fontWeight: 600,
-                // Italic — it reads as a caption under the journal's own
-                // number and kind.
                 fontStyle: "italic",
-                color: colors.gray.textPrimary,
+                color: colors.gray.textMuted,
                 textTransform: "uppercase",
                 lineHeight: 1,
                 mt: 0.15,
@@ -1026,35 +1039,53 @@ export default function JevViewPanel({
             >
               {typeMap?.[jev?.cJEVLinkType] ?? jev?.cJEVLinkType ?? "—"}
             </Typography>
-          </Box>
 
-          {/* The status badge sits on the RIGHT, just before the triangle. */}
-          <Box
-            sx={{
-              display: "inline-flex",
-              alignItems: "center",
-              px: 0.6,
-              py: 0.2,
-              borderRadius: "99px",
-              background: statusTint.bg,
-              border: `1px solid ${statusTint.border}`,
-              flexShrink: 0,
-            }}
-          >
+            {/* Date display under the type */}
             <Typography
               sx={{
-                fontSize: "0.5rem",
-                fontWeight: 700,
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
-                color: statusTint.text,
+                fontSize: { xs: "0.48rem", sm: "0.52rem", md: "0.55rem" },
+                fontWeight: 500,
+                color: colors.gray.textMuted,
                 lineHeight: 1,
+                mt: 0.1,
               }}
             >
-              {statusMap?.[jev?.cStatus] ?? jev?.cStatus ?? "—"}
+              {fmtDate(savedDate ?? jev?.dtOccur ?? "")}
             </Typography>
           </Box>
 
+          {/* STATUS — sits before the panel's actions, after the title
+              block: it always travels with the title. */}
+          {statusBadge}
+
+          {/* EDIT TITLE — a round icon button just left of the toggle.
+              While the fields are open the actions live on the card
+              itself (Close / Save in its footer). */}
+          {canManageEntries && !titleEditing && (
+            <IconButton
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                startEditInfo();
+              }}
+              title="Edit title and date"
+              sx={{
+                width: 22,
+                height: 22,
+                p: 0,
+                flexShrink: 0,
+                color: colors.blue.text,
+                border: `0.5px solid ${colors.slate.border}`,
+                borderRadius: "50px",
+                "&:hover": { bgcolor: colors.blue.bg },
+              }}
+            >
+              <EditOutlined sx={{ fontSize: "0.7rem" }} />
+            </IconButton>
+          )}
+
+          {/* The fold toggle — available in every state, edit mode
+              included: the fields sit on the card above, not here. */}
           <IconButton
             size="small"
             onClick={(e) => {
@@ -1086,13 +1117,13 @@ export default function JevViewPanel({
 
       {contentOpen && (
         <Box>
-          {inlineEntryForm && formOpen ? (
-            <Box sx={{ p: 1.5 }}>{renderInlineEntryForm()}</Box>
-          ) : (
-            /* The columns and the total band are ONE grid — two columns, two
-               rows — so the rule that separates From from To and the rule in
-               the total band sit on the same line. */
-            <Box
+          {/* Add / Edit Entry opens the JEVEntryAEModal rendered at the
+              bottom of this panel — there is no inline form section
+              anymore, and the columns never disappear behind a form.
+              The columns and the total band are ONE grid — two columns,
+              two rows — so the rule that separates From from To and the
+              rule in the total band sit on the same line. */}
+          <Box
               sx={{
                 display: "grid",
                 gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
@@ -1176,14 +1207,12 @@ export default function JevViewPanel({
                 </Box>
               ))}
             </Box>
-          )}
         </Box>
       )}
 
-      {/* The modal form stays for every caller that did NOT ask for the
-          inline one — only the shared viewer opts out of it. */}
-      {!inlineEntryForm && (
-        <JevEntryAEModal
+      {/* The built-in modal path — every Add / Edit Entry click opens
+          the JEV entry form as a modal, for every caller. */}
+      <JEVEntryAEModal
           open={formOpen}
           onClose={closeForm}
           side={formSide}
@@ -1213,6 +1242,7 @@ export default function JevViewPanel({
           supplierInfo={supplierInfo}
           clientName={clientName}
         />
+        </Box>
       )}
     </Box>
   );

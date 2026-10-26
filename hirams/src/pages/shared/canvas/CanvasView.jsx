@@ -14,6 +14,7 @@ import NewOptionModal from "./modal/NewOptionModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import TransactionActionModal from "../transactions/modal/TransactionActionModal";
 import ExportCanvasModal from "./modal/ExportCanvasModal";
+import { isPreCanvassEnabled } from "../../../config/featureFlags.js";
 import CostBreakdownModal from "../pricing/modal/CostBreakdownModal";
 import GetSuggestionsModal from "./modal/GetSuggestionsModal";
 import StatusModal from "../pricing/modal/StatusModal";
@@ -245,6 +246,14 @@ export default function CanvasView(props) {
   );
   const totalItemQty = items.reduce((sum, i) => sum + Number(i.qty || 0), 0);
 
+  // Awaiting Award + Pre-Canvass — the export here takes its prices
+  // from the CHOSEN pricing set (no markup question). Gated behind
+  // isPreCanvassEnabled — the feature is not checked / not final yet.
+  const isPreCanvasAwardExport =
+    isPreCanvassEnabled &&
+    showCostBreakdown &&
+    Number(transaction?.bIsPreCanvas) === 1;
+
   return (
     <PageLayout
       title={isArchiveView ? "Transaction Archived" : "Transaction"}
@@ -392,6 +401,15 @@ export default function CanvasView(props) {
               actionColor="revert"
             />
           )}
+          {/* Direct Cost lives here now — moved out of the transactions
+              action column for the canvas statuses. */}
+          <BaseButton
+            label="Direct Cost"
+            icon={icons.breakdown}
+            onClick={() => setDirectCostModalOpen(true)}
+            disabled={itemsLoading || statusChangedAlert}
+            actionColor="breakdown"
+          />
           {showCostBreakdown && (
             <BaseButton
               label="Cost Breakdown"
@@ -425,6 +443,20 @@ export default function CanvasView(props) {
                 totalIncludedQty !== totalItemQty
                   ? "All quantities must be fulfilled before exporting"
                   : ""
+              }
+            />
+          )}
+          {isPreCanvasAwardExport && (
+            <BaseButton
+              label="Export Pre-Canvass"
+              icon={icons.export}
+              onClick={() => setIsExportCanvasOpen(true)}
+              disabled={
+                itemsLoading || statusChangedAlert || !pricingSet
+              }
+              actionColor="save"
+              tooltip={
+                !pricingSet ? "No chosen pricing set yet" : "Export Canvas"
               }
             />
           )}
@@ -652,9 +684,14 @@ export default function CanvasView(props) {
       <ExportCanvasModal
         open={isExportCanvasOpen}
         onClose={() => setIsExportCanvasOpen(false)}
-        items={items}
+        // Awaiting-Award Pre-Canvass export: the chosen pricing set's
+        // items/prices replace the raw canvas items, and there is NO
+        // markup prompt — the set's own dUnitSellingPrices are used.
+        items={isPreCanvasAwardExport ? pricingItems : items}
         transaction={transaction}
         clientName={transaction?.clientName}
+        selectedSet={isPreCanvasAwardExport ? pricingSet : null}
+        pricesFromPricingSet={isPreCanvasAwardExport ? unitSellingPrices : null}
       />
       <TransactionActionModal
         open={Boolean(actionModal)}

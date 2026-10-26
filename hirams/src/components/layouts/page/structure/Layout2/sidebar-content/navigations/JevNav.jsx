@@ -13,7 +13,7 @@ const SESSION_KEY = "selectedJevTypeCode";
 // mapping (Disbursement Voucher, Received Purchases, Delivered Items,
 // Collection …), so the list always follows what is picked here.
 //
-// Contract shared with the page (src/pages/shared/jev/useJevList.js):
+// Contract shared with the page (src/pages/shared/journal-entry-voucher/useJournalEntryVoucher.js):
 //   • the code is persisted under SESSION_KEY
 //   • every pick is broadcast as a "jev_type_changed" CustomEvent, so the
 //     list can switch type even when the sidebar and the page are already
@@ -30,7 +30,7 @@ const JevNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   const [selectedCode, setSelectedCode] = useState(() =>
     getItem(SESSION_KEY, ""),
   );
-  const isOnPage = location.pathname === "/jev";
+  const isOnPage = location.pathname === "/journal-entry-voucher" || location.pathname === "/jev-update";
 
   // ── Counts ────────────────────────────────────────────────────────────
   // One grouped COUNT per type (JevController@counts) — a few hundred bytes,
@@ -106,7 +106,7 @@ const JevNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
     (code) => {
       setItem(SESSION_KEY, code);
       setSelectedCode(code);
-      navigate("/jev");
+      navigate("/journal-entry-voucher");
       onItemClick?.();
       window.dispatchEvent(
         new CustomEvent("jev_type_changed", { detail: { code } }),

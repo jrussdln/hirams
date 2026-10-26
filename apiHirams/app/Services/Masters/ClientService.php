@@ -143,7 +143,13 @@ class ClientService extends CrudService
     {
         $status = $transaction->latestHistory?->nStatus;
 
-        $statusLabels = config('mappings.status_transaction', []);
+        // The workflow steps (100–350) and the end-of-life states
+        // (Archived 101 / Lost 102 / Transaction Completed 103) live in
+        // TWO maps — a transaction can sit at either, so check both.
+        $statusLabels = array_merge(
+            config('mappings.status_transaction', []),
+            config('mappings.archive_status', []),
+        );
         $statusLabel  = $status !== null
             ? ($statusLabels[(string) $status] ?? null)
             : null;

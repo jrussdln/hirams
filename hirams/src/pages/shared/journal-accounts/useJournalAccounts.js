@@ -287,13 +287,13 @@ export default function useJournalAccounts() {
   };
 
   // "View report" → ask for the date range first; the panel itself only
-  // appears once AccountReportiFilterModal's Apply calls openReport().
+  // appears once LedgerFilterModal's Apply calls openReport().
   const handleViewReport = (node) => {
     setReportTarget(node);
     setReportFilterOpen(true);
   };
 
-  // Apply in AccountReportiFilterModal → commit the range and show the panel.
+  // Apply in LedgerFilterModal → commit the range and show the panel.
   const openReport = (range = null) => {
     if (range) {
       setReportDateRange({

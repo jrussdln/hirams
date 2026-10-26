@@ -122,6 +122,16 @@ export default function useVoucherUpdate() {
     fetchVoucher();
   }, [fetchVoucher]);
 
+  // An APPROVED purchase-price change (Transactions' price-change modal)
+  // re-prices the PO lines this voucher totals — refetch silently or the
+  // amounts stay at the old price until a reload.
+  useEffect(() => {
+    const refetchOnOptionChange = () => fetchVoucher();
+    window.addEventListener("purchase_option_data_updated", refetchOnOptionChange);
+    return () =>
+      window.removeEventListener("purchase_option_data_updated", refetchOnOptionChange);
+  }, [fetchVoucher]);
+
   const notifyUpdated = useCallback(() => {
     window.dispatchEvent(new CustomEvent("voucher_data_updated"));
   }, []);
@@ -691,11 +701,30 @@ export default function useVoucherUpdate() {
           ewt: Number(a.dEWT || 0),
         }))
       : supplierLinks.map((vs) => {
-          const opts = vs.purchase_order?.purchase_order_options ?? [];
+          const po = vs.purchase_order;
+          const opts = po?.purchase_order_options ?? [];
+          // The transaction(s) this PO charges — through each option's
+          // purchase_option · transaction_item · transaction chain. A PO
+          // is a single deal, but options can come from more than one
+          // transaction's item, so distinct codes joined with " / ".
+          const txCodes = [
+            ...new Set(
+              opts
+                .map(
+                  (o) =>
+                    o.purchase_option?.transaction_item?.transaction
+                      ?.strCode || "",
+                )
+                .filter(Boolean),
+            ),
+          ];
+          const poCode =
+            po?.strPurchaseOrderNo ?? `PO #${vs.nPurchaseOrderId}`;
+
           return {
-            particular:
-              vs.purchase_order?.strPurchaseOrderNo ??
-              `PO #${vs.nPurchaseOrderId}`,
+            particular: txCodes.length
+              ? `${poCode} / ${txCodes.join(" / ")}`
+              : poCode,
             amount: opts.reduce(
               (sum, o) =>
                 sum +

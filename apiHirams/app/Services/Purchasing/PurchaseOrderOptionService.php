@@ -229,11 +229,19 @@ class PurchaseOrderOptionService extends CrudService
 
         // The runnings per PO — lines and the same qty × unit-price total
         // the cards print (freight excluded; it stays with its own order).
+        // The APPROVED purchase price counts (dPurchaseUnitPrice while the
+        // status is 'A') — the raw canvassed column is only a fallback, so
+        // the totals match what the accessor prices every other read with.
         $amounts = PurchaseOrderOption::query()
             ->join('tblpurchaseitems as o', 'o.nPurchaseItemId', '=', 'tblpurchaseorder_items.nPurchaseItemId')
             ->whereIn('tblpurchaseorder_items.nPurchaseOrderId', $targets->modelKeys())
             ->groupBy('tblpurchaseorder_items.nPurchaseOrderId')
-            ->selectRaw('tblpurchaseorder_items.nPurchaseOrderId, COUNT(*) as lineCount, SUM(o.nQuantity * o.dUnitPrice) as totalAmount')
+            ->selectRaw(
+                "tblpurchaseorder_items.nPurchaseOrderId, COUNT(*) as lineCount, "
+                . "SUM(o.nQuantity * CASE WHEN o.cPurchaseUnitPriceStatus = 'A' "
+                . "AND o.dPurchaseUnitPrice IS NOT NULL AND o.dPurchaseUnitPrice <> '' "
+                . "THEN o.dPurchaseUnitPrice ELSE o.dUnitPrice END) as totalAmount",
+            )
             ->get()
             ->keyBy('nPurchaseOrderId');
 

@@ -6,7 +6,7 @@ import {
 } from "@mui/icons-material";
 import { fmtPHP, fmtQty } from "../../../../utils/formatters/formatter";
 import getThemeColors from "../../../../utils/style/getThemeColors";
-import PickableValue from "../../jev/components/AmountPick.jsx";
+import PickableValue from "../../../../components/ui/form/AmountPick.jsx";
 
 const useColors = (c) => ({
   itemHeaderBg: c.slate.itemHeaderBg,

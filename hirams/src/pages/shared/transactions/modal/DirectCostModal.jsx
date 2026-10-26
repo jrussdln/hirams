@@ -78,7 +78,9 @@ const DirectCostRow = ({
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = React.useMemo(() => useColors(base), [base]);
-  const canEdit = isManagement && isPricingSetting;
+  // Always editable for management — the pricing-setting status gate is
+  // removed, so editing works in every status (pricing, canvas, etc.).
+  const canEdit = isManagement;
   const amount = Number(item.dAmount) || 0;
 
   return (
@@ -793,10 +795,7 @@ function DirectCostModal({
                 </Typography>
               </Box>
             )}
-            {isManagement &&
-              isPricingSetting &&
-              editingIndex === null &&
-              !allOptionsUsed && (
+            {isManagement && editingIndex === null && !allOptionsUsed && (
                 <AddCostRow
                   onClick={() => {
                     setEditingIndex(-1);
@@ -805,7 +804,7 @@ function DirectCostModal({
                   }}
                 />
               )}
-            {isManagement && isPricingSetting && editingIndex === -1 && (
+            {isManagement && editingIndex === -1 && (
               <EditFormRow
                 formData={formData}
                 errors={errors}
@@ -815,10 +814,7 @@ function DirectCostModal({
                 saving={loading}
               />
             )}
-            {isManagement &&
-              isPricingSetting &&
-              allOptionsUsed &&
-              directCostList.length > 0 && (
+            {isManagement && allOptionsUsed && directCostList.length > 0 && (
                 <Box
                   sx={{
                     display: "flex",

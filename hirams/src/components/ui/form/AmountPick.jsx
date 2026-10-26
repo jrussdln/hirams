@@ -1,6 +1,13 @@
-import { useContext } from "react";
+import { createContext, useContext } from "react";
 import { Typography } from "@mui/material";
-import { AmountPickContext } from "./AmountPickContext.js";
+
+// ── Click-to-fill channel for the entry modal's Amount field ─────────────
+// Provided by JEVEntryAEModal around ITS OWN panel + form, so a money cell
+// only becomes a click target inside that modal: every other host of these
+// tables (the voucher page's particulars, the inventory group drill-down,
+// the shared JEV viewer) has no provider above it and keeps behaving — and
+// looking — exactly as it always did.
+export const AmountPickContext = createContext(null);
 
 /**
  * ONE money value: the same text a plain Typography would print, plus —

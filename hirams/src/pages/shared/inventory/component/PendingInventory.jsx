@@ -11,7 +11,7 @@ import CustomSearchField from "../../../../components/ui/form/SearchField";
 import SyncMenu from "../../../../components/ui/form/SyncMenu";
 import BaseButton from "../../../../components/ui/form/BaseButton";
 import FormControlFilter from "../../../../components/ui/form/FormControlFilter";
-import JevViewPanel from "../../jev/components/JevViewPanel.jsx";
+import JevViewPanel from "../../journal-entry-voucher/components/JEVViewPanel.jsx";
 import ItemsTable from "./ItemsTable.jsx";
 import { itemTotal } from "../itemRows.js";
 import useSellingPrices from "../useSellingPrices.js";
@@ -290,7 +290,7 @@ export default function PendingInventory({
                   </span>
                 )}
               </div>
-              <span className="block truncate uppercase tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
+              <span className="block truncate italic tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
                 {val || "—"}
               </span>
             </div>

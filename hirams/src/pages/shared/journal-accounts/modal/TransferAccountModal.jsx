@@ -87,12 +87,17 @@ function TransferAccountModal({ open, onClose, account = null, onMove }) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
   const [saving, setSaving] = useState(false);
+  // "Currently under" on the info card — the raw destination answer still
+  // contains the current parent (it is filtered out of the pick-able list
+  // itself), so its name is read off the unfiltered response.
+  const [currentParentName, setCurrentParentName] = useState(null);
 
   // A fresh candidate list (and a clean pick) every time it opens —
   // the tree it was opened from may have changed since the last visit.
   useEffect(() => {
     setSelectedId(null);
     setSearch("");
+    setCurrentParentName(null);
     if (!open || accountId == null) {
       setCandidates([]);
       return;
@@ -104,6 +109,10 @@ function TransferAccountModal({ open, onClose, account = null, onMove }) {
       .then((res) => {
         if (cancelled) return;
         const list = Array.isArray(res) ? res : (res?.data ?? []);
+        const parentHit = list.find(
+          (a) => String(rowId(a)) === String(currentParentId),
+        );
+        setCurrentParentName(parentHit ? rowName(parentHit) : null);
         setCandidates(
           list.filter((a) => String(rowId(a)) !== String(currentParentId)),
         );
@@ -270,6 +279,18 @@ function TransferAccountModal({ open, onClose, account = null, onMove }) {
               {linkedCount > 0
                 ? `${linkedCount} linked account${linkedCount === 1 ? "" : "s"} move with it`
                 : "No linked accounts of its own"}
+            </Typography>
+            {/* Where the account currently hangs — the "from" side of the
+                move, read off the destination load before the parent was
+                filtered out of it. */}
+            <Typography sx={{ fontSize: "0.64rem", color: colors.textSecondary }}>
+              Currently under:{" "}
+              <Box
+                component="span"
+                sx={{ color: colors.textPrimary, fontWeight: 600 }}
+              >
+                {currentParentName ?? "—"}
+              </Box>
             </Typography>
           </Box>
         </Box>

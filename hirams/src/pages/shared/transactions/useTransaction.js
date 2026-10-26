@@ -475,8 +475,15 @@ export default function useTransaction() {
             status_code: statusCode,
             companyName:
               txn.company?.strCompanyNickName || (isProcurement ? "--" : ""),
-            clientName:
-              txn.client?.strClientNickName || (isProcurement ? "--" : ""),
+            // "clientNick (OfficeNick)" — the transaction's office nickname
+            // rides along in parentheses; without it, just the client
+            // nickname.
+            clientName: (() => {
+              const nick = txn.client?.strClientNickName || "";
+              const office = txn.strOfficeNickName || "";
+              if (nick && office) return `${nick} (${office})`;
+              return nick || (isProcurement ? "--" : "");
+            })(),
             createdBy: txn.created_by || "--",
             creator_id: txn.creator_id ?? null,
             aoName: txn.user ? `${txn.user.strNickName}`.trim() : "",

@@ -224,7 +224,7 @@ export default function InventoryView({
                       </span>
                     )}
                   </div>
-                  <span className="block truncate uppercase tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
+                  <span className="block truncate italic tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
                     {val}
                   </span>
                 </div>

@@ -81,6 +81,7 @@ class CompanyService extends CrudService
                     'status'       => $status !== null
                         ? ($transactionStatuses[(string) $status] ?? null)
                         : null,
+                    'status_code'  => $status,
                     'amount'       => $transaction->dTotalABC,
                     'items_count'  => (int) $transaction->transaction_items_count,
                     'dtCreated'    => $transaction->dtDocSubmission,
@@ -98,6 +99,7 @@ class CompanyService extends CrudService
                     'code'         => $voucher->strNumber,
                     'label'        => null,
                     'status'       => $voucherStatuses[(string) $voucher->cStatus] ?? null,
+                    'status_code'  => $voucher->cStatus,
                     'amount'       => null,
                     'items_count'  => (int) $voucher->voucher_assignees_count,
                     'dtCreated'    => $voucher->dtCreated,

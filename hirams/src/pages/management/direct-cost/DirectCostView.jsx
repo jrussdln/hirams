@@ -5,7 +5,7 @@ import CustomSearchField from "../../../components/ui/form/SearchField";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
 import DirectCostAEModal from "./modal/DirectCostAEModal";
-import TransferDirectCostModal from "./modal/TransferDirectCostModal";
+import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../../shared/transactions/modal/DeleteVerificationModal";
 import { Edit, Delete, Add, DriveFileMoveOutlined } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
@@ -194,7 +194,7 @@ export default function DirectCostView({
 
       {/* Transfer — the stand-in for Delete on an option that still has
           entries charged to it in a transaction. */}
-      <TransferDirectCostModal
+      <RecordConnectionModal
         open={openTransferModal}
         handleClose={handleCloseTransferModal}
         option={selectedCost}

@@ -15,7 +15,7 @@ import { fmtDateTime } from "../../../../utils/helpers/timeZone.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import JevAPI from "../../../../api/endpoints/jev.api.js";
 import useKeysLabels from "../../../../hooks/useKeysLabels.js";
-import JevViewPanel from "../../jev/components/JevViewPanel.jsx";
+import JevViewPanel from "../../journal-entry-voucher/components/JEVViewPanel.jsx";
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — pulls ONLY tokens THIS component actually uses

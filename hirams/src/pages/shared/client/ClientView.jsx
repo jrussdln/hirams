@@ -16,7 +16,7 @@ import SyncMenu from "../../../components/ui/form/SyncMenu";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import ClientAEModal from "./modal/ClientAEModal";
 import InfoClientModal from "./modal/InfoClientModal";
-import TransferClientModal from "./modal/TransferClientModal";
+import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import {
@@ -255,7 +255,7 @@ export default function ClientView({
                     }}
                   />
                 )}
-                {!isActive && row.transactionsCount > 0 && (
+                {row.transactionsCount > 0 && (
                   // A client that still carries transactions cannot be
                   // deleted — the transactions would be left pointing at
                   // nothing. Transfer moves them to another client instead.
@@ -382,7 +382,7 @@ export default function ClientView({
         entityToDelete={entityToDelete}
         onSuccess={fetchClients}
       />
-      <TransferClientModal
+      <RecordConnectionModal
         open={openTransferModal}
         handleClose={handleCloseTransferModal}
         client={selectedClient}

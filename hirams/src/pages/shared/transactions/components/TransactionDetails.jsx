@@ -6,6 +6,7 @@ import getThemeColors from "../../../../utils/style/getThemeColors";
 // ─── Icons ──────────────────────────────────────────────────────────────────
 // Section headers
 import AssignmentOutlinedIcon from "@mui/icons-material/AssignmentOutlined";
+import AssignmentIndOutlinedIcon from "@mui/icons-material/AssignmentIndOutlined";
 import PersonOutlineIcon from "@mui/icons-material/PersonOutline";
 import ShoppingCartOutlinedIcon from "@mui/icons-material/ShoppingCartOutlined";
 import CalendarTodayOutlinedIcon from "@mui/icons-material/CalendarTodayOutlined";
@@ -170,8 +171,11 @@ function ScheduleCard({ label, date, venue, variant = "default", dateColor }) {
         </Typography>
       </Box>
 
-      {/* Date row */}
-      <Box sx={{ display: "flex", alignItems: "center", gap: 0.6, mb: 0.75 }}>
+      {/* Date row — mb collapses when there is no date so the two
+          "No … attached" placeholders sit on a tight line spacing. */}
+      <Box
+        sx={{ display: "flex", alignItems: "center", gap: 0.6, mb: hasDate ? 0.75 : 0.25 }}
+      >
         <AccessTimeOutlinedIcon
           sx={{
             fontSize: 12,
@@ -315,98 +319,115 @@ const TransactionDetails = ({
       )}
 
       {/* ── Basic Information + Procurement ───────────────────────── */}
-      {/* Two columns side by side: the basics on the left, the procurement
-          facts on the right — each one stacked in its own column, so the
-          rows line up across the two. */}
+      {/* Single column: the basics, then the procurement facts. */}
       <Box sx={{ mb: 3 }}>
-        <Box
-          sx={{
-            display: "flex",
-            flexDirection: { xs: "column", sm: "row" },
-            gap: { xs: 2, sm: 3 },
-          }}
-        >
-          {/* ── Basic Information ────────────────────────────────── */}
-          <Box sx={{ flex: 1, minWidth: 0 }}>            <SectionHeader
-              showTopDivider={false}
-              icon={PersonOutlineIcon}
-              label="Basic Information"
-            />
-            <Grid container spacing={0}>
-              <FieldItem label="Title" uppercase xs={12} sm={12}>
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  {details?.strTitle || details?.transactionName || "—"}
-                </Typography>
-              </FieldItem>
-              <FieldItem label="Transaction Code" uppercase xs={12} sm={12}>
-                {details?.strCode || details?.transactionId || "—"}
-              </FieldItem>
-              <FieldItem label="Company" uppercase xs={12} sm={12}>
-                {details?.company?.strCompanyNickName ||
-                  details?.companyNickName ||
-                  "—"}
-              </FieldItem>
-              <FieldItem label="Client" uppercase xs={12} sm={12}>
-                {details?.client?.strClientNickName ||
-                  details?.clientNickName ||
-                  "—"}
-              </FieldItem>
-            </Grid>
-          </Box>
-
-          {/* THE SEPARATOR between the two columns */}
-          <Divider
-            orientation="vertical"
-            flexItem
-            sx={{ alignSelf: "stretch", mx: 0 }}
+        {/* ── Basic Information ────────────────────────────────── */}
+        <Box>
+          <SectionHeader
+            showTopDivider={false}
+            icon={PersonOutlineIcon}
+            label="Basic Information"
           />
+          <Grid container spacing={0}>
+            <FieldItem label="Title" uppercase xs={12} sm={12}>
+              <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                {details?.strTitle || details?.transactionName || "—"}
+              </Typography>
+            </FieldItem>
+            {/* These three share ONE horizontal row — three stacked
+                label-over-value blocks lined up left to right. */}
+            <FieldItem label="Transaction Code" uppercase xs={12} sm={4}>
+              {details?.strCode || details?.transactionId || "—"}
+            </FieldItem>
+            <FieldItem label="Company" uppercase xs={12} sm={4}>
+              {details?.company?.strCompanyNickName ||
+                details?.companyNickName ||
+                "—"}
+            </FieldItem>
+            <FieldItem label="Client" uppercase xs={12} sm={4}>
+              {/* The transacting office nickname rides along: "clientNick (OfficeNick)". */}
+              {(() => {
+                const nick =
+                  details?.client?.strClientNickName ||
+                  details?.clientNickName ||
+                  "";
+                const office = details?.strOfficeNickName || "";
+                if (nick && office) return `${nick} (${office})`;
+                return nick || "—";
+              })()}
+            </FieldItem>
+          </Grid>
+        </Box>
 
-          {/* ── Procurement ──────────────────────────────────────── */}
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <SectionHeader
-              showTopDivider={false}
-              icon={ShoppingCartOutlinedIcon}
-              label="Procurement"
-            />
-            <Grid container spacing={0}>
-              <FieldItem label="Item Type" uppercase xs={12} sm={12}>
-                {String(
-                  itemType?.[details?.cItemType] || details?.cItemType || "—",
-                ).toUpperCase()}
-              </FieldItem>
-              <FieldItem label="Mode" uppercase xs={12} sm={12}>
-                {String(
-                  procMode?.[details?.cProcMode] || details?.cProcMode || "—",
-                ).toUpperCase()}
-              </FieldItem>
-              <FieldItem label="Source" uppercase xs={12} sm={12}>
-                {String(procSourceLabel || "—").toUpperCase()}
-              </FieldItem>
-              <FieldItem label="Total ABC" uppercase xs={12} sm={12}>
-                {details?.dTotalABC ? (
-                  <Box
-                    sx={{ display: "flex", alignItems: "baseline", gap: 0.5 }}
+        {/* ── Procurement ──────────────────────────────────────── */}
+        <Box sx={{ mt: 3 }}>
+          {/* Top divider back ON — the vertical column separator is gone,
+              so Procurement needs its own top rule like the others. */}
+          <SectionHeader
+            showTopDivider
+            icon={ShoppingCartOutlinedIcon}
+            label="Procurement"
+          />
+          <Grid container spacing={0}>
+            {/* Row 1 — Item Type, Mode, Source AND Total ABC share one
+                line, four blocks across. */}
+            <FieldItem label="Item Type" uppercase xs={12} sm={3}>
+              {String(
+                itemType?.[details?.cItemType] || details?.cItemType || "—",
+              ).toUpperCase()}
+            </FieldItem>
+            <FieldItem label="Mode" uppercase xs={12} sm={3}>
+              {String(
+                procMode?.[details?.cProcMode] || details?.cProcMode || "—",
+              ).toUpperCase()}
+            </FieldItem>
+            <FieldItem label="Source" uppercase xs={12} sm={3}>
+              {String(procSourceLabel || "—").toUpperCase()}
+            </FieldItem>
+            <FieldItem label="Total ABC" uppercase xs={12} sm={3}>
+              {details?.dTotalABC ? (
+                <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.5 }}>
+                  <Typography
+                    component="span"
+                    variant="body2"
+                    sx={{ fontWeight: 600 }}
                   >
-                    <Typography
-                      component="span"
-                      variant="body2"
-                      sx={{ fontWeight: 600 }}
-                    >
-                      ₱{" "}
-                      {Number(details.dTotalABC).toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </Typography>
-                  </Box>
-                ) : (
-                  "—"
-                )}
-              </FieldItem>
-            </Grid>
-          </Box>
+                    ₱{" "}
+                    {Number(details.dTotalABC).toLocaleString("en-US", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </Typography>
+                </Box>
+              ) : (
+                "—"
+              )}
+            </FieldItem>
+          </Grid>
         </Box>
       </Box>
+
+      {/* ── Account Officer ──────────────────────────────────────── */}
+      {/* Only shows when an AO is actually assigned — the nickname,
+          then the deadline the officer is on. */}
+      {Boolean(details?.nAssignedAO) && (
+        <Box sx={{ mb: 3 }}>
+          <SectionHeader
+            icon={AssignmentIndOutlinedIcon}
+            label="Account Officer"
+          />
+          <Grid container spacing={0}>
+            <FieldItem label="AO Nickname" uppercase xs={12} sm={6}>
+              {details?.user?.strNickName?.trim() || details?.aoName || "—"}
+            </FieldItem>
+            <FieldItem label="AO Due Date" uppercase xs={12} sm={6}>
+              {(details?.dtAODueDate && formatDateTime(details.dtAODueDate)) ||
+                details?.aoDueDate ||
+                "—"}
+            </FieldItem>
+          </Grid>
+        </Box>
+      )}
 
       {/* ── Schedule ─────────────────────────────────────────────── */}
       <Box>

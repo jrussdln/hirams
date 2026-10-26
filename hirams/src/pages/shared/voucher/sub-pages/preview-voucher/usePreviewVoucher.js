@@ -6,6 +6,9 @@ export default function usePreviewVoucher() {
     voucher,
     isAssigneeType,
     payeeName,
+    // The voucher's supplier nickname — rides under each PO code line
+    // as the particulars' small italic subline (supplier type only).
+    payeeNickName,
     supplierTIN,
     supplierAddress,
     particulars = [],
@@ -59,16 +62,20 @@ console.log(onlineLabel);
       ? {
           particular: p.particular ?? "—",
           qty: Number(p.quantity ?? 1),
-          uom: p.strUOM ?? "",
+          uom: (p.strUOM ?? "").toUpperCase(),
           unitPrice: Number(
             p.unitAmount ?? (p.amount ?? 0) / Number(p.quantity || 1),
           ),
+          subline: "",
         }
       : {
           particular: p.particular ?? "—",
           qty: 1,
-          uom: p.strUOM ?? "",
+          uom: (p.strUOM ?? "").toUpperCase(),
           unitPrice: Number(p.amount ?? 0),
+          // Supplier nickname under the PO code — supplier-type rows
+          // only, forced to caps.
+          subline: (payeeNickName ?? "").toUpperCase(),
         },
   );
 

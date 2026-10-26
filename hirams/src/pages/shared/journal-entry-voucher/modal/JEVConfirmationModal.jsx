@@ -16,7 +16,7 @@ const useColors = (c) => ({
  * `style` is the raw entry (e.g. JEV_CONFIRM_STYLES.create_jev);
  * ConfirmationStructure resolves the light/dark variant itself.
  */
-export default function JevConfirmationModal({
+export default function JEVConfirmationModal({
   open,
   style,
   badge,

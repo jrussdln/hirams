@@ -101,6 +101,9 @@ class TransactionController extends ApiController
                         'strRefNumber'           => $txn->strRefNumber,
                         'dtDelivery'          => $txn->dtDelivery,
                         'strDeliveryPlace'       => $txn->strDeliveryPlace,
+                        'strOfficeName'          => $txn->strOfficeName,
+                        'strOfficeNickName'      => $txn->strOfficeNickName,
+                        'bIsPreCanvas'           => $txn->bIsPreCanvas,
                         'company'                => $txn->company,
                         'client'                 => $txn->client,
                         'user'                   => $txn->user,
@@ -249,6 +252,9 @@ class TransactionController extends ApiController
                         'strDocOpening_Venue'    => $txn->strDocOpening_Venue,
                         'dtDelivery'          => $txn->dtDelivery,
                         'strDeliveryPlace'       => $txn->strDeliveryPlace,
+                        'strOfficeName'          => $txn->strOfficeName,
+                        'strOfficeNickName'      => $txn->strOfficeNickName,
+                        'bIsPreCanvas'           => $txn->bIsPreCanvas,
                         'company'                => $txn->company,
                         'client'                 => $txn->client,
                         'user'                   => $txn->user,
@@ -415,6 +421,9 @@ class TransactionController extends ApiController
                         'strTitle'               => $txn->strTitle,
                         'dtDelivery'          => $txn->dtDelivery,
                         'strDeliveryPlace'       => $txn->strDeliveryPlace,
+                        'strOfficeName'          => $txn->strOfficeName,
+                        'strOfficeNickName'      => $txn->strOfficeNickName,
+                        'bIsPreCanvas'           => $txn->bIsPreCanvas,
                         'nAssignedAO'            => $txn->nAssignedAO,
                         'company'                => $txn->company,
                         'client'                 => $txn->client,
@@ -507,6 +516,9 @@ class TransactionController extends ApiController
                         'strRefNumber'           => $txn->strRefNumber,
                         'dtDelivery'          => $txn->dtDelivery,
                         'strDeliveryPlace'       => $txn->strDeliveryPlace,
+                        'strOfficeName'          => $txn->strOfficeName,
+                        'strOfficeNickName'      => $txn->strOfficeNickName,
+                        'bIsPreCanvas'           => $txn->bIsPreCanvas,
                         'company'                => $txn->company,
                         'client'                 => $txn->client,
                         'user'                   => $txn->user,
@@ -641,6 +653,9 @@ class TransactionController extends ApiController
                         'dtAODueDate'            => $txn->dtAODueDate,
                         'dtDelivery'          => $txn->dtDelivery,
                         'strDeliveryPlace'       => $txn->strDeliveryPlace,
+                        'strOfficeName'          => $txn->strOfficeName,
+                        'strOfficeNickName'      => $txn->strOfficeNickName,
+                        'bIsPreCanvas'           => $txn->bIsPreCanvas,
                         'nAssignedAO'            => $txn->nAssignedAO,
                         'company'                => $txn->company,
                         'client'                 => $txn->client,
@@ -784,6 +799,9 @@ class TransactionController extends ApiController
                         'strDocOpening_Venue'    => $txn->strDocOpening_Venue,
                         'dtDelivery'          => $txn->dtDelivery,
                         'strDeliveryPlace'       => $txn->strDeliveryPlace,
+                        'strOfficeName'          => $txn->strOfficeName,
+                        'strOfficeNickName'      => $txn->strOfficeNickName,
+                        'bIsPreCanvas'           => $txn->bIsPreCanvas,
                         'company'                => $txn->company,
                         'client'                 => $txn->client,
                         'user'                   => $txn->user,
@@ -909,6 +927,9 @@ class TransactionController extends ApiController
 
                 'dtDelivery'             => 'nullable|date',
                 'strDeliveryPlace'       => 'nullable|string',
+                'strOfficeName'          => 'required|string|max:40',
+                'strOfficeNickName'      => 'required|string|max:20',
+                'bIsPreCanvas'           => 'nullable|boolean',
             ]);
 
             $transaction = Transactions::create($validated);
@@ -961,6 +982,9 @@ class TransactionController extends ApiController
 
                 'dtDelivery'             => 'nullable|date',
                 'strDeliveryPlace'       => 'nullable|string',
+                'strOfficeName'          => 'required|string|max:40',
+                'strOfficeNickName'      => 'required|string|max:20',
+                'bIsPreCanvas'           => 'nullable|boolean',
             ]);
 
             $transaction = Transactions::findOrFail($id);

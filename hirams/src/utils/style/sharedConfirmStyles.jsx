@@ -348,8 +348,8 @@ export const INVENTORY_CONFIRM_STYLES = {
 };
 
 // ── JEV confirm dialogs (JEV listing) ─────────────────────────────────────
-// Wired in pages/shared/jev/JevListView.jsx through
-// JevConfirmationModal (pass style={JEV_CONFIRM_STYLES[action]}).
+// Wired in pages/shared/journal-entry-voucher/JournalEntryVoucherView.jsx
+// through JEVConfirmationModal (pass style={JEV_CONFIRM_STYLES[action]}).
 export const JEV_CONFIRM_STYLES = {
   create_jev: {
     variant: "green",
@@ -357,6 +357,20 @@ export const JEV_CONFIRM_STYLES = {
     title: "Create JEV?",
     desc: "A new No Type JEV will be created and opened so you can add its entries. It stays Pending until it is finalized.",
     confirmLabel: "Yes, Create JEV",
+  },
+};
+
+// ── Transaction confirm dialogs (transactions listing) ───────────────────
+// Wired in pages/shared/transactions/TransactionView.jsx through
+// TransactionConfirmationModal. Clicking "Add Transaction" opens the
+// type question here — the AEModal then inherits the chosen bIsPreCanvas.
+export const TRANSACTION_CONFIRM_STYLES = {
+  add: {
+    variant: "blue",
+    Icon: ShoppingCartOutlined,
+    title: "Add Transaction",
+    desc: "Is this transaction a Pre-Canvass? Pre-Canvass jobs gather their items through canvassing before the procurement begins.",
+    confirmLabel: "Pre-Canvass",
   },
 };
 

@@ -7,10 +7,10 @@ import SyncMenu from "../../../components/ui/form/SyncMenu";
 import FormControlFilter from "../../../components/ui/form/FormControlFilter";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
-import JevEntriesViewModal from "../jev/modal/JevEntriesViewModal";
-import JevConfirmationModal from "../jev/modal/JevConfirmationModal";
-import JevStatusUpdateTooltip from "../jev/tooltip/JevStatusUpdateTooltip";
-import { NO_TYPE_CODE } from "./useJevList";
+import JEVConfirmationModal from "./modal/JEVConfirmationModal";
+import JEVAEModal from "./modal/JEVAEModal";
+import JevStatusUpdateTooltip from "./tooltip/JevStatusUpdateTooltip";
+import { NO_TYPE_CODE } from "./useJournalEntryVoucher";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 import { JEV_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
 import icons from "../../../utils/style/iconFormatStyles";
@@ -40,11 +40,11 @@ const inlineBadgeStyle = (c, colors) => ({
   border: `1px solid ${colors.border}`,
 });
 
-// JEV listing — the type comes from the sidebar (see useJevList).
+// JEV listing — the type comes from the sidebar (see useJournalEntryVoucher).
 //   • Row click / View → shared JEV viewer (entries managed there).
 //   • Add JEV          → creates a No Type JEV and opens it in the viewer.
 //   • Delete           → enabled for Pending / Cancelled, disabled for Active.
-export default function JevListView({
+export default function JournalEntryVoucherView({
   // Listing
   itemsLoading,
   search,
@@ -64,14 +64,7 @@ export default function JevListView({
   handlePageChange,
   handleRowsPerPageChange,
   handleRowClick,
-  // Viewer (also used for create mode)
-  closeJevModal,
-  jevModal,
-  jevModalOpen,
-  jevSubTitle,
-  jevCreateMode,
-  handleJevCreated,
-  handleJevInfoSaved,
+  openJevModal,
   // Roles
   isManagement,
   isFinanceOfficer,
@@ -90,6 +83,17 @@ export default function JevListView({
   confirmAction,
   setConfirmAction,
   handleConfirmAction,
+  // Add JEV — the naming modal opened by the confirmation dialog
+  createJevOpen,
+  createTitle,
+  createDate,
+  setCreateTitle,
+  setCreateDate,
+  createTitleError,
+  createDateError,
+  createTitleRef,
+  handleCreateJev,
+  handleCloseCreateJev,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -125,17 +129,23 @@ export default function JevListView({
 
   const columns = useMemo(
     () => [
-      // The name under the number: a No Type JEV's own title, or the
-      // supplier / client the API names for Received and Delivered rows.
-      // DV and Collection have no single counterparty, so those rows print
-      // the number alone.
+      // The name lines under the number: the row's primary line is the
+      // JEV's own strTitle (every link type carries one now), and the
+      // counterparty the API derives for the type — the supplier nickname
+      // for Received, the client for Delivered, the voucher's payee for
+      // DV and Collection — rides underneath it.
       {
         key: "strJEVNumber",
         label: "JEV",
         xs: 2,
         render: (_, row) => {
           const hasNumber = Boolean(row.strJEVNumber?.trim());
-          const hasTitle = Boolean(row.strTitle?.trim());
+          const title = row.strTitle?.trim();
+          // A No Type JEV's derived name IS its own title — printing both
+          // would show the same words twice.
+          const counterparty =
+            row.cJEVLinkType === NO_TYPE_CODE ? "" : (row.strPayee?.trim() ?? "");
+          const hasCounterparty = Boolean(counterparty);
           const statusColor = statusColors[row.cStatus] ?? colors.blue;
 
           return (
@@ -155,9 +165,14 @@ export default function JevListView({
                   </span>
                 )}
               </div>
-              {hasTitle && (
-                <span className="block truncate uppercase tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
-                  {row.strTitle}
+              {/* No stored title yet — say so explicitly instead of
+                  collapsing the line entirely. */}
+              <span className="block truncate italic tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
+                {title || "Title is not yet added."}
+              </span>
+              {hasCounterparty && (
+                <span className="block truncate uppercase text-[0.625rem] font-medium tracking-wide leading-tight text-gray-500 dark:text-gray-400">
+                  {counterparty}
                 </span>
               )}
             </div>
@@ -226,7 +241,6 @@ export default function JevListView({
     [
       colors,
       statusColors,
-      isNoTypeList,
       isAllStatus,
       handleRowClick,
       setStatusTarget,
@@ -290,18 +304,7 @@ export default function JevListView({
         />
       </section>
 
-      {/* Viewer + create mode. Entry CRUD is enabled only on this page. */}
-      <JevEntriesViewModal
-        open={jevModalOpen}
-        onClose={closeJevModal}
-        jev={jevModal}
-        subTitle={jevSubTitle}
-        entryCrud={{ isManagement, isFinanceOfficer }}
-        createMode={jevCreateMode}
-        createLinkType={NO_TYPE_CODE}
-        onCreated={handleJevCreated}
-        onInfoSaved={handleJevInfoSaved}
-      />
+      {/* Viewers open the full-page /jev-update now — no modal here. */}
 
       <DeleteVerificationModal
         open={openDeleteModal}
@@ -310,11 +313,33 @@ export default function JevListView({
         onSuccess={handleDeleteSuccess}
       />
 
-      <JevConfirmationModal
+      <JEVConfirmationModal
         open={!!confirmAction}
         style={confirmAction ? JEV_CONFIRM_STYLES[confirmAction] : null}
         onConfirm={handleConfirmAction}
         onClose={() => setConfirmAction(null)}
+      />
+
+      {/* Add JEV — the naming card (Title already focused). Save creates
+          the No Type JEV with that title + today's date and opens it on
+          /jev-update?id=…; Close discards without creating anything. */}
+      <JEVAEModal
+        open={createJevOpen}
+        titleValue={createTitle}
+        dateValue={createDate}
+        onTitleChange={(e) => {
+          setCreateTitle(e.target.value);
+          if (createTitleError) setCreateTitleError("");
+        }}
+        onDateChange={(e) => {
+          setCreateDate(e.target.value);
+          if (createDateError) setCreateDateError("");
+        }}
+        titleError={createTitleError}
+        dateError={createDateError}
+        titleInputRef={createTitleRef}
+        onSave={handleCreateJev}
+        onClose={handleCloseCreateJev}
       />
 
       {/* Status — any of A / P / C. Self-sufficient: it dispatches

@@ -78,7 +78,8 @@ const DEFAULTS = {
   paymentTerms: "",
   supplierName: "—",
   supplierAddress: "",
-  contactPerson: "",
+  contactName: "",
+  contactNumber: "",
   items: [],
   freight: 0,
   ewt: 0,
@@ -108,7 +109,8 @@ function POHeaderTable({
   paymentTerms,
   supplierName,
   supplierAddress,
-  contactPerson,
+  contactName,
+  contactNumber,
   companyLogo,
   shippingDetails,
 }) {
@@ -291,23 +293,99 @@ function POHeaderTable({
             </td>
           </tr>
           <tr>
-            {/* Supplier name is document-specific — editable */}
-            <EditableCell
-              id="supplierName"
+            {/* The whole supplier block lives in ONE row now — stacked:
+                supplier name on top, address below it, contact person
+                below that. Each line is its own editable inline cell;
+                the row below stays blank. */}
+            <td
               colSpan={2}
               style={{
                 ...cellSx,
                 backgroundColor: DOC.fillBg,
                 fontWeight: 500,
+                lineHeight: 1.25,
+                // Hug the top of the row like the shipping cell beside it.
+                verticalAlign: "top",
+                paddingTop: 6,
               }}
-              align="left"
-              initialValue={supplierName}
-              placeholder="Supplier name"
-            />
+            >
+              <span
+                style={{
+                  display: "block",
+                  // The supplier line is the point of the block — bigger
+                  // and bolder than its echoes.
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                }}
+              >
+                <EditableCell.Inline
+                  id="supplierName"
+                  initialValue={supplierName}
+                  placeholder="Supplier name"
+                />
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  fontStyle: "italic",
+                  // The address is the quiet echo — smaller.
+                  fontSize: "0.6rem",
+                  // A little air before the CONTACT block below it.
+                  marginBottom: 8,
+                }}
+              >
+                <EditableCell.Inline
+                  id="supplierAddress"
+                  initialValue={supplierAddress}
+                  placeholder="Supplier address"
+                />
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "0.55rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.06em",
+                  opacity: 0.7,
+                  // The real air between address and CONTACT — bottom
+                  // margin on the address alone wasn't enough.
+                  paddingTop: 6,
+                }}
+              >
+                CONTACT
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "0.7rem",
+                  textTransform: "uppercase",
+                }}
+              >
+                <EditableCell.Inline
+                  id="contactName"
+                  initialValue={contactName}
+                  placeholder="Contact name"
+                />
+              </span>
+              {/* The number sits directly under the name — and reads a
+                  touch larger, it's what gets dialed. */}
+              <span
+                style={{
+                  display: "block",
+                  fontSize: "0.78rem",
+                  fontWeight: 600,
+                }}
+              >
+                <EditableCell.Inline
+                  id="contactNumber"
+                  initialValue={contactNumber}
+                  placeholder="Contact number"
+                />
+              </span>
+            </td>
             <EditableCell.RichText
               id="shippingDetails"
               colSpan={5}
-              rowSpan={4}
               style={{
                 ...cellSx,
                 backgroundColor: DOC.fillBg,
@@ -318,49 +396,6 @@ function POHeaderTable({
               initialValue={shippingDetails}
               placeholder="Shipping details"
               className="po-shipping-quill"
-            />
-          </tr>
-          <tr>
-            {/* Supplier address is document-specific — editable */}
-            <EditableCell
-              id="supplierAddress"
-              colSpan={2}
-              style={{
-                ...cellSx,
-                backgroundColor: DOC.fillBg,
-                fontWeight: 500,
-                fontStyle: "italic",
-              }}
-              align="left"
-              initialValue={supplierAddress}
-              placeholder="Supplier address"
-            />
-          </tr>
-          <tr>
-            <td
-              colSpan={2}
-              style={{ ...cellSx, backgroundColor: DOC.fillBg, height: 24 }}
-            />
-          </tr>
-          <tr>
-            <td
-              colSpan={2}
-              style={{
-                ...cellSx,
-                backgroundColor: DOC.fillBg,
-                fontWeight: 500,
-              }}
-            >
-              Contact Person:{" "}
-              <EditableCell.Inline
-                id="contactPerson"
-                initialValue={contactPerson}
-                placeholder="Contact person"
-              />
-            </td>
-            <td
-              colSpan={5}
-              style={{ ...cellSx, backgroundColor: DOC.fillBg }}
             />
           </tr>
         </tbody>
@@ -405,6 +440,7 @@ function POItemsTable({ items }) {
                 style={{ ...cellSx, backgroundColor: DOC.rowGray }}
                 align="left"
                 initialValue={item.desc}
+                subline={item.subName}
                 placeholder="Description"
               />
               <EditableCell
@@ -473,6 +509,56 @@ function POItemsTable({ items }) {
   );
 }
 
+// ── The standard four terms clauses ──
+// `uniform` — clause 3 reads at the same size as the rest (used when the
+// terms are the merged full-width layout, without the breakdown rows).
+function TermsText({ uniform = false }) {
+  return (
+    <>
+      <div
+        style={{
+          fontSize: "0.62rem",
+          fontStyle: "italic",
+          color: DOC.text,
+        }}
+      >
+        1. We reserve the right to cancel the purchase order anytime
+        before product shipment.
+      </div>
+      <div
+        style={{
+          fontSize: "0.62rem",
+          fontStyle: "italic",
+          color: DOC.text,
+        }}
+      >
+        2. Invoice raised to us should contain the details of purchase
+        order with date mentioned.
+      </div>
+      <div
+        style={{
+          fontSize: uniform ? "0.62rem" : "0.55rem",
+          fontStyle: "italic",
+          color: DOC.text,
+        }}
+      >
+        3. Adherence to agreed product specifications is a must. Any
+        deviation during delivery will result in cancellation of PO.
+      </div>
+      <div
+        style={{
+          fontSize: "0.62rem",
+          fontStyle: "italic",
+          color: DOC.text,
+        }}
+      >
+        4. Delivery should be strictly done within 5 days from the date
+        of purchase order.
+      </div>
+    </>
+  );
+}
+
 // ── FOOTER TABLE (terms, totals, signatures) — repeats every page ──
 function POFooterTable({
   freight,
@@ -486,6 +572,12 @@ function POFooterTable({
   approvedBy,
   approvedByRole,
 }) {
+  // A PO with no freight and no EWT needs no Subtotal/Freight/EWT
+  // breakdown — the TOTAL alone (equal to the subtotal) sits right
+  // beside the terms header.
+  const hasCharges =
+    Number(freight || 0) !== 0 || Number(ewt || 0) !== 0;
+
   return (
     <>
       <table style={TABLE_STYLE}>
@@ -503,117 +595,115 @@ function POFooterTable({
             >
               TERMS & CONDITIONS
             </td>
-            <td style={{ ...cellSx, fontWeight: 700, fontStyle: "italic" }}>
-              Subtotal
-            </td>
-            {/* Subtotal override — editable, view-only (not recalculated) */}
-            <EditableCell
-              id="subtotalOverride"
-              style={{
-                ...cellSx,
-                textAlign: "right",
-                fontWeight: 700,
-                fontStyle: "italic",
-              }}
-              align="right"
-              initialValue={subtotal}
-              formatDisplay={(v) => fmtPHP(Number(v) || 0)}
-            />
+            {hasCharges ? (
+              <>
+                <td style={{ ...cellSx, fontWeight: 700, fontStyle: "italic" }}>
+                  Subtotal
+                </td>
+                {/* Subtotal override — editable, view-only (not recalculated) */}
+                <EditableCell
+                  id="subtotalOverride"
+                  style={{
+                    ...cellSx,
+                    textAlign: "right",
+                    fontWeight: 700,
+                    fontStyle: "italic",
+                  }}
+                  align="right"
+                  initialValue={subtotal}
+                  formatDisplay={(v) => fmtPHP(Number(v) || 0)}
+                />
+              </>
+            ) : (
+              <>
+                <td style={{ ...cellSx, fontWeight: 700, fontStyle: "italic" }}>
+                  TOTAL
+                </td>
+                <EditableCell
+                  id="payableOverride"
+                  style={{
+                    ...cellSx,
+                    backgroundColor: DOC.fillBg,
+                    textAlign: "right",
+                    fontWeight: 700,
+                    fontStyle: "italic",
+                  }}
+                  align="right"
+                  initialValue={payable}
+                  formatDisplay={(v) => fmtPHP(Number(v) || 0)}
+                />
+              </>
+            )}
           </tr>
-          <tr>
-            <td
-              colSpan={4}
-              rowSpan={3}
-              style={{ ...cellSx, verticalAlign: "top" }}
-            >
-              <div
+          {hasCharges && (
+            <tr>
+              <td
+                colSpan={4}
+                rowSpan={3}
+                style={{ ...cellSx, verticalAlign: "top" }}
+              >
+                <TermsText />
+              </td>
+              <td style={{ ...cellSx, fontStyle: "italic" }}>Freight</td>
+              {/* Freight — editable */}
+              <EditableCell
+                id="freightOverride"
+                style={{ ...cellSx, textAlign: "right", fontStyle: "italic" }}
+                align="right"
+                initialValue={freight}
+                formatDisplay={(v) => fmtPHP(Number(v) || 0)}
+              />
+            </tr>
+          )}
+          {hasCharges && (
+            <tr>
+              <td style={{ ...cellSx, fontStyle: "italic" }}>EWT</td>
+              {/* EWT — editable */}
+              <EditableCell
+                id="ewtOverride"
+                style={{ ...cellSx, textAlign: "right", fontStyle: "italic" }}
+                align="right"
+                initialValue={ewt}
+                formatDisplay={(v) => fmtPHP(Number(v) || 0)}
+              />
+            </tr>
+          )}
+          {hasCharges && (
+            <tr>
+              <td
                 style={{
-                  fontSize: "0.62rem",
+                  ...cellSx,
+                  backgroundColor: DOC.fillBg,
+                  fontWeight: 700,
                   fontStyle: "italic",
-                  color: DOC.text,
                 }}
               >
-                1. We reserve the right to cancel the purchase order anytime
-                before product shipment.
-              </div>
-              <div
+                TOTAL
+              </td>
+              <EditableCell
+                id="payableOverride"
                 style={{
-                  fontSize: "0.62rem",
+                  ...cellSx,
+                  backgroundColor: DOC.fillBg,
+                  textAlign: "right",
+                  fontWeight: 700,
                   fontStyle: "italic",
-                  color: DOC.text,
                 }}
-              >
-                2. Invoice raised to us should contain the details of purchase
-                order with date mentioned.
-              </div>
-              <div
-                style={{
-                  fontSize: "0.55rem",
-                  fontStyle: "italic",
-                  color: DOC.text,
-                }}
-              >
-                3. Adherence to agreed product specifications is a must. Any
-                deviation during delivery will result in cancellation of PO.
-              </div>
-              <div
-                style={{
-                  fontSize: "0.62rem",
-                  fontStyle: "italic",
-                  color: DOC.text,
-                }}
-              >
-                4. Delivery should be strictly done within 5 days from the date
-                of purchase order.
-              </div>
-            </td>
-            <td style={{ ...cellSx, fontStyle: "italic" }}>Freight</td>
-            {/* Freight — editable */}
-            <EditableCell
-              id="freightOverride"
-              style={{ ...cellSx, textAlign: "right", fontStyle: "italic" }}
-              align="right"
-              initialValue={freight}
-              formatDisplay={(v) => fmtPHP(Number(v) || 0)}
-            />
-          </tr>
-          <tr>
-            <td style={{ ...cellSx, fontStyle: "italic" }}>EWT</td>
-            {/* EWT — editable */}
-            <EditableCell
-              id="ewtOverride"
-              style={{ ...cellSx, textAlign: "right", fontStyle: "italic" }}
-              align="right"
-              initialValue={ewt}
-              formatDisplay={(v) => fmtPHP(Number(v) || 0)}
-            />
-          </tr>
-          <tr>
-            <td
-              style={{
-                ...cellSx,
-                backgroundColor: DOC.fillBg,
-                fontWeight: 700,
-                fontStyle: "italic",
-              }}
-            >
-              TOTAL
-            </td>
-            {/* Total/payable override — editable, view-only */}
-            <EditableCell
-              id="payableOverride"
-              style={{
-                ...cellSx,
-                backgroundColor: DOC.fillBg,
-                textAlign: "right",
-                fontWeight: 700,
-                fontStyle: "italic",
-              }}
-              align="right"
-              initialValue={payable}
-              formatDisplay={(v) => fmtPHP(Number(v) || 0)}
-            />
-          </tr>
+                align="right"
+                initialValue={payable}
+                formatDisplay={(v) => fmtPHP(Number(v) || 0)}
+              />
+            </tr>
+          )}
+          {!hasCharges && (
+            <tr>
+              {/* Merged full-width row — the terms live below the
+                  TERMS & CONDITIONS | TOTAL | value header. */}
+              <td colSpan={6} style={{ ...cellSx, verticalAlign: "top" }}>
+                <TermsText uniform />
+              </td>
+            </tr>
+          )}
           <tr>
             <td
               colSpan={6}
@@ -789,7 +879,8 @@ export default function PreviewPOView({
   paymentTerms = DEFAULTS.paymentTerms,
   supplierName = DEFAULTS.supplierName,
   supplierAddress = DEFAULTS.supplierAddress,
-  contactPerson = DEFAULTS.contactPerson,
+  contactName = DEFAULTS.contactName,
+  contactNumber = DEFAULTS.contactNumber,
   shippingDetails = DEFAULTS.shippingDetails,
   items = DEFAULTS.items,
   freight = DEFAULTS.freight,
@@ -834,7 +925,8 @@ export default function PreviewPOView({
             paymentTerms={paymentTerms}
             supplierName={supplierName}
             supplierAddress={supplierAddress}
-            contactPerson={contactPerson}
+            contactName={contactName}
+            contactNumber={contactNumber}
             shippingDetails={shippingDetails}
           />
         }

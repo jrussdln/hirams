@@ -7,7 +7,7 @@ import {
 } from "@mui/icons-material";
 import ContentHeaderStructure from "../../../../components/ui/structure/ContentHeaderStructure";
 import CardStructure from "../../../../components/ui/structure/CardStructure";
-import JevViewPanel from "../../jev/components/JevViewPanel.jsx";
+import JevViewPanel from "../../journal-entry-voucher/components/JEVViewPanel.jsx";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 
 export default function JevViewSection({

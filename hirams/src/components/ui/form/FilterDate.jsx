@@ -62,7 +62,7 @@ const toISO = (d) =>
 
 /**
  * Resolve a quick-pick key into an explicit [from, to] ISO pair.
- * Exported so <AccountReportiFilterModal> can seed its "Today" default
+ * Exported so <LedgerFilterModal> can seed its "Today" default
  * without duplicating the presets — the rest of this file only exports
  * components.
  */
@@ -104,7 +104,7 @@ export const quickRange = (key) => {
  *
  * Fully controlled: it owns no range of its own, it just reports edits
  * through `onPatch`, so the same body can live inside <FilterDate />'s
- * popover or inside <AccountReportiFilterModal />.
+ * popover or inside <LedgerFilterModal />.
  *
  *   from   — "YYYY-MM-DD" ("" when unset)
  *   to     — "YYYY-MM-DD" ("" when unset)

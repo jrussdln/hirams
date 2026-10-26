@@ -11,7 +11,7 @@ import { fmtPHP } from "../../../../utils/formatters/formatter";
 import { totalEWT } from "../../../../utils/helpers/calculateEWT.js";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import PORowPanel from "./PORowPanel";
-import PickableValue from "../../jev/components/AmountPick.jsx";
+import PickableValue from "../../../../components/ui/form/AmountPick.jsx";
 import AddItemButton from "./AddItemButton.jsx";
 import { contactFallbacks } from "./contactFallbacks.js";
 
@@ -92,9 +92,15 @@ export default function POListPanel({
     setOpenRows((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleNavigate = (purchaseOrderId) => {
+  const handleNavigate = (purchaseOrderId, poStatus) => {
     if (!navigable) return;
-    navigate(`/item-purchasing-update?id=${purchaseOrderId}`);
+    // The stage rides along — the same ?status= the For Purchase page
+    // attaches. Without it the update page has to infer the tab from a
+    // bare deep-linked PO, and that can misfile it.
+    const stage = poStatus != null
+      ? `&status=${encodeURIComponent(String(poStatus))}`
+      : "";
+    navigate(`/item-purchasing-update?id=${purchaseOrderId}${stage}`);
   };
 
   // The grand total of every linked PO — the foot of the list.

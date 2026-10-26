@@ -10,7 +10,7 @@ import {
 } from "@mui/icons-material";
 import { useMemo, useState } from "react";
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
-import JevViewPanel from "../../../jev/components/JevViewPanel.jsx";
+import JevViewPanel from "../../../journal-entry-voucher/components/JEVViewPanel.jsx";
 import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
 import { VoucherUpdateSkeleton } from "../../components/Skeleton.jsx";
 import ParticularsAEModal from "../../modal/ParticularsAEModal.jsx";
@@ -18,7 +18,7 @@ import VoucherUpdateModal from "../../modal/VoucherUpdateModal.jsx";
 import FreightEWTUpdateModal from "../../../item-purchasing/modal/FreightEWTUpdateModal.jsx";
 import POListPanel from "../../components/POListPanel.jsx";
 import AssigneeListPanel from "../../components/AssigneeListPanel.jsx";
-import PickableValue from "../../../jev/components/AmountPick.jsx";
+import PickableValue from "../../../../../components/ui/form/AmountPick.jsx";
 import { fmtPHP } from "../../../../../utils/formatters/formatter";
 import useVoucherUpdate from "./useVoucherUpdate";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
@@ -266,6 +266,10 @@ export default function VoucherUpdateView() {
   // Adding a particular is an ACTIVE-only action.
   const canAddItem = String(voucher.cStatus) === String(voucherActiveKey);
   const showNoJev = showJevSection && !hasJev;
+  // FINALIZE gate — a journal stays "Title is not yet added." until
+  // it is named, so the title must be on the record before it can be
+  // finalized.
+  const jevHasTitle = Boolean(String(voucher.jev?.strTitle ?? "").trim());
   // ── JEV balance banner — sits under the "Particulars (n)" label ───────
   // Same look as the banner in the print/preview voucher: amber wash, dashed
   // rule, warning icon, message + dismiss. Shown only while the JEV still
@@ -417,14 +421,17 @@ export default function VoucherUpdateView() {
                   jevBalanceLoading
                     ? "Checking JEV balance…"
                     : String(voucher.jev?.cStatus) === String(jevPendingKey) &&
-                        !isJevBalanced
-                      ? jevBalanceMessage ||
-                        "JEV totals must be equal before finalizing"
-                      : String(voucher.jev?.cStatus) === String(jevPendingKey)
-                        ? "Finalize this JEV"
-                        : isMarkedPaid
-                          ? "Voucher has been already paid."
-                          : "Undo Finalize this JEV"
+                        !jevHasTitle
+                      ? "JEV must have a title before finalizing"
+                      : String(voucher.jev?.cStatus) === String(jevPendingKey) &&
+                          !isJevBalanced
+                        ? jevBalanceMessage ||
+                          "JEV totals must be equal before finalizing"
+                        : String(voucher.jev?.cStatus) === String(jevPendingKey)
+                          ? "Finalize this JEV"
+                          : isMarkedPaid
+                            ? "Voucher has been already paid."
+                            : "Undo Finalize this JEV"
                 }
                 arrow
               >
@@ -458,7 +465,7 @@ export default function VoucherUpdateView() {
                       saving ||
                       jevBalanceLoading ||
                       (String(voucher.jev?.cStatus) === String(jevPendingKey) &&
-                        !isJevBalanced)
+                        (!isJevBalanced || !jevHasTitle))
                     }
                   />
                 </span>

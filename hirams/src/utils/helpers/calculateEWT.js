@@ -24,19 +24,22 @@
  *   "" (default) → the matrix above
  *   "A"          → 0% of Q
  *   "B"          → 1% of Q
- *   "C"          → 1% of Q / 1.12 (VAT net)
+ *   "C"          → 2% of Q
+ *   "D"          → 1% of Q / 1.12 (VAT net)
  */
 
 // ── The EWT types ────────────────────────────────────────────────────
 export const EWT_TYPE_DEFAULT = "";
 export const EWT_TYPE_BYPASS_0 = "A";
 export const EWT_TYPE_BYPASS_1 = "B";
-export const EWT_TYPE_BYPASS_VAT = "C";
+export const EWT_TYPE_BYPASS_2 = "C";
+export const EWT_TYPE_BYPASS_VAT = "D";
 
 export const EWT_TYPE_OPTIONS = [
   EWT_TYPE_DEFAULT,
   EWT_TYPE_BYPASS_0,
   EWT_TYPE_BYPASS_1,
+  EWT_TYPE_BYPASS_2,
   EWT_TYPE_BYPASS_VAT,
 ];
 
@@ -57,7 +60,7 @@ const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
  *
  * @param quantity   the line's quantity
  * @param unitPrice  the line's unit price
- * @param cEWTType   the line's EWT type ("" / null = Default, A, B, C)
+ * @param cEWTType   the line's EWT type ("" / null = Default, A, B, C, D)
  * @param bEWT       the supplier's EWT flag (1 = EWT supplier)
  * @param bVAT       the supplier's VAT flag (1 = vattable)
  * @param cItemType  the transaction's item type ('G' goods, 'S' service)
@@ -80,6 +83,8 @@ export const calculateEWT = ({
       return round2(totalCost * EWT_RATE_GOODS);
     case EWT_TYPE_BYPASS_VAT:
       return round2((totalCost / EWT_VAT_FACTOR) * EWT_RATE_GOODS);
+    case EWT_TYPE_BYPASS_2:
+      return round2(totalCost * EWT_RATE_SERVICE);
     default:
       break;
   }

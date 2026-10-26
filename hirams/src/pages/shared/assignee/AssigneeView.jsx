@@ -6,7 +6,7 @@ import BaseButton from "../../../components/ui/form/BaseButton";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
 import AssigneeAEModal from "./modal/AssigneeAEModal";
 import InfoAssigneeModal from "./modal/InfoAssigneeModal";
-import TransferAssigneeModal from "./modal/TransferAssigneeModal";
+import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import {
   Add,
@@ -180,7 +180,7 @@ export default function AssigneeView({
                   }}
                 />
               )}
-              {isInactive && row.vouchersCount > 0 && (
+              {row.vouchersCount > 0 && (
                 // An assignee that still carries vouchers cannot be deleted
                 // — the voucher lines would be left pointing at nothing.
                 // Transfer moves them to another assignee instead.
@@ -300,7 +300,7 @@ export default function AssigneeView({
         entityToDelete={entityToDelete}
         onSuccess={refreshAssignees}
       />
-      <TransferAssigneeModal
+      <RecordConnectionModal
         open={openTransferModal}
         handleClose={handleCloseTransferModal}
         assignee={selectedAssignee}

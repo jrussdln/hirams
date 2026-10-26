@@ -22,7 +22,7 @@ import AssignAOModal from "../canvas/modal/AssignAOModal";
 import AssignProcurementModal from "../pricing-set/modal/AssignProcurementModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import icons from "../../../utils/style/iconFormatStyles";
-import JevViewPanel from "../jev/components/JevViewPanel.jsx";
+import JevViewPanel from "../journal-entry-voucher/components/JEVViewPanel.jsx";
 import { MonetizationOnOutlined } from "@mui/icons-material";
 import ContentHeaderStructure from "../../../components/ui/structure/ContentHeaderStructure";
 import CardStructure from "../../../components/ui/structure/CardStructure";
@@ -339,6 +339,16 @@ export default function PurchaseView(props) {
                 actionColor="info"
               />
             )}
+
+          {/* Direct Cost lives here too — right after Delivery Info. */}
+          {(isManagement || isAccountOfficer) && !isCompareActive && (
+            <BaseButton
+              label="Direct Cost"
+              icon={icons.breakdown}
+              onClick={() => setDirectCostModalOpen(true)}
+              actionColor="breakdown"
+            />
+          )}
 
           {forPurchaseKey.includes(statusCode) &&
             !isCompareActive &&

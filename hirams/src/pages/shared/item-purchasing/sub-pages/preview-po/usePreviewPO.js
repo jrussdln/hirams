@@ -1,7 +1,13 @@
+import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
+import useKeysLabels from "../../../../../hooks/useKeysLabels.js";
+import { buildRoleGroups } from "../../../../../hooks/useRoleBuilder.js";
+import UserAPI from "../../../../../api/endpoints/user.api.js";
 
 export default function usePreviewPO() {
   const location = useLocation();
+  const { userTypes } = useKeysLabels();
+  const [resolvedSignatories, setResolvedSignatories] = useState(null);
   const {
     po,
     options = [],
@@ -21,6 +27,60 @@ export default function usePreviewPO() {
     otherPaymentTermLabel,
   } = location.state || {};
 
+  // ── Signatories self-resolution ──────────────────────────────────────
+  // The update view snapshots these names into navigation state, but the
+  // snapshot reads "—" whenever the users/mappings fetch had not landed
+  // (or outright failed) before Preview was clicked. When that happens,
+  // the preview resolves the names itself.
+  const needsCheckedBy = !checkByOtherAOName || checkByOtherAOName === "—";
+  const needsApprovedBy = !generalManagerName || generalManagerName === "—";
+
+  useEffect(() => {
+    if ((!needsCheckedBy && !needsApprovedBy) || !userTypes || Object.keys(userTypes).length === 0)
+      return;
+    let cancelled = false;
+    UserAPI.getAllUsers()
+      .then((res) => {
+        if (cancelled) return;
+        const users = res.users ?? [];
+        const buildName = (u) =>
+          [
+            u?.strFName,
+            u?.strMName ? u.strMName[0].toUpperCase() + "." : "",
+            u?.strLName,
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+        const { accountOfficerKey, generalManagerKey } =
+          buildRoleGroups(userTypes);
+        // Checked by — an Account Officer OTHER than the transaction's
+        // assigned one. General Manager — the first GM-type account.
+        const assignedAOUserId = Number(
+          firstOption?.purchase_option?.transaction_item?.transaction?.user
+            ?.nUserId,
+        );
+        const ao = users.find(
+          (u) =>
+            accountOfficerKey.includes(String(u.cUserType)) &&
+            Number(u.nUserId) !== assignedAOUserId,
+        );
+        const gm = users.find((u) =>
+          generalManagerKey.includes(String(u.cUserType)),
+        );
+        setResolvedSignatories({
+          checkedBy: ao ? buildName(ao) || "—" : "—",
+          approvedBy: gm ? buildName(gm) || "—" : "—",
+        });
+      })
+      .catch((err) =>
+        console.error("Failed to fetch users for PO signatories:", err),
+      );
+    return () => {
+      cancelled = true;
+    };
+  }, [needsCheckedBy, needsApprovedBy, userTypes]);
+
   // Same lookup chain as the Laravel export/preview endpoints:
   // firstOption.purchase_option.transaction_item.transaction.company
   // firstOption.purchase_option.supplier
@@ -33,23 +93,28 @@ export default function usePreviewPO() {
 
   const contactNumber =
     firstOption?.purchase_option?.supplier_contact?.strNumber ?? null;
-  const contactPerson =
-    contactName && contactNumber
-      ? `${contactName} - ${contactNumber}`
-      : (contactName ?? contactNumber ?? "");
 
   // Same field names your Laravel controller reads off purchase_option
   const items = options.map((opt, idx) => {
     const p = opt?.purchase_option ?? {};
     const qty = Number(p.nQuantity ?? 0);
     const unitPrice = Number(p.dUnitPrice ?? 0);
-    const brandModel = [p.strBrand, p.strModel].filter(Boolean).join(" · ");
-    const desc = brandModel || p?.transaction_item?.strName || "—";
+    const brandModel = [p.strBrand, p.strModel]
+      .filter(Boolean)
+      .join(" · ")
+      .toUpperCase();
+    const itemName = (p?.transaction_item?.strName ?? "").toUpperCase();
+    const desc = brandModel || itemName || "—";
+    // The item name rides BELOW the brand · model line as the cell's
+    // small italic subline — but only while brand · model is actually
+    // leading, since the fallback already shows the name itself.
+    const subName = brandModel && itemName ? itemName : "";
 
     return {
       no: idx + 1,
       desc,
-      uom: p.strUOM ?? "",
+      subName,
+      uom: (p.strUOM ?? "").toUpperCase(),
       qty,
       unitPrice,
     };
@@ -106,7 +171,8 @@ export default function usePreviewPO() {
       : "—",
     supplierAddress: supplier?.strAddress ?? "",
     supplierTIN: supplier?.strTIN ?? "",
-    contactPerson,
+    contactName,
+    contactNumber,
 
     items,
     subtotal,
@@ -115,12 +181,19 @@ export default function usePreviewPO() {
     ewt,
     payable,
 
-    // signatories — same three names your Laravel writes into the sheet
+    // Signatories — snapshot values win; the "—" gaps fall back to the
+    // preview's own lookup of the user list.
     preparedBy: assignedAOName ?? "—",
     preparedByRole: "Account Officer",
-    checkedBy: checkByOtherAOName ?? "—",
+    checkedBy:
+      !needsCheckedBy
+        ? checkByOtherAOName ?? "—"
+        : (resolvedSignatories?.checkedBy ?? "—"),
     checkedByRole: "Account Officer",
-    approvedBy: generalManagerName ?? "—",
+    approvedBy:
+      !needsApprovedBy
+        ? generalManagerName ?? "—"
+        : (resolvedSignatories?.approvedBy ?? "—"),
     approvedByRole: "General Manager",
   };
 }

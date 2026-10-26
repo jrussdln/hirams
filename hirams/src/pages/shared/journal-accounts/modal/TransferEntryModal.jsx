@@ -55,11 +55,32 @@ const listColors = (c) => ({
   textSecondary: c.gray.textSecondary,
   textMuted: c.gray.textMuted,
   inputBg: c.gray.inputBg,
+  redText: c.red?.text ?? c.red,
+  greenText: c.green?.text ?? c.green,
 });
 
 // Raw API row → { id, name } (the list is flat, names live on strAccountName)
 const rowId = (a) => a?.nJournalAccountId;
 const rowName = (a) => a?.strAccountName ?? a?.display_name ?? "";
+
+// ₱1,234.56 — the amount chips across the modals share this shape.
+const fmtAmount = (n) =>
+  Math.abs(Number(n) || 0).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+// "Jan 9, 2025" — date lines here show the day only, no time.
+const MONTH_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const fmtDate = (raw) => {
+  const s = String(raw ?? "").trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (!m) return s || "—";
+  return `${MONTH_SHORT[Number(m[2]) - 1] ?? m[2]} ${Number(m[3])}, ${m[1]}`;
+};
 
 function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
   const theme = useTheme();
@@ -165,6 +186,23 @@ function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
     [accounts, selectedId],
   );
 
+  // The account the entry currently posts to — the info card at the top
+  // names it so the user always sees the "from" side before picking the
+  // "to" side. Resolved over the FULL account list (the entry's own
+  // account is filtered out of the destinations, not out of here).
+  const currentAccountName = useMemo(() => {
+    if (currentAccountId == null) return "—";
+    const hit = allAccounts.find(
+      (a) => String(rowId(a)) === String(currentAccountId),
+    );
+    return hit ? rowName(hit) : "—";
+  }, [allAccounts, currentAccountId]);
+
+  // The signed dAmount decides which side the entry sits on: negative
+  // (From / money out) or positive (To / money in) — the same rule the
+  // report's From / To cells follow.
+  const isFrom = Number(entry?.dAmount) < 0;
+
   const handleClose = () => {
     if (saving) return;
     onClose?.();
@@ -228,6 +266,98 @@ function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
       contentPadding={{ xs: 1.5, sm: 2 }}
     >
       <Box sx={{ mt: 0.5 }}>
+        {/* ── The entry being moved — at-a-glance info ──────────────── */}
+        <Box
+          sx={{
+            border: `1px solid ${colors.border}`,
+            borderRadius: "10px",
+            bgcolor: colors.mutedBg,
+            px: 1.25,
+            py: 1,
+            mt: 1,
+            display: "flex",
+            gap: 1.5,
+            alignItems: "center",
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box sx={{ display: "flex", alignItems: "baseline", gap: 1 }}>
+              <Typography
+                sx={{
+                  fontSize: "0.65rem",
+                  fontWeight: 600,
+                  fontVariantNumeric: "tabular-nums",
+                  color: colors.textMuted,
+                  lineHeight: 1.15,
+                }}
+              >
+                {jevNo || "—"}
+              </Typography>
+            </Box>
+            {/* The account the entry currently posts to — this is the "from"
+                side of the move and the card's headline: no label, the name
+                alone says it. */}
+            <Typography
+              title={currentAccountName}
+              sx={{
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                color: colors.textPrimary,
+                mt: 0.1,
+                lineHeight: 1.15,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {currentAccountName}
+            </Typography>
+          </Box>
+
+          {/* Amount chip — red on From, green on To, like the report, with
+              the entry's date under the figure. */}
+          <Box
+            sx={{
+              flexShrink: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-end",
+              gap: 0,
+              lineHeight: 1.15,
+            }}
+          >
+            <Typography
+              sx={{
+                fontSize: "0.55rem",
+                fontWeight: 700,
+                letterSpacing: "0.4px",
+                textTransform: "uppercase",
+                color: colors.textMuted,
+                lineHeight: 1.2,
+              }}
+            >
+              {isFrom ? "From" : "To"}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "0.8rem",
+                fontWeight: 700,
+                fontVariantNumeric: "tabular-nums",
+                color: isFrom ? colors.redText : colors.greenText,
+                lineHeight: 1.2,
+              }}
+            >
+              {isFrom ? "-" : ""}₱{fmtAmount(amount)}
+            </Typography>
+            <Typography
+              title={entry?.date ?? ""}
+              sx={{ fontSize: "0.62rem", color: colors.textMuted, lineHeight: 1.2 }}
+            >
+              {fmtDate(entry?.date)}
+            </Typography>
+          </Box>
+        </Box>
+
         {/* ── Destination picker ──────────────────────────────────── */}
         <Box
           sx={{
@@ -235,7 +365,7 @@ function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
             alignItems: "baseline",
             justifyContent: "space-between",
             gap: 1,
-            mt: 2,
+            mt: 1.75,
             mb: 0.75,
           }}
         >

@@ -15,7 +15,7 @@ import PricingAPI from "../api/endpoints/pricing.api.js";
 import DirectCostOptionAPI from "../api/endpoints/direct-cost-option.api.js";
 import DirectCostAPI from "../api/endpoints/direct-cost.api.js";
 import UserAPI from "../api/endpoints/user.api.js";
-import useJevBalance from "../pages/shared/jev/hooks/useJevBalance.js";
+import useJEVBalance from "./useJEVBalance.js";
 import {
   getOptionStep,
   toPercent,
@@ -706,7 +706,7 @@ export default function useTransactionWorkspace() {
   const collectionAmount =
     Math.round((Number(totalCollectibleValue || 0) + Number.EPSILON) * 100) /
     100;
-  const jevBalance = useJevBalance(jev?.nJEVId, collectionAmount);
+  const jevBalance = useJEVBalance(jev?.nJEVId, collectionAmount);
   const fetchJev = useCallback(async () => {
     if (!transaction?.nTransactionId) return;
     setJevLoading(true);

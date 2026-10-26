@@ -240,6 +240,7 @@ function VoucherItemsTable({ items }) {
                 }}
                 align="left"
                 initialValue={item.particular}
+                subline={item.subline}
               />
               <EditableCell
                 id={`item-${rowId}-qty`}

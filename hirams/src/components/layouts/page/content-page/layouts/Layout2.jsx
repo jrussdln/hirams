@@ -41,6 +41,10 @@ import AIChatbotWidget from "../../../../../components/ui/widget/AIChatBotWidget
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import UpDownIndicatorWidget from "../../../../../components/ui/widget/UpDownIndicatorWidget";
+import {
+  aiChatBotEnabled,
+  darkModeEnabled,
+} from "../../../../../config/featureFlags.js";
 // ── Helpers ──────────────────────────────────────────────────────────
 const readUserFromStorage = () => getItem("user", {});
 
@@ -188,8 +192,6 @@ const Layout2 = ({
   const internalScrollRef = useRef(null);
   const effectiveScrollRef =
     scrollRef && "current" in scrollRef ? scrollRef : internalScrollRef;
-  const aiChatBotEnabled = false;
-  const darkModeEnabled = false;
   useEffect(() => {
     const handleStorageChange = () => setUser(readUserFromStorage());
     window.addEventListener("storage", handleStorageChange);

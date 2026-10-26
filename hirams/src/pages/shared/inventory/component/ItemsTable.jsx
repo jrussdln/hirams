@@ -17,7 +17,7 @@ import {
   rowTransactionItemId,
   rowTransactionId,
 } from "../itemRows.js";
-import PickableValue from "../../jev/components/AmountPick.jsx";
+import PickableValue from "../../../../components/ui/form/AmountPick.jsx";
 // ─────────────────────────────────────────────────────────────────────
 // THE INVENTORY "ITEMS" TABLE
 // The voucher-particulars layout (sticky column header, scrollable rows,
@@ -820,7 +820,7 @@ export default function ItemsTable({
                       color: onBrandClick
                         ? colors.blue.text
                         : colors.gray.textPrimary,
-                      textTransform: "uppercase",
+                      fontStyle: "italic",
                       lineHeight: 1,
                       whiteSpace: "nowrap",
                       overflow: "hidden",

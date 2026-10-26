@@ -1,7 +1,7 @@
 import api from "../axios.js";
 
 export const VoucherAPI = {
-  getVouchers: () => api.get("vouchers"),
+  getVouchers: (config) => api.get("vouchers", config),
   createVoucher: (payload) => api.post("vouchers", payload),
   updateVoucherStatus: (nVoucherId, cStatus, extra = {}) =>
     api.patch(`vouchers/${nVoucherId}/status`, { cStatus, ...extra }),

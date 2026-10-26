@@ -67,7 +67,7 @@ export default function RowEditForm({
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
   const { slate, gray, blue, red, amber, green } = base;
-  // The JEV numbers in the lock notice navigate (they open /jev?id=…) for
+  // The JEV numbers in the lock notice navigate (they open /journal-entry-voucher?id=…) for
   // FINANCE and MANAGEMENT only — AO / AOTL read them as plain text.
   const keys = useKeysLabels();
   const canOpenJev = keys.isFinanceOfficer || keys.isManagement;
@@ -303,13 +303,13 @@ export default function RowEditForm({
                             tabIndex={0}
                             onClick={(e) => {
                               e.stopPropagation();
-                              navigate(`/jev?id=${j.id}`);
+                              navigate(`/journal-entry-voucher?id=${j.id}`);
                             }}
                             onKeyDown={(e) => {
                               if (e.key === "Enter" || e.key === " ") {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                navigate(`/jev?id=${j.id}`);
+                                navigate(`/journal-entry-voucher?id=${j.id}`);
                               }
                             }}
                             title="Open this JEV"

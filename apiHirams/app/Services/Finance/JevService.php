@@ -34,7 +34,10 @@ class JevService
             'inventories.purchaseOption.supplier',
             'inventories.purchaseOption.transactionItem.transaction.client',
             // A Collection JEV hangs off the transaction — its latest history
-            // says whether that transaction has been completed.
+            // says whether that transaction has been completed, and its
+            // CLIENT names the Collection row in the list (see
+            // resolveDisplayTitle).
+            'transactions.client',
             'transactions.latestHistory',
         ];
     }
@@ -124,19 +127,20 @@ class JevService
     }
 
     /**
-     * strTitle belongs to a No Type (N) JEV alone — every other link type
-     * takes its name from the voucher, purchase or inventory flow behind it.
+     * The JEV Info card posts { strTitle, dtOccur } — the title is whatever
+     * the client sent on THIS request, falling back to the stored one when
+     * the caller omits it.
      *
-     * So the title survives only while the type is N, and only when the
-     * client actually SENT one: the JEV Info row posts { dtOccur } on a
-     * date-only edit, which must never blank out the title it doesn't carry.
+     * strTitle used to be a No Type (N) JEV's field alone (every other link
+     * type took its name from the voucher / purchase / inventory flow behind
+     * it, so non-N updates had the title wiped to null). The Info card now
+     * edits the title on every link type, so that gate is gone — a caller
+     * that omits strTitle still keeps the stored title (the date-only edit).
+     * The list's per-type NAME (strDisplayTitle) is resolved separately and
+     * is unaffected by this.
      */
     private function resolveTitle(Request $request, ?Jev $jev = null): ?string
     {
-        $linkType = (string) ($request->cJEVLinkType ?? $jev?->cJEVLinkType);
-
-        if ($linkType !== 'N') return null;
-
         return $request->has('strTitle')
             ? $request->input('strTitle')
             : $jev?->strTitle;
@@ -314,7 +318,9 @@ class JevService
      *          each batch knows its purchase option, and that option knows
      *          the supplier.
      *   • D — the client, from the same batch chain via the transaction item.
-     *   • V / C — whichever party stands behind the voucher: an assignee
+     *   • C — the client of the transaction the collection was raised on
+     *          (the same counterparty the Delivered Items rows read).
+     *   • V — whichever party stands behind the voucher: an assignee
      *          when the voucher has assignee rows, otherwise its supplier.
      */
     private function resolveDisplayTitle(Jev $jev): ?string
@@ -337,6 +343,12 @@ class JevService
             $client = $jev->inventories
                 ->map(fn($inv) => $inv->purchaseOption?->transactionItem?->transaction?->client)
                 ->first(fn($c) => $c);
+
+            return $client?->strClientNickName ?: $client?->strClientName;
+        }
+
+        if ($linkType === 'C') {
+            $client = $jev->transactions->first()?->client;
 
             return $client?->strClientNickName ?: $client?->strClientName;
         }

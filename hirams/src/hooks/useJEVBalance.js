@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import JevEntriesAPI from "../../../../api/endpoints/jev-entries.api.js";
+import JevEntriesAPI from "../api/endpoints/jev-entries.api.js";
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
@@ -67,7 +67,7 @@ export function computeJevBalance(list, grandTotal, opts = {}) {
  * @param {number} grandTotal the figure the entries should add up to
  * @param {boolean} [requireTotalMatch=true]
  */
-function useJevBalance(jevId, grandTotal, requireTotalMatch = true) {
+function useJEVBalance(jevId, grandTotal, requireTotalMatch = true) {
   const [state, setState] = useState({
     balanced: false,
     loading: false,
@@ -121,4 +121,4 @@ function useJevBalance(jevId, grandTotal, requireTotalMatch = true) {
   return state;
 }
 
-export default useJevBalance;
+export default useJEVBalance;

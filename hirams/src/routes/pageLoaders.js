@@ -38,7 +38,9 @@ const pageLoaders = {
   "/assignee": () => import("../pages/shared/assignee"),
   "/inventory": () => import("../pages/shared/inventory"),
   "/journal-account": () => import("../pages/shared/journal-accounts"),
-  "/jev": () => import("../pages/shared/jev"),
+  "/journal-entry-voucher": () => import("../pages/shared/journal-entry-voucher"),
+  "/jev-update": () =>
+    import("../pages/shared/journal-entry-voucher/sub-pages/jev-update"),
   "/voucher-update": () =>
     import("../pages/shared/voucher/sub-pages/voucher-update"),
   "/item-purchasing": () => import("../pages/shared/item-purchasing"),

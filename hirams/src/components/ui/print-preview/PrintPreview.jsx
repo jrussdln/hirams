@@ -941,7 +941,7 @@ export default function PrintPreview({
               justifyContent: "center",
               gap: 1,
               px: 2,
-              py: 1.7,
+              py: 2.75,
               border: `1px dashed ${c.border}`,
             }}
           >
