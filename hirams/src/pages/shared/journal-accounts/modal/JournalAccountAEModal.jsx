@@ -487,6 +487,30 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
     }
   };
 
+  // Keep the PRESELECTED parent selectable even when the (edit-mode) list
+  // hasn't loaded — otherwise the Select briefly renders a value that isn't
+  // an option and MUI logs an "out-of-range value" warning. The row's parent
+  // relation supplies the label until the fetched list takes over.
+  const parentPreselected = formData.nParentAccountId;
+  const parentOptions = [
+    { value: "", label: "None — this will be a parent account" },
+    ...parentAccounts.map((a) => ({
+      value: a.nJournalAccountId,
+      label: a.strAccountName ?? a.display_name,
+    })),
+    ...(parentPreselected &&
+    !parentAccounts.some(
+      (a) => a.nJournalAccountId === parentPreselected,
+    )
+      ? [
+          {
+            value: parentPreselected,
+            label: initialData?.parent?.strAccountName ?? "Current parent…",
+          },
+        ]
+      : []),
+  ];
+
   const fields = [
     {
       name: "accountName",
@@ -504,13 +528,7 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
         ? "Loading…"
         : "None — this will be a parent account",
       disabled: parentAccountsLoading,
-      options: [
-        { value: "", label: "None — this will be a parent account" },
-        ...parentAccounts.map((a) => ({
-          value: a.nJournalAccountId,
-          label: a.strAccountName ?? a.display_name,
-        })),
-      ],
+      options: parentOptions,
     },
     ...(isUnderFund
       ? []

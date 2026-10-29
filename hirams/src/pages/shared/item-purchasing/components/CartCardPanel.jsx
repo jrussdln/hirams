@@ -147,18 +147,19 @@ export default function CartCardPanel({
 
     let active = true;
     const load = async () => {
-      const results = {};
-      await Promise.all(
-        ids.map(async (id) => {
-          try {
-            const res = await InventoryAPI.getHistory(id);
-            results[id] = res?.rows || res?.inventory || [];
-          } catch {
-            results[id] = [];
-          }
-        }),
-      );
-      if (active) setInventoryRows(results);
+      try {
+        // ONE call for every item of this PO — the bulk endpoint queries
+        // all ids in a single request instead of one history GET per item
+        // queued on the server.
+        const res = await InventoryAPI.getHistoryBulk(ids);
+        // An item with no inventory rows yet still maps to an empty list,
+        // or its stats would read as "not loaded" forever.
+        const rowsMap = { ...(res?.rows ?? {}) };
+        for (const id of ids) rowsMap[id] ??= [];
+        if (active) setInventoryRows(rowsMap);
+      } catch {
+        if (active) setInventoryRows({});
+      }
     };
     load();
     window.addEventListener("inventory_data_updated", load);

@@ -698,6 +698,8 @@ export default function FormGrid({
               ),
             }),
           }}
+          // Optional character cap passed by the form (e.g. Nickname ≤ 50).
+          inputProps={{ ...(field.maxLength ? { maxLength: field.maxLength } : {}) }}
         />
       </Grid>
     );

@@ -150,6 +150,9 @@ export default function PendingReceiptPanel({
           </Box>
         )}
 
+        {/* ROWS — capped in height so a long PO scrolls inside the table
+            instead of stretching the page; the header strip stays put. */}
+        <Box sx={{ maxHeight: "50vh", overflowY: "auto" }}>
         {visible.map(({ opt, origIdx }, idx) => {
           const p = opt.purchase_option;
           const tx = p?.transaction_item?.transaction;
@@ -470,6 +473,7 @@ export default function PendingReceiptPanel({
             </Box>
           );
         })}
+        </Box>
       </Box>
 
       {/* Camera scanner — opened from a row's S/N field, writing straight

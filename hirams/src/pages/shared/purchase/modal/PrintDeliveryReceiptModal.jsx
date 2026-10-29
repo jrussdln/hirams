@@ -150,26 +150,26 @@ const itemDeliveryRows = (item) =>
     })),
   );
 
-// The ids to tick for a given DR. "" keeps every item on its own newest
-// batch; an item with nothing under the chosen DR stays on its newest
-// batch too, so it never silently drops to 0.
+// The ids to tick for a given DR. Picking a receipt prints THAT batch and
+// nothing else — an item with no rows under the chosen DR gets no checked
+// rows and drops out of the print, it never quietly keeps an older batch
+// ticked. Only when the data carries no receipt numbers at all (no picker)
+// does every item fall back to its own newest batch.
 const rowsForDr = (item, dr) => {
   const selectable = itemDeliveryRows(item).filter(countsAsDelivered);
   if (selectable.length === 0) return [];
-  const underDr = dr
-    ? selectable.filter((r) => (r.strReceiptNumber || "") === dr)
-    : [];
-  const latest = selectable.reduce(
-    (max, r) => Math.max(max, receiptNumValue(r.strReceiptNumber)),
-    -Infinity,
-  );
-  const chosen =
-    underDr.length > 0
-      ? underDr
-      : selectable.filter(
-          (r) => receiptNumValue(r.strReceiptNumber) === latest,
-        );
-  return chosen.map((r) => r.nInventoryId);
+  if (!dr) {
+    const latest = selectable.reduce(
+      (max, r) => Math.max(max, receiptNumValue(r.strReceiptNumber)),
+      -Infinity,
+    );
+    return selectable
+      .filter((r) => receiptNumValue(r.strReceiptNumber) === latest)
+      .map((r) => r.nInventoryId);
+  }
+  return selectable
+    .filter((r) => (r.strReceiptNumber || "").trim() === dr)
+    .map((r) => r.nInventoryId);
 };
 
 function ItemRow({ item, index, selected, onSelectedChange }) {
@@ -249,14 +249,21 @@ function ItemRow({ item, index, selected, onSelectedChange }) {
     const row = allRows.find((r) => r.nInventoryId === id);
     if (!row || !countsAsDelivered(row)) return;
     const isRemoving = selected.includes(id);
+    // One DR prints ONE receipt number — so clicking into a DIFFERENT
+    // receipt batch does not error out, it SWITCHES: the clicked receipt's
+    // whole batch takes over and the old batch un-ticks. The user picked
+    // that receipt ("the OR that should be checked"), not a dead shake.
     if (!isRemoving && selected.length > 0) {
       const existingRow = allRows.find((r) => r.nInventoryId === selected[0]);
       const sameReceipt =
         (row?.strReceiptNumber || "") === (existingRow?.strReceiptNumber || "");
       if (!sameReceipt) {
-        flagSelectError(
-          id,
-          "Rows with different Receipt No. cannot be selected together.",
+        onSelectedChange(
+          selectableRows
+            .filter(
+              (r) => (r.strReceiptNumber || "") === (row.strReceiptNumber || ""),
+            )
+            .map((r) => r.nInventoryId),
         );
         return;
       }
@@ -821,6 +828,16 @@ export default function PrintDeliveryReceiptModal({
   const [selectedDr, setSelectedDr] = useState("");
   const [itemSelections, setItemSelections] = useState({});
 
+  // Every open starts fresh: the pick falls back to the LATEST DR and any
+  // manual ticks from the last session are forgotten — a stale selection
+  // must not survive the close (the deliveries may have moved on since).
+  React.useEffect(() => {
+    if (open) {
+      setSelectedDr("");
+      setItemSelections({});
+    }
+  }, [open]);
+
   // Every distinct DR (delivery receipt) number across all delivery rows,
   // newest first.
   const drNumbers = (() => {
@@ -845,24 +862,26 @@ export default function PrintDeliveryReceiptModal({
   const itemSelection = (index) =>
     itemSelections[index] ?? rowsForDr(deliveredOptions[index], activeDr);
 
-  // What the printed DR will contain, per item.
-  const printItems = deliveredOptions.map((item, index) => {
-    const rows = itemDeliveryRows(item);
-    const selectedIds = new Set(itemSelection(index));
-    const selectedRows = rows.filter((r) => selectedIds.has(r.nInventoryId));
-    const selectedQty = selectedRows.reduce(
-      (sum, r) => sum + Number(r.nQuantity || 0),
-      0,
-    );
-    return {
-      ...item,
-      // No per-delivery breakdown → keep the item's own delivered qty.
-      itemQty: rows.length > 0 ? selectedQty : item.itemQty,
-      strReceiptNumber: selectedRows[0]?.strReceiptNumber || "",
-    };
-  });
-
-  const hasZeroQtyItem = printItems.some((it) => it.itemQty === 0);
+  // What the printed DR will contain — ONLY the items with checked rows.
+  // An item not part of the picked receipt's batch is left out entirely;
+  // it must not ride along at qty 0 (or worse, at its older batch's qty).
+  const printItems = deliveredOptions
+    .map((item, index) => {
+      const rows = itemDeliveryRows(item);
+      const selectedIds = new Set(itemSelection(index));
+      const selectedRows = rows.filter((r) => selectedIds.has(r.nInventoryId));
+      const selectedQty = selectedRows.reduce(
+        (sum, r) => sum + Number(r.nQuantity || 0),
+        0,
+      );
+      return {
+        ...item,
+        // No per-delivery breakdown → keep the item's own delivered qty.
+        itemQty: rows.length > 0 ? selectedQty : item.itemQty,
+        strReceiptNumber: selectedRows[0]?.strReceiptNumber || "",
+      };
+    })
+    .filter((it) => Number(it.itemQty) > 0);
 
   const handleDrChange = (e) => {
     setSelectedDr(e.target.value);
@@ -909,7 +928,9 @@ export default function PrintDeliveryReceiptModal({
       showSave={true}
       saveLabel="Print"
       onSave={handlePrint}
-      disabled={deliveredOptions.length === 0 || hasZeroQtyItem}
+      // The picked batch has to have content — an OR whose items all
+      // dropped out has nothing to print.
+      disabled={printItems.length === 0}
       showCancel={true}
       cancelLabel="Cancel"
       onCancel={onClose}

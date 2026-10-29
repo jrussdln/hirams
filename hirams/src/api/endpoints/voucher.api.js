@@ -3,6 +3,10 @@ import api from "../axios.js";
 export const VoucherAPI = {
   getVouchers: (config) => api.get("vouchers", config),
   createVoucher: (payload) => api.post("vouchers", payload),
+  // Edits the voucher INFO (title, company, payee, payment terms). The
+  // update endpoint nulls every omitted column, so the caller must send the
+  // untouched fields along with their current values.
+  updateVoucher: (nVoucherId, payload) => api.put(`vouchers/${nVoucherId}`, payload),
   updateVoucherStatus: (nVoucherId, cStatus, extra = {}) =>
     api.patch(`vouchers/${nVoucherId}/status`, { cStatus, ...extra }),
   updateVoucherForJevStatus: (nVoucherId, bIsForJev) =>

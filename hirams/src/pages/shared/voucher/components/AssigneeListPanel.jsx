@@ -4,6 +4,7 @@ import {
   ReceiptLongOutlined,
   KeyboardArrowUp,
   KeyboardArrowDown,
+  EditOutlined,
 } from "@mui/icons-material";
 import { fmtPHP } from "../../../../utils/formatters/formatter";
 import getThemeColors from "../../../../utils/style/getThemeColors";
@@ -26,7 +27,12 @@ const useColors = (c) => ({
     active: c.green.active,
   },
   purple: { bg: c.purple.bg, border: c.purple.border, text: c.purple.text },
-  blue: { text: c.blue.text },
+  blue: {
+    bg: c.blue.bg,
+    border: c.blue.border,
+    text: c.blue.text,
+    hover: c.blue.hover,
+  },
   gray: {
     textPrimary: c.gray.textPrimary,
     textMuted: c.gray.textMuted,
@@ -43,6 +49,10 @@ export default function AssigneeListPanel({
   voucherActiveKey,
   voucher,
   onAddItem,
+  // EDIT VOUCHER INFO — opens the create modal in edit mode over the
+  // voucher's company / assignee / payment terms. Assignee-type vouchers
+  // only: the caller gates it (undefined hides the button).
+  onEditInfo,
   // The DV code becomes a LINK when this is set — it opens the voucher
   // itself (the JEV viewer hands it over, the same way the supplier's PO
   // card does).
@@ -288,6 +298,43 @@ export default function AssigneeListPanel({
         </Box>
 
         <AddItemButton onClick={onAddItem} c={colors} />
+
+        {/* EDIT VOUCHER INFO — sits right beside Add, same round shape.
+            Blue to read as "record settings" next to the green add. */}
+        {onEditInfo && (
+          <Box
+            component="button"
+            onClick={(e) => {
+              // The header toggles on its own — the button must not double up.
+              e.stopPropagation();
+              onEditInfo();
+            }}
+            title="Edit Voucher Info"
+            aria-label="Edit Voucher Info"
+            sx={{
+              width: { xs: 18, sm: 20 },
+              height: { xs: 18, sm: 20 },
+              borderRadius: "50px",
+              border: `0.5px solid ${colors.blue.border}`,
+              background: colors.blue.bg,
+              color: colors.blue.text,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              p: 0,
+              cursor: "pointer",
+              flexShrink: 0,
+              transition: "all 0.15s",
+              "&:hover": {
+                background: colors.blue.hover,
+                borderColor: colors.blue.text,
+              },
+              "&:active": { background: colors.blue.hover },
+            }}
+          >
+            <EditOutlined sx={{ fontSize: "0.7rem" }} />
+          </Box>
+        )}
 
         <IconButton
           size="small"

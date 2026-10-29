@@ -2,13 +2,23 @@
  * Does this line already carry an APPROVED ("A") inventory row?
  *
  * The backend attaches the approved / pending counts to every purchase
- * option (PurchaseOrderService::attachInventoryStats). An approved row means
- * a JEV was already raised for the item, so its record is closed — the edit
- * form must not touch it.
+ * option (PurchaseOrderService::attachInventoryStats). The two directions
+ * lock INDEPENDENTLY:
+ *
+ *   • receive — the record is closed when either side was approved: the
+ *     received qty itself, or the delivered outflow that drew on it.
+ *   • deliver — only the NEGATIVE inventory's own JEV closes the line
+ *     (approvedDeliveredJevs: approved negative rows that carry an
+ *     nJEVId). A received-side JEV says nothing about the outflow, so it
+ *     must not lock the delivered form — delivered rows that are approved
+ *     but not yet journaled (nJEVId null) stay editable.
  */
-export const hasApprovedInventory = (option) =>
-  Number(option?.nApprovedReceivedQty) > 0 ||
-  Number(option?.nApprovedDeliveredQty) > 0;
+export const hasApprovedInventory = (option, mode = "receive") =>
+  mode === "deliver"
+    ? Array.isArray(option?.approvedDeliveredJevs) &&
+      option.approvedDeliveredJevs.length > 0
+    : Number(option?.nApprovedReceivedQty) > 0 ||
+      Number(option?.nApprovedDeliveredQty) > 0;
 
 /**
  * The journal(s) that closed this line.

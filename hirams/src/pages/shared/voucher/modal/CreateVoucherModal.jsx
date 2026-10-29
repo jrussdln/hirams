@@ -33,6 +33,9 @@ const VIEW = {
   ADD_ASSIGNEE: "ADD_ASSIGNEE",
   LOADING: "LOADING",
   VOUCHER_FORM: "VOUCHER_FORM",
+  // The voucher INFO edit (an existing voucher): company, assignee and
+  // payment terms — no particulars here, those live on their own modal.
+  EDIT_INFO: "EDIT_INFO",
 };
 
 const initialAssigneeForm = {
@@ -50,6 +53,71 @@ const initialVoucherForm = {
   cPaymentTerms: "",
 };
 
+/**
+ * The payment terms tiles — identical in the create flow and the voucher
+ * info edit, so both stay in step by construction.
+ */
+function PaymentTermsPicker({ paymentTerms, value, onChange, error, colors }) {
+  return (
+    <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75, mb: 2 }}>
+      <Typography
+        sx={{
+          fontSize: "0.65rem",
+          fontWeight: 700,
+          color: colors.text,
+          textTransform: "uppercase",
+          letterSpacing: "0.07em",
+        }}
+      >
+        Payment Terms
+      </Typography>
+      <Box sx={{ display: "flex", gap: 0.75 }}>
+        {Object.entries(paymentTerms || {}).map(([key, lbl]) => {
+          const selected = value === key;
+          return (
+            <Box
+              key={key}
+              onClick={() => onChange(key)}
+              sx={{
+                flex: 1,
+                height: 36,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: "9px",
+                border: selected
+                  ? `1.5px solid ${colors.blue.text}`
+                  : `0.5px solid ${colors.border}`,
+                background: selected ? colors.blue.bg : "transparent",
+                cursor: "pointer",
+                transition: "all 0.15s",
+                "&:hover": { borderColor: colors.blue.border },
+              }}
+            >
+              <Typography
+                sx={{
+                  fontSize: "0.72rem",
+                  fontWeight: selected ? 700 : 500,
+                  color: selected
+                    ? colors.blue.textStrong
+                    : colors.textSecondary,
+                }}
+              >
+                {lbl}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Box>
+      {error && (
+        <Typography sx={{ fontSize: "0.6rem", color: "error.main" }}>
+          {error}
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
 function CreateVoucherModal({
   open,
   onClose,
@@ -60,6 +128,9 @@ function CreateVoucherModal({
   voucherSupplierTypeKey,
   voucherAssigneeTypeKey,
   paymentTerms, // ← add this prop
+  // When set, the modal opens straight into EDIT mode over this voucher's
+  // info (company / assignee / payment terms) instead of the create flow.
+  editVoucher = null,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -80,8 +151,35 @@ function CreateVoucherModal({
   const [companyOptions, setCompanyOptions] = useState([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [searchErrors, setSearchErrors] = useState({});
+  // EDIT mode — the assignee card vs the search field never show together:
+  // the card sits with a Change button, and Change swaps it for the search.
+  const [changingAssignee, setChangingAssignee] = useState(false);
   useEffect(() => {
     if (open) {
+      if (editVoucher) {
+        // EDIT mode — prefill the voucher's own info: the payee comes off
+        // the loaded links first, the direct assignee relation second.
+        setView(VIEW.EDIT_INFO);
+        setChangingAssignee(false);
+        setSelectedCompanyId(
+          editVoucher.nCompanyId != null ? String(editVoucher.nCompanyId) : "",
+        );
+        setSelectedAssignee(
+          editVoucher.voucher_assignees?.[0]?.assignee ??
+            editVoucher.assignee ??
+            null,
+        );
+        setSearchQuery("");
+        setAssignees([]);
+        setVoucherForm({
+          ...initialVoucherForm,
+          cPaymentTerms: editVoucher.cPaymentTerms || "",
+        });
+        setVoucherErrors({});
+        setSearchErrors({});
+        setAssigneeErrors({});
+        return;
+      }
       setView(VIEW.SEARCH);
       setSearchQuery("");
       setAssignees([]);
@@ -94,7 +192,7 @@ function CreateVoucherModal({
       setSelectedCompanyId("");
       setSearchErrors({}); // ← add
     }
-  }, [open]);
+  }, [open, editVoucher]);
 
   useEffect(() => {
     if (!open) return;
@@ -114,7 +212,7 @@ function CreateVoucherModal({
   }, [open]);
 
   useEffect(() => {
-    if (view !== VIEW.SEARCH) return;
+    if (view !== VIEW.SEARCH && view !== VIEW.EDIT_INFO) return;
     const q = searchQuery.trim();
     if (!q) {
       setAssignees([]);
@@ -272,24 +370,66 @@ function CreateVoucherModal({
     }
   };
 
+  const handleUpdateVoucher = async () => {
+    // Company is the one hard requirement — payee and terms may stay as
+    // they are (they are only validated when the caller changed them).
+    if (!validateCompany()) return;
+    if (!selectedAssignee?.nAssigneeId && editVoucher?.nTypeId == null) {
+      setSearchErrors((e) => ({ ...e, nTypeId: "Assignee is required" }));
+      return;
+    }
+    if (!voucherForm.cPaymentTerms) {
+      setVoucherErrors({ cPaymentTerms: "Payment terms is required" });
+      return;
+    }
+    const entity = "Voucher";
+    try {
+      onClose();
+      await withSpinner(entity, async () => {
+        // The update endpoint nulls every omitted column — the untouched
+        // fields ride along with their current values (status, type,
+        // number, title, dtCreated) so nothing else on the voucher moves.
+        await VoucherAPI.updateVoucher(editVoucher.nVoucherId, {
+          strTitle: editVoucher.strTitle ?? null,
+          cType: editVoucher.cType ?? null,
+          strNumber: editVoucher.strNumber ?? null,
+          cStatus: editVoucher.cStatus,
+          dtCreated: editVoucher.dtCreated ?? null,
+          nCompanyId: selectedCompanyId || null,
+          // The current payee unless the search picked a replacement.
+          nTypeId: selectedAssignee?.nAssigneeId ?? editVoucher.nTypeId,
+          cPaymentTerms: voucherForm.cPaymentTerms || null,
+        });
+        await onSuccess();
+      });
+      await showSwal("SUCCESS", {}, { entity, action: "updated" });
+    } catch {
+      await showSwal("ERROR", {}, { entity });
+    }
+  };
+
   const titleMap = {
     [VIEW.SEARCH]: "Create Voucher",
     [VIEW.ADD_ASSIGNEE]: "Create Voucher",
     [VIEW.LOADING]: "Create Voucher",
     [VIEW.VOUCHER_FORM]: "Create Voucher",
+    [VIEW.EDIT_INFO]: "Edit Voucher",
   };
   const subTitleMap = {
     [VIEW.SEARCH]: "Select Assignee",
     [VIEW.ADD_ASSIGNEE]: "New Assignee",
     [VIEW.LOADING]: "Saving...",
     [VIEW.VOUCHER_FORM]: `${selectedAssignee?.strAssigneeNickName ?? selectedAssignee?.strAssigneeName ?? ""}`,
+    [VIEW.EDIT_INFO]: `${selectedAssignee?.strAssigneeNickName ?? selectedAssignee?.strAssigneeName ?? ""}`,
   };
   const handleSave =
     view === VIEW.ADD_ASSIGNEE
       ? handleSaveAssignee
       : view === VIEW.VOUCHER_FORM
         ? handleSaveVoucher
-        : undefined;
+        : view === VIEW.EDIT_INFO
+          ? handleUpdateVoucher
+          : undefined;
 
   if (!open) return null;
 
@@ -302,11 +442,14 @@ function CreateVoucherModal({
       subTitle={subTitleMap[view]}
       hideSave={view === VIEW.SEARCH || view === VIEW.LOADING}
       showSave={view !== VIEW.SEARCH && view !== VIEW.LOADING}
+      saveLabel={view === VIEW.EDIT_INFO ? "Save Changes" : undefined}
       cancelLabel={
-        view !== VIEW.SEARCH && view !== VIEW.LOADING ? "Back" : "Cancel"
+        view === VIEW.ADD_ASSIGNEE || view === VIEW.VOUCHER_FORM
+          ? "Back"
+          : "Cancel"
       }
       onCancel={
-        view !== VIEW.SEARCH && view !== VIEW.LOADING
+        view === VIEW.ADD_ASSIGNEE || view === VIEW.VOUCHER_FORM
           ? () => setView(VIEW.SEARCH)
           : onClose
       }
@@ -482,6 +625,221 @@ function CreateVoucherModal({
         />
       )}
 
+      {view === VIEW.EDIT_INFO && editVoucher && (
+        <Box>
+          {/* COMPANY — the one hard requirement of the edit */}
+          <FormGrid
+            fields={[
+              {
+                name: "nCompanyId",
+                label: "Company",
+                type: "select",
+                options: companyOptions,
+                xs: 12,
+                required: true,
+              },
+            ]}
+            formData={{ nCompanyId: selectedCompanyId }}
+            handleChange={(e) => {
+              const { name, value } = e.target;
+              if (name === "nCompanyId") {
+                setSelectedCompanyId(value);
+                if (searchErrors.nCompanyId) setSearchErrors({});
+              }
+            }}
+            errors={searchErrors}
+          />
+
+          {/* ASSIGNEE — the card and the search field never show together:
+              the card sits with a Change button on its right, and Change
+              swaps the card for the search. "Keep current assignee" closes
+              the search without touching the payee. */}
+          <Box sx={{ mt: 2, mb: 2 }}>
+            {changingAssignee ? (
+            <>
+              <FormGrid
+                fields={[
+                  {
+                    name: "searchQuery",
+                    label: "Search Assignee",
+                    xs: 12,
+                    placeholder: "Type to search...",
+                  },
+                ]}
+                formData={{ searchQuery }}
+                handleChange={(e) => setSearchQuery(e.target.value)}
+                errors={{}}
+              />
+
+              {searchLoading && (
+                <Box sx={{ display: "flex", justifyContent: "center", mt: 1 }}>
+                  <CircularProgress
+                    size={20}
+                    sx={{ color: colors.blue.text }}
+                  />
+                </Box>
+              )}
+
+              {!searchLoading && searchQuery.trim() && (
+                <Box
+                  sx={{
+                    mt: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 0.5,
+                  }}
+                >
+                  {assignees.map((a) => (
+                    <Box
+                      key={a.nAssigneeId}
+                      onClick={() => {
+                        setSelectedAssignee(a);
+                        setSearchQuery("");
+                        setChangingAssignee(false);
+                      }}
+                      sx={{
+                        px: 1.5,
+                        py: 1,
+                        border: `0.5px solid ${colors.border}`,
+                        borderRadius: 1.5,
+                        cursor: "pointer",
+                        "&:hover": {
+                          background: colors.blue.bg,
+                          borderColor: colors.blue.border,
+                        },
+                      }}
+                    >
+                      <Typography
+                        sx={{
+                          fontSize: "0.8rem",
+                          fontWeight: 600,
+                          color: colors.text,
+                        }}
+                      >
+                        {a.strAssigneeName}
+                      </Typography>
+                      <Typography
+                        sx={{ fontSize: "0.7rem", color: colors.textSecondary }}
+                      >
+                        {a.strAssigneeNickName}{" "}
+                        {a.strTIN ? `· TIN: ${tinToDisplay(a.strTIN)}` : ""}
+                      </Typography>
+                    </Box>
+                  ))}
+
+                  {assignees.length === 0 && (
+                    <Typography
+                      sx={{
+                        fontSize: "0.7rem",
+                        fontStyle: "italic",
+                        color: colors.textSecondary,
+                        px: 0.5,
+                        py: 0.5,
+                      }}
+                    >
+                      No assignee matches — keep the current one instead.
+                    </Typography>
+                  )}
+                </Box>
+              )}
+
+              <Box
+                component="button"
+                onClick={() => {
+                  setSearchQuery("");
+                  setChangingAssignee(false);
+                }}
+                sx={{
+                  mt: 1.5,
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  fontSize: "0.65rem",
+                  fontWeight: 600,
+                  color: colors.blue.text,
+                  "&:hover": { textDecoration: "underline" },
+                }}
+              >
+                Keep current assignee
+              </Box>
+            </>
+          ) : (
+            selectedAssignee && (
+              <Box
+                sx={{
+                  px: 1.5,
+                  py: 0.75,
+                  background: colors.blue.bg,
+                  border: `0.5px solid ${colors.blue.border}`,
+                  borderRadius: 1.5,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                <PersonSearch
+                  sx={{ fontSize: "0.9rem", color: colors.blue.text }}
+                />
+                <Box sx={{ minWidth: 0, flex: 1 }}>
+                  <Typography
+                    sx={{
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      color: colors.blue.textStrong,
+                    }}
+                  >
+                    {selectedAssignee.strAssigneeName}
+                  </Typography>
+                  <Typography
+                    sx={{ fontSize: "0.65rem", color: colors.blue.text }}
+                  >
+                    {selectedAssignee.strAssigneeNickName}
+                    {selectedAssignee.strTIN
+                      ? ` · TIN: ${tinToDisplay(selectedAssignee.strTIN)}`
+                      : ""}
+                  </Typography>
+                </Box>
+                <Box
+                  component="button"
+                  onClick={() => setChangingAssignee(true)}
+                  sx={{
+                    px: 1,
+                    py: 0.3,
+                    borderRadius: "7px",
+                    border: `0.5px solid ${colors.blue.border}`,
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: "0.62rem",
+                    fontWeight: 700,
+                    color: colors.blue.textStrong,
+                    flexShrink: 0,
+                    transition: "all 0.15s",
+                    "&:hover": {
+                      background: colors.blue.hover,
+                      borderColor: colors.blue.text,
+                    },
+                  }}
+                >
+                  Change
+                </Box>
+              </Box>
+            )
+          )}
+          </Box>
+
+          {/* PAYMENT TERMS — the same tiles the create flow shows */}
+          <PaymentTermsPicker
+            paymentTerms={paymentTerms}
+            value={voucherForm.cPaymentTerms}
+            onChange={(key) =>
+              setVoucherForm((p) => ({ ...p, cPaymentTerms: key }))
+            }
+            error={voucherErrors?.cPaymentTerms}
+            colors={colors}
+          />
+        </Box>
+      )}
+
       {view === VIEW.VOUCHER_FORM && (
         <Box>
           {/* Assignee banner */}
@@ -521,66 +879,15 @@ function CreateVoucherModal({
           </Box>
 
           {/* Payment Terms — now above the particulars */}
-          <Box
-            sx={{ display: "flex", flexDirection: "column", gap: 0.75, mb: 2 }}
-          >
-            <Typography
-              sx={{
-                fontSize: "0.65rem",
-                fontWeight: 700,
-                color: colors.text,
-                textTransform: "uppercase",
-                letterSpacing: "0.07em",
-              }}
-            >
-              Payment Terms
-            </Typography>
-            <Box sx={{ display: "flex", gap: 0.75 }}>
-              {Object.entries(paymentTerms || {}).map(([key, lbl]) => {
-                const selected = voucherForm.cPaymentTerms === key;
-                return (
-                  <Box
-                    key={key}
-                    onClick={() =>
-                      setVoucherForm((p) => ({ ...p, cPaymentTerms: key }))
-                    }
-                    sx={{
-                      flex: 1,
-                      height: 36,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: "9px",
-                      border: selected
-                        ? `1.5px solid ${colors.blue.text}`
-                        : `0.5px solid ${colors.border}`,
-                      background: selected ? colors.blue.bg : "transparent",
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      "&:hover": { borderColor: colors.blue.border },
-                    }}
-                  >
-                    <Typography
-                      sx={{
-                        fontSize: "0.72rem",
-                        fontWeight: selected ? 700 : 500,
-                        color: selected
-                          ? colors.blue.textStrong
-                          : colors.textSecondary,
-                      }}
-                    >
-                      {lbl}
-                    </Typography>
-                  </Box>
-                );
-              })}
-            </Box>
-            {voucherErrors?.cPaymentTerms && (
-              <Typography sx={{ fontSize: "0.6rem", color: "error.main" }}>
-                {voucherErrors.cPaymentTerms}
-              </Typography>
-            )}
-          </Box>
+          <PaymentTermsPicker
+            paymentTerms={paymentTerms}
+            value={voucherForm.cPaymentTerms}
+            onChange={(key) =>
+              setVoucherForm((p) => ({ ...p, cPaymentTerms: key }))
+            }
+            error={voucherErrors?.cPaymentTerms}
+            colors={colors}
+          />
           {/* Particulars label */}
           <Typography
             sx={{

@@ -129,7 +129,7 @@ function SupplierAEModal({
       <FormGrid
         fields={[
           { label: "Supplier Name", name: "fullName", xs: 12 },
-          { label: "Nickname", name: "nickname", xs: 6 },
+          { label: "Nickname", name: "nickname", xs: 6, maxLength: 50 },
           {
             label: "TIN",
             name: "tin",

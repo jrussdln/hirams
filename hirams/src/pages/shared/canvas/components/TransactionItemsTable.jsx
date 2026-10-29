@@ -1635,6 +1635,44 @@ function TransactionItemsTable({
                         transaction.transactionName ||
                         "—"}
                     </Typography>
+                    {/* ABC (BUDGET) — purchase flow only (For Purchase /
+                        For Delivery); the canvas mode shows its ABC cards in
+                        the grid below instead. */}
+                    {isPurchase && (
+                      <>
+                        <Typography
+                          sx={{
+                            textAlign: "left",
+                            fontSize: "0.55rem",
+                            fontWeight: 600,
+                            color: colors.textSecondary,
+                            textTransform: "uppercase",
+                            lineHeight: 1,
+                            mt: 0.6,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          ABC (Budget)
+                        </Typography>
+                        <Typography
+                          sx={{
+                            textAlign: "left",
+                            fontSize: "0.7rem",
+                            fontWeight: 700,
+                            color: colors.textPrimary,
+                            lineHeight: 1,
+                            mt: 0.1,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {abcValue}
+                        </Typography>
+                      </>
+                    )}
                   </Box>
                 </Box>
 
@@ -1668,6 +1706,7 @@ function TransactionItemsTable({
                     sub={abcSub}
                     variant={abcValidation ? "danger" : "default"}
                     dense
+                    topAlign
                   />
                   {showPurchaseOptions && (
                     <CardStructure
@@ -1681,6 +1720,7 @@ function TransactionItemsTable({
                       }
                       variant={abcValidation ? "danger" : "default"}
                       dense
+                      topAlign
                     />
                   )}
                   <CardStructure
@@ -1692,6 +1732,7 @@ function TransactionItemsTable({
                     }
                     variant={getDueDateVariant(transaction.dtAODueDate)}
                     dense
+                    topAlign
                   />
                   <CardStructure
                     label="Document Submission"
@@ -1702,6 +1743,7 @@ function TransactionItemsTable({
                     }
                     variant={getDueDateVariant(transaction.dtDocSubmission)}
                     dense
+                    topAlign
                   />
                 </Box>
               )}

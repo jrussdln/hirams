@@ -141,21 +141,24 @@ export default function LineItems({
       .includes(String(poStatus));
     if (!isArrivedStatus) return;
 
-    const arrivedOptionIds = options
-      .map((opt) => opt.purchase_option?.nPurchaseItemId)
-      .filter(Boolean);
+    const arrivedOptionIds = [...new Set(
+      options
+        .map((opt) => opt.purchase_option?.nPurchaseItemId)
+        .filter(Boolean),
+    )];
     if (arrivedOptionIds.length === 0) return;
     const fetchAll = async () => {
-      const results = {};
-      for (const id of arrivedOptionIds) {
-        try {
-          const res = await InventoryAPI.getHistory(id);
-          results[id] = res?.rows || res?.inventory || [];
-        } catch (e) {
-          results[id] = [];
-        }
+      try {
+        // ONE call for every item — the bulk endpoint replaces the per-item
+        // history GETs that queued up (N requests → 1).
+        const res = await InventoryAPI.getHistoryBulk(arrivedOptionIds);
+        // An item with no inventory rows yet still maps to an empty list.
+        const rowsMap = { ...(res?.rows ?? {}) };
+        for (const id of arrivedOptionIds) rowsMap[id] ??= [];
+        setInventoryRows(rowsMap);
+      } catch {
+        setInventoryRows({});
       }
-      setInventoryRows(results);
     };
     fetchAll();
   }, [

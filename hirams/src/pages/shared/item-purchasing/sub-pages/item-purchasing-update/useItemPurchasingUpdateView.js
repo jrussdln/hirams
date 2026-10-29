@@ -253,15 +253,49 @@ export default function useItemPurchasingUpdateView() {
   // stage the Item Purchasing list files it under, not the tab the link
   // happened to be clicked from.
   const requestedStatus = searchParams.get("status");
+
+  // ── Deep-link ?status= is only a REQUEST ───────────────────────────────
+  // The eye on the purchase page carries the OPTION's status, and an option
+  // can lag the PO's real progress (it still reads Pending Receipt after
+  // every unit was received). A tab that would render an empty panel must
+  // fall through to the stage the PO has actually reached — the same remap
+  // the Item Purchasing list applies before filing a card (poLatestStatus).
+  const refineRequestedTab = (requested) => {
+    const status = String(requested);
+    const opts = po?.purchase_order_options ?? [];
+    if (!opts.length) return status;
+    const optOf = (o) => o?.purchase_option ?? o;
+    const toReceive = opts.some(
+      (o) =>
+        num(optOf(o)?.nQuantity) - num(optOf(o)?.nInventoryQty) > 0,
+    );
+    const toDeliver = opts.some(
+      (o) =>
+        num(optOf(o)?.nInventoryQty) - num(optOf(o)?.nDeliveredQty) > 0,
+    );
+    const delivered = opts.some((o) => num(optOf(o)?.nDeliveredQty) > 0);
+
+    // Nothing left to receive → the receive panel would show no rows: the
+    // goods are on their way out, so open For Delivery instead.
+    if (status === String(pendingReceiptKey) && !toReceive)
+      return String(forDeliveryKey);
+    // Nothing left to hand over → Delivered when something went out, back
+    // to Pending Receipt when nothing ever arrived.
+    if (status === String(forDeliveryKey) && !toDeliver)
+      return delivered ? String(deliveredKey) : String(pendingReceiptKey);
+    return status;
+  };
+
   const selectedStatusCode =
     po?.nStatus != null
       ? String(
-          requestedStatus ||
-            poLatestStatus(po, {
-              pendingReceiptKey,
-              forDeliveryKey,
-              deliveredKey,
-            }),
+          requestedStatus != null
+            ? refineRequestedTab(requestedStatus)
+            : poLatestStatus(po, {
+                pendingReceiptKey,
+                forDeliveryKey,
+                deliveredKey,
+              }),
         )
       : "";
   const fetchPO = useCallback(async () => {
@@ -297,12 +331,12 @@ export default function useItemPurchasingUpdateView() {
   // PO of the transaction (5 from supplier A + 7 from supplier B = 12), but
   // the VIEW only loads this PO. Rebuild the same totals from the full list
   // so the panel row shows the matching number.
-  const txnItemTotals = useMemo(() => {
-    const status = String(selectedStatusCode || "");
-    if (!status || !allPOs.length) return {};
+  const inActiveTab = useCallback(
+    (p) => {
+      const status = String(selectedStatusCode || "");
+      if (!status) return false;
 
-    // Same membership rule as the list, so the total matches the card.
-    const inActiveTab = (p) => {
+      // Same membership rule as the list, so the total matches the card.
       const s = String(p?.nStatus);
       const opts = p?.purchase_order_options || [];
       if (status === String(forDeliveryKey)) {
@@ -319,7 +353,18 @@ export default function useItemPurchasingUpdateView() {
         );
       }
       return s === status;
-    };
+    },
+    [
+      selectedStatusCode,
+      forDeliveryKey,
+      pendingReceiptKey,
+      deliveredKey,
+      cancelledPOKey,
+    ],
+  );
+
+  const txnItemTotals = useMemo(() => {
+    if (!allPOs.length) return {};
 
     const map = {};
     for (const p of allPOs) {
@@ -338,14 +383,7 @@ export default function useItemPurchasingUpdateView() {
       }
     }
     return map;
-  }, [
-    allPOs,
-    selectedStatusCode,
-    forDeliveryKey,
-    pendingReceiptKey,
-    deliveredKey,
-    cancelledPOKey,
-  ]);
+  }, [allPOs, inActiveTab]);
 
   // ── Shared stock pool, per purchase item ──────────────────────────────
   // A row in For Delivery is combined across every PO of the transaction, so
@@ -586,6 +624,125 @@ export default function useItemPurchasingUpdateView() {
   }, [selectedStatusCode]);
   const options = po?.purchase_order_options || [];
   const firstOption = options[0];
+
+  // ── Transaction-wide panel rows (For Delivery / Delivered) ────────────
+  // The LIST shows one card per transaction: every item of every PO sharing
+  // the transaction code merged into ONE row per item. This view opens on a
+  // single PO, so feeding the panel only this PO's options would hide the
+  // rest of the card's items (card 10 rows → view 3). Rebuild the card's
+  // exact rows here — same membership rule, same merge — so the panel always
+  // shows what the card shows.
+  const groupPanelOptions = useMemo(() => {
+    const status = String(selectedStatusCode || "");
+    if (status !== String(forDeliveryKey) && status !== String(deliveredKey))
+      return liveOptions;
+
+    // The transaction this card belongs to — the same group key the list
+    // groups by (code, then transaction id).
+    const txOf = (opt) => opt?.purchase_option?.transaction_item?.transaction;
+    const groupKeyOf = (opt) => {
+      const tx = txOf(opt) ?? {};
+      return String(tx?.strCode || tx?.nTransactionId || "");
+    };
+    const anchor = liveOptions[0] ?? po?.purchase_order_options?.[0];
+    const myKey = groupKeyOf(anchor);
+    if (!myKey) return liveOptions;
+
+    // Every option of every in-tab PO sharing the transaction code, in the
+    // order splitDeliveryAcrossItems consumes them: this PO's own share
+    // first, then the rest by PO id — so the merged S/N list lines up with
+    // the split on submit.
+    const originPoId = String(po?.nPurchaseOrderId ?? "");
+    const parts = [];
+    for (const p of allPOs) {
+      if (!inActiveTab(p)) continue;
+      const poId = String(p?.nPurchaseOrderId ?? "");
+      const poNo = p?.strPurchaseOrderNo ?? "";
+      for (const opt of p.purchase_order_options || []) {
+        if (groupKeyOf(opt) !== myKey) continue;
+        parts.push({ opt, poId, poNo });
+      }
+    }
+    if (!parts.length) return liveOptions;
+
+    parts.sort((a, b) => {
+      const oa = a.poId === originPoId ? 0 : 1;
+      const ob = b.poId === originPoId ? 0 : 1;
+      if (oa !== ob) return oa - ob;
+      if (a.poId !== b.poId) return Number(a.poId) - Number(b.poId);
+      return (
+        Number(a.opt?.purchase_option?.nPurchaseItemId) -
+        Number(b.opt?.purchase_option?.nPurchaseItemId)
+      );
+    });
+
+    // ONE ROW PER REQUESTED ITEM — the lead keeps the relations (transaction
+    // item, supplier, brand · model, UOM), the quantities add up, and the
+    // S/N lists concat so Sync Received SN works across the whole group.
+    const byKey = new Map();
+    for (const { opt, poNo } of parts) {
+      const p = opt?.purchase_option;
+      // The transaction item behind the option — NOT a column that may be
+      // missing on the payload. Every requested line is its own row, even
+      // when the transaction lists the same product twice.
+      const tiId =
+        p?.transaction_item?.nTransactionItemId ?? p?.nTransactionItemId;
+      const key =
+        tiId != null
+          ? `ti-${tiId}`
+          : `oi-${opt?.nPurchaseOrder_ItemId ?? p?.nPurchaseItemId}`;
+      let row = byKey.get(key);
+      if (!row) {
+        row = { opt, poNos: [], parts: [] };
+        byKey.set(key, row);
+      }
+      row.parts.push(opt);
+      if (poNo && !row.poNos.includes(poNo)) row.poNos.push(poNo);
+    }
+
+    return [...byKey.values()].map(({ opt, poNos, parts: ps }) => {
+      const lead = ps[0]?.purchase_option ?? {};
+      const mergeQty = (field) =>
+        ps.reduce((s, o) => s + num(o?.purchase_option?.[field]), 0);
+      const mergeSN = (field) => {
+        const seen = new Set();
+        const out = [];
+        for (const o of ps)
+          for (const sn of o?.purchase_option?.[field] || []) {
+            const s = String(sn || "");
+            if (!s || seen.has(s)) continue;
+            seen.add(s);
+            out.push(s);
+          }
+        return out;
+      };
+      return {
+        ...opt,
+        // The panel prints the order(s) this row belongs to from this.
+        __poNos: poNos,
+        // The RAW supplier lines behind this row, each with its OWN
+        // quantities and serials. The merged lead carries SUMMED figures,
+        // so per-supplier contributor forms must read from these instead.
+        __parts: ps.map((o) => o?.purchase_option),
+        purchase_option: {
+          ...lead,
+          nQuantity: mergeQty("nQuantity"),
+          nInventoryQty: mergeQty("nInventoryQty"),
+          nDeliveredQty: mergeQty("nDeliveredQty"),
+          receivedSerialNumbers: mergeSN("receivedSerialNumbers"),
+          deliveredSerialNumbers: mergeSN("deliveredSerialNumbers"),
+        },
+      };
+    });
+  }, [
+    selectedStatusCode,
+    forDeliveryKey,
+    deliveredKey,
+    allPOs,
+    liveOptions,
+    po,
+    inActiveTab,
+  ]);
 
   // ── Deliver form: the card's next receipt number ──────────────────────
   // ONE number for the whole card (one transaction): it is reused while this
@@ -1071,10 +1228,25 @@ export default function useItemPurchasingUpdateView() {
       const receiptNo = (line?.strReceiptNumber || "").trim();
       const want = uniq(line?.serials);
 
-      const opt = (po?.purchase_order_options ?? []).find(
+      // Same cross-PO resolution as the delivery save: a contributor line can
+      // belong to an order other than the open one.
+      let ownerPo = po;
+      let opt = (ownerPo?.purchase_order_options ?? []).find(
         (o) => Number(o?.purchase_option?.nPurchaseItemId) === nPurchaseItemId,
       )?.purchase_option;
       if (!opt) {
+        ownerPo = allPOs.find((p) =>
+          (p?.purchase_order_options ?? []).some(
+            (o) =>
+              Number(o?.purchase_option?.nPurchaseItemId) === nPurchaseItemId,
+          ),
+        );
+        opt = (ownerPo?.purchase_order_options ?? []).find(
+          (o) =>
+            Number(o?.purchase_option?.nPurchaseItemId) === nPurchaseItemId,
+        )?.purchase_option;
+      }
+      if (!ownerPo || !opt) {
         await showSwal("ERROR", {}, { entity: "Receipt (line not found)" });
         return false;
       }
@@ -1127,7 +1299,8 @@ export default function useItemPurchasingUpdateView() {
       const toAdd = want.filter((sn) => !have.has(sn));
       const toRemove = [...have].filter((sn) => !wantSet.has(sn));
       // Carry on under the receipt the line already has when none is typed.
-      const receipt = receiptNo || lastRowReceipt(rowsBefore, 1);
+      const recordedReceipt = lastRowReceipt(rowsBefore, 1);
+      const receipt = receiptNo || recordedReceipt;
 
       const delta = target - received;
       // New S/N only ride along with units that come IN.
@@ -1142,19 +1315,40 @@ export default function useItemPurchasingUpdateView() {
         return false;
       }
       if (delta === 0 && !toAdd.length && !toRemove.length) {
-        // Nothing to save — the line already reads the same number and no
-        // serial changed. Stop here without a popup, but still skip the
-        // save so no empty history/receipt row is written.
-        return false;
+        // Same quantity, same S/N — the only change left is the receipt
+        // number, which still counts (the corrected number rewrites onto the
+        // existing received rows). Truly nothing to save stops here
+        // without a popup, so no empty history/receipt row is written.
+        if (!(receiptNo && receiptNo !== (recordedReceipt || "").trim())) {
+          return false;
+        }
       }
 
       setReceiveSaving(true);
       try {
         await withSpinner("Receipt", async () => {
+          // RECEIPT-ONLY save: same quantity, same S/N — rewrite the record's
+          // receipt number onto the received rows instead of writing a new
+          // history row.
+          if (delta === 0 && !toAdd.length && !toRemove.length) {
+            await Promise.all(
+              (rowsBefore || [])
+                .filter((r) => Number(r?.nQuantity) > 0)
+                .map((r) =>
+                  InventoryAPI.updateInventory(Number(r?.nInventoryId), {
+                    strReceiptNumber: receipt,
+                    // The endpoint requires cStatus — keep each row's own so
+                    // only the receipt number moves.
+                    cStatus: r?.cStatus,
+                  }),
+                ),
+            );
+            return;
+          }
           if (delta > 0) {
             await InventoryAPI.bulkReceiveDeliver({
               mode: "receive",
-              nPurchaseOrderId: po?.nPurchaseOrderId,
+              nPurchaseOrderId: ownerPo?.nPurchaseOrderId,
               nReceivedStatus: forDeliveryKey, // 150: every item fully received
               nDeliveredStatus: deliveredKey, // 160: every item fully delivered
               nPaidStatus: pendingReceiptKey, // 140: default, stays in Pending Receipt
@@ -1178,7 +1372,7 @@ export default function useItemPurchasingUpdateView() {
               keepFirst: [...(opt?.deliveredSerialNumbers || []), ...want],
             });
             await PurchaseOrderAPI.syncStatus({
-              nPurchaseOrderId: po?.nPurchaseOrderId,
+              nPurchaseOrderId: ownerPo?.nPurchaseOrderId,
               nPurchaseItemId,
               nUserId: currentUserId,
               nReceivedStatus: forDeliveryKey,
@@ -1190,7 +1384,7 @@ export default function useItemPurchasingUpdateView() {
           await dropSerials({ nPurchaseItemId, codes: toRemove, sign: 1 });
         });
         bustPOCache();
-        notifyUpdated({ purchaseOrderId: po?.nPurchaseOrderId });
+        notifyUpdated({ purchaseOrderId: ownerPo?.nPurchaseOrderId });
         window.dispatchEvent(new CustomEvent("inventory_data_updated"));
         await showSwal(
           "SUCCESS",
@@ -1212,6 +1406,7 @@ export default function useItemPurchasingUpdateView() {
     },
     [
       po,
+      allPOs,
       currentUserId,
       forDeliveryKey,
       deliveredKey,
@@ -1228,10 +1423,28 @@ export default function useItemPurchasingUpdateView() {
       const receiptNo = (line?.strReceiptNumber || "").trim();
       const want = uniq(line?.serials);
 
-      const opt = (po?.purchase_order_options ?? []).find(
+      // The contributor line may live on a DIFFERENT PO than the one open in
+      // the view — multi-supplier rows stretch across orders. Resolve it
+      // across every PO of the transaction and remember the order it
+      // actually belongs to: the batch write and the status sync have to run
+      // against THAT order, not the one that happens to be open.
+      let ownerPo = po;
+      let opt = (ownerPo?.purchase_order_options ?? []).find(
         (o) => Number(o?.purchase_option?.nPurchaseItemId) === nPurchaseItemId,
       )?.purchase_option;
       if (!opt) {
+        ownerPo = allPOs.find((p) =>
+          (p?.purchase_order_options ?? []).some(
+            (o) =>
+              Number(o?.purchase_option?.nPurchaseItemId) === nPurchaseItemId,
+          ),
+        );
+        opt = (ownerPo?.purchase_order_options ?? []).find(
+          (o) =>
+            Number(o?.purchase_option?.nPurchaseItemId) === nPurchaseItemId,
+        )?.purchase_option;
+      }
+      if (!ownerPo || !opt) {
         await showSwal("ERROR", {}, { entity: "Delivery (line not found)" });
         return false;
       }
@@ -1283,7 +1496,8 @@ export default function useItemPurchasingUpdateView() {
       const toAdd = want.filter((sn) => !have.has(sn));
       const toRemove = [...have].filter((sn) => !wantSet.has(sn));
       // Carry on under the receipt the line already has when none is typed.
-      const receipt = receiptNo || lastRowReceipt(rowsBefore, -1);
+      const recordedReceipt = lastRowReceipt(rowsBefore, -1);
+      const receipt = receiptNo || recordedReceipt;
 
       const delta = target - deliveredNow;
       // New S/N only ride along with units that go OUT.
@@ -1298,10 +1512,13 @@ export default function useItemPurchasingUpdateView() {
         return false;
       }
       if (delta === 0 && !toAdd.length && !toRemove.length) {
-        // Nothing to save — the line already reads the same number and no
-        // serial changed. Stop here without a popup, but still skip the
-        // save so no empty history/receipt row is written.
-        return false;
+        // Same quantity, same S/N — the only change left is the receipt
+        // number, which still counts (the corrected number rewrites onto the
+        // existing delivered rows). Truly nothing to save stops here
+        // without a popup, so no empty history/receipt row is written.
+        if (!(receiptNo && receiptNo !== (recordedReceipt || "").trim())) {
+          return false;
+        }
       }
       // Only a delivery that adds units needs its receipt number — correcting
       // the count down leaves the existing rows (and their receipt) alone.
@@ -1317,10 +1534,28 @@ export default function useItemPurchasingUpdateView() {
       setDeliverSaving(true);
       try {
         await withSpinner("Delivery", async () => {
+          // RECEIPT-ONLY save: same quantity, same S/N — rewrite the record's
+          // receipt number onto the delivered rows instead of writing a new
+          // history row.
+          if (delta === 0 && !toAdd.length && !toRemove.length) {
+            await Promise.all(
+              (rowsBefore || [])
+                .filter((r) => Number(r?.nQuantity) < 0)
+                .map((r) =>
+                  InventoryAPI.updateInventory(Number(r?.nInventoryId), {
+                    strReceiptNumber: receipt,
+                    // The endpoint requires cStatus — keep each row's own so
+                    // only the receipt number moves.
+                    cStatus: r?.cStatus,
+                  }),
+                ),
+            );
+            return;
+          }
           if (delta > 0) {
             await InventoryAPI.bulkReceiveDeliver({
               mode: "deliver",
-              nPurchaseOrderId: po?.nPurchaseOrderId,
+              nPurchaseOrderId: ownerPo?.nPurchaseOrderId,
               nReceivedStatus: forDeliveryKey, // 150
               nDeliveredStatus: deliveredKey, // 160: every item fully delivered
               nPaidStatus: pendingReceiptKey, // 140
@@ -1344,7 +1579,7 @@ export default function useItemPurchasingUpdateView() {
               keepFirst: want,
             });
             await PurchaseOrderAPI.syncStatus({
-              nPurchaseOrderId: po?.nPurchaseOrderId,
+              nPurchaseOrderId: ownerPo?.nPurchaseOrderId,
               nPurchaseItemId,
               nUserId: currentUserId,
               nReceivedStatus: forDeliveryKey,
@@ -1356,7 +1591,7 @@ export default function useItemPurchasingUpdateView() {
           await dropSerials({ nPurchaseItemId, codes: toRemove, sign: -1 });
         });
         bustPOCache();
-        notifyUpdated({ purchaseOrderId: po?.nPurchaseOrderId });
+        notifyUpdated({ purchaseOrderId: ownerPo?.nPurchaseOrderId });
         window.dispatchEvent(new CustomEvent("inventory_data_updated"));
         await showSwal(
           "SUCCESS",
@@ -1385,6 +1620,7 @@ export default function useItemPurchasingUpdateView() {
     },
     [
       po,
+      allPOs,
       currentUserId,
       forDeliveryKey,
       deliveredKey,
@@ -1531,6 +1767,9 @@ export default function useItemPurchasingUpdateView() {
     txnItemTotals,
     txnItemOptions,
     liveOptions: liveOptionsWithSelling,
+    // For Delivery / Delivered: the transaction's merged rows (same rows the
+    // list card shows) — falls back to liveOptions outside those tabs.
+    groupPanelOptions,
     firstOption,
     total,
     allOptionsAtPO,

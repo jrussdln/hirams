@@ -106,8 +106,16 @@ export default function RowEditForm({
   const tooManySerials = isWhole && serials.length > target;
   const serialsOver = addedSerials.length > capSerials;
 
-  // Nothing to save = the same quantity AND the same S/N the record holds.
-  const unchanged = isWhole && target === current && !serialsChanged;
+  // A receipt number that differs from what the line was recorded under is
+  // a change too — fixing just the receipt must be savable. The seed stores
+  // the line's original receipt in `origReceiptNo` for the compare.
+  const baselineReceipt = String(form.origReceiptNo ?? "").trim();
+  const receiptChanged =
+    (form.receiptNo || "").trim() !== baselineReceipt;
+
+  // Nothing to save = the same quantity, S/N and receipt the record holds.
+  const unchanged =
+    isWhole && target === current && !serialsChanged && !receiptChanged;
 
   // Only a delivery that adds units needs a receipt number — correcting the
   // count down leaves the existing rows (and their receipt) untouched.
@@ -489,7 +497,8 @@ export default function RowEditForm({
               title={
                 canSave
                   ? `Save this ${isDeliver ? "delivery" : "receipt"} line`
-                  : error || undefined
+                  : error ||
+                    (unchanged ? "No changes to save" : undefined)
               }
               sx={{
                 minWidth: SAVE_W,

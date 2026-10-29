@@ -11,8 +11,10 @@ use Illuminate\Foundation\Http\FormRequest;
  * controller had no try/catch, so a failed `$request->validate()` bubbled up
  * as Laravel's default 422. That contract is preserved here.
  *
- * cAccountType allows P here where store allows S — exactly as the original
- * inline rules were written.
+ * cAccountType matches the store rule (C, S, F, E). Legacy rows still carry
+ * P — keeping it valid here so repairing/updating an old row never 422s, and
+ * S is accepted too (it was missing, which broke updating ANY supplier-typed
+ * account). The modal sends null to normalize no longer offered types.
  */
 class UpdateJournalAccountRequest extends FormRequest
 {
@@ -21,7 +23,7 @@ class UpdateJournalAccountRequest extends FormRequest
         return [
             'strAccountName'   => 'required|string|max:50',
             'nParentAccountId' => 'nullable|integer|exists:tbljournalaccounts,nJournalAccountId',
-            'cAccountType'     => 'nullable|in:C,P,F,E',
+            'cAccountType'     => 'nullable|in:C,S,P,F,E',
         ];
     }
 }

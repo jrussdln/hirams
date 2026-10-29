@@ -86,6 +86,10 @@ const CardStructure = ({
   align = "left",
   orientation = "column", // ← add this line
   dense = false,
+  // Pin the label + value + sub to the TOP of the card instead of stacking
+  // them vertically centered — used by grids where several cards must keep
+  // their first lines on the same height regardless of sub lines.
+  topAlign = false,
   children,
 }) => {
   const theme = useTheme();
@@ -315,7 +319,7 @@ const CardStructure = ({
         display: "flex",
         flexDirection: "column",
         gap: 0.5,
-        justifyContent: "center",
+        ...(topAlign ? { justifyContent: "flex-start" } : { justifyContent: "center" }),
       }}
     >
       {(iconEl || label) && (

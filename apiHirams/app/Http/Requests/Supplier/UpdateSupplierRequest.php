@@ -13,7 +13,7 @@ class UpdateSupplierRequest extends ApiRequest
     {
         return [
             'strSupplierName'     => 'required|string|max:100',
-            'strSupplierNickName' => 'nullable|string|max:20',
+            'strSupplierNickName' => 'nullable|string|max:50',
             'strAddress'          => 'nullable|string|max:200',
             'strTIN'              => 'nullable|string|max:17',
             'bVAT'                => 'required|boolean',

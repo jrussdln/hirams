@@ -99,6 +99,22 @@ export default function DeliveredPanel({
   const contributors = (opt) => {
     const mine = opt?.purchase_option;
     if (!mine) return [];
+    // The merged row hands over its RAW part options. Reading the lead's
+    // SUMMED figures (this row totals 12 received / 12 delivered) as one
+    // supplier's line made the first form claim the whole group — VST
+    // really holds 5, and the other 7 belongs to another supplier's line.
+    const parts = (opt?.__parts ?? [])
+      .map((o) => o?.purchase_option ?? o)
+      .filter(Boolean);
+    if (parts.length) {
+      // The row's own option still leads; the others follow when they hold
+      // delivered stock.
+      return [
+        parts[0],
+        ...parts.slice(1).filter((q) => num(q?.nDeliveredQty) > 0),
+      ];
+    }
+    // Fallback for rows that were not built by the group merge.
     const txId =
       mine?.nTransactionItemId ?? mine?.transaction_item?.nTransactionItemId;
     const others = (txnItemOptions?.[txId] ?? [])
@@ -128,6 +144,10 @@ export default function DeliveredPanel({
         // only a stand-in while the lookup is on its way.
         receiptNo:
           receiptByRow[id] ?? (onLoadReceiptNo ? "" : suggestedReceiptNo || ""),
+        // Baseline for "did the user change the receipt" — the button treats
+        // a receipt edit alone as a change (see RowEditForm).
+        origReceiptNo:
+          receiptByRow[id] ?? (onLoadReceiptNo ? "" : suggestedReceiptNo || ""),
         showSN: true,
         serials: recorded,
       },
@@ -144,7 +164,11 @@ export default function DeliveredPanel({
           if (!cur || (cur.receiptNo || "").trim()) return prev;
           return {
             ...prev,
-            [id]: { ...cur, receiptNo: recordedNo || suggestedReceiptNo || "" },
+            [id]: {
+              ...cur,
+              receiptNo: recordedNo || suggestedReceiptNo || "",
+              origReceiptNo: recordedNo || suggestedReceiptNo || "",
+            },
           };
         });
       })
@@ -272,6 +296,9 @@ export default function DeliveredPanel({
           </Box>
         )}
 
+        {/* ROWS — capped in height so a long PO scrolls inside the table
+            instead of stretching the page; the header strip stays put. */}
+        <Box sx={{ maxHeight: "50vh", overflowY: "auto" }}>
         {visible.map(({ opt, origIdx }, idx) => {
           const p = opt.purchase_option;
           const tx = p?.transaction_item?.transaction;
@@ -322,7 +349,9 @@ export default function DeliveredPanel({
                     p={p}
                     tx={tx}
                     idx={idx}
-                    poNumber={poNumber}
+                    // A merged row can span several POs of the transaction —
+                    // print the order(s) it was actually drawn from.
+                    poNumber={opt.__poNos?.length ? opt.__poNos.join(", ") : poNumber}
                     onBrandClick={onBrandClick}
                   />
                 </Box>
@@ -367,16 +396,15 @@ export default function DeliveredPanel({
                       }}
                     >
                       {fmtQty(cDlvd)}
-                      <Typography
-                        component="span"
-                        sx={{
-                          fontSize: "0.5rem",
-                          ml: 0.3,
-                          color: gray.textSecondary,
-                        }}
-                      >
-                        {p?.strUOM}
-                      </Typography>
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: "0.5rem",
+                        lineHeight: 1,
+                        color: gray.textSecondary,
+                      }}
+                    >
+                      {p?.strUOM}
                     </Typography>
                   </Box>
 
@@ -443,7 +471,7 @@ export default function DeliveredPanel({
                         saving={savingDeliver}
                         // An APPROVED inventory row means a JEV was already
                         // raised for this item — the record is closed.
-                        locked={hasApprovedInventory(q)}
+                        locked={hasApprovedInventory(q, "deliver")}
                         // …and the JEV behind it is named in the notice.
                         jevs={approvedJevs(q, "deliver")}
                         currentSerials={(q?.deliveredSerialNumbers || [])
@@ -469,6 +497,7 @@ export default function DeliveredPanel({
             </Box>
           );
         })}
+        </Box>
       </Box>
     </>
   );

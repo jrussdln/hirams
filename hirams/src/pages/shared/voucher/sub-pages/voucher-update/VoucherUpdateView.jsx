@@ -14,6 +14,7 @@ import JevViewPanel from "../../../journal-entry-voucher/components/JEVViewPanel
 import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
 import { VoucherUpdateSkeleton } from "../../components/Skeleton.jsx";
 import ParticularsAEModal from "../../modal/ParticularsAEModal.jsx";
+import CreateVoucherModal from "../../modal/CreateVoucherModal.jsx";
 import VoucherUpdateModal from "../../modal/VoucherUpdateModal.jsx";
 import FreightEWTUpdateModal from "../../../item-purchasing/modal/FreightEWTUpdateModal.jsx";
 import POListPanel from "../../components/POListPanel.jsx";
@@ -140,6 +141,9 @@ export default function VoucherUpdateView() {
   // vouchers both get the editor: the totals on the voucher read the same
   // values, so the refetch keeps them in step.
   const [freightEwtLink, setFreightEwtLink] = useState(null);
+  // EDIT VOUCHER INFO — assignee-type vouchers only (Active + Closed): the
+  // create modal opens in edit mode over company / assignee / payment terms.
+  const [showEditInfo, setShowEditInfo] = useState(false);
 
   const { voucher, loading, handleBack, confirmLoading, saving } = vu;
   const goBack = handleBack;
@@ -187,6 +191,7 @@ export default function VoucherUpdateView() {
     supplierTIN,
     supplierAddress,
     cPaymentTerms,
+    paymentTerms,
     isEligibleForPaid,
     isEligibleForUnpaid,
     hasArrivedItems,
@@ -263,8 +268,14 @@ export default function VoucherUpdateView() {
   const canEditParticulars =
     String(voucher.cStatus) === String(voucherActiveKey) ||
     String(voucher.cStatus) === String(voucherClosedKey);
-  // Adding a particular is an ACTIVE-only action.
-  const canAddItem = String(voucher.cStatus) === String(voucherActiveKey);
+  // Adding a particular used to be ACTIVE-only — CLOSED keeps the button
+  // too: a journal that has not been finalized yet can still be squared
+  // against the particulars, and a missed line has to go in before the
+  // voucher prints (same spirit as canEditParticulars above). Delete stays
+  // ACTIVE-only — a closed voucher's lines are still irremovable.
+  const canAddItem =
+    String(voucher.cStatus) === String(voucherActiveKey) ||
+    String(voucher.cStatus) === String(voucherClosedKey);
   const showNoJev = showJevSection && !hasJev;
   // FINALIZE gate — a journal stays "Title is not yet added." until
   // it is named, so the title must be on the record before it can be
@@ -662,6 +673,7 @@ export default function VoucherUpdateView() {
             voucherActiveKey={voucherActiveKey}
             voucher={voucher}
             onAddItem={canAddItem ? () => setShowAddItem(true) : undefined}
+            onEditInfo={canAddItem ? () => setShowEditInfo(true) : undefined}
           />
         </>
       ) : (
@@ -777,6 +789,16 @@ export default function VoucherUpdateView() {
         voucherActiveKey={voucherActiveKey}
         voucherClosedKey={voucherClosedKey}
         forPaymentKey={forPaymentKey}
+      />
+      {/* EDIT VOUCHER INFO — the create modal in edit mode: company,
+          assignee and payment terms. Assignee-type vouchers only (the Edit
+          button renders on the assignee list alone). */}
+      <CreateVoucherModal
+        open={showEditInfo}
+        editVoucher={voucher}
+        onClose={() => setShowEditInfo(false)}
+        onSuccess={fetchVoucher}
+        paymentTerms={paymentTerms}
       />
       <VoucherUpdateModal
         open={!!activeConfirm}

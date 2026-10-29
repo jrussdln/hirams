@@ -156,6 +156,22 @@ export default function ForDeliveryPanel({
   const contributors = (opt) => {
     const mine = opt?.purchase_option;
     if (!mine) return [];
+    // The merged row hands over its RAW part options. Reading the lead's
+    // SUMMED figures as one supplier's line made the first form claim the
+    // whole group — VST really holds 5, and the other 7 belongs to another
+    // supplier's line.
+    const parts = (opt?.__parts ?? [])
+      .map((o) => o?.purchase_option ?? o)
+      .filter(Boolean);
+    if (parts.length) {
+      // The row's own option still leads; the others follow when they hold
+      // received stock.
+      return [
+        parts[0],
+        ...parts.slice(1).filter((q) => num(q?.nInventoryQty) > 0),
+      ];
+    }
+    // Fallback for rows that were not built by the group merge.
     const txId =
       mine?.nTransactionItemId ?? mine?.transaction_item?.nTransactionItemId;
     const others = (txnItemOptions?.[txId] ?? [])
@@ -183,6 +199,9 @@ export default function ForDeliveryPanel({
         qty: String(num(q?.nInventoryQty)),
         // The line's own receipt number drops in below (it is optional here).
         receiptNo: receiptByRow[id] ?? (onLoadReceiptNo ? "" : ""),
+        // Baseline for "did the user change the receipt" — the button treats
+        // a receipt edit alone as a change (see RowEditForm).
+        origReceiptNo: receiptByRow[id] ?? (onLoadReceiptNo ? "" : ""),
         showSN: true,
         serials: recorded,
       },
@@ -196,7 +215,7 @@ export default function ForDeliveryPanel({
           const cur = prev[id];
           // Keep whatever the user has already typed in the field.
           if (!cur || (cur.receiptNo || "").trim()) return prev;
-          return { ...prev, [id]: { ...cur, receiptNo: r || "" } };
+          return { ...prev, [id]: { ...cur, receiptNo: r || "", origReceiptNo: r || "" } };
         });
       })
       .catch((err) =>
@@ -325,6 +344,9 @@ export default function ForDeliveryPanel({
           </Box>
         )}
 
+        {/* ROWS — capped in height so a long PO scrolls inside the table
+            instead of stretching the page; the header strip stays put. */}
+        <Box sx={{ maxHeight: "50vh", overflowY: "auto" }}>
         {visible.map(({ opt, origIdx }, idx) => {
           const p = opt.purchase_option;
           const tx = p?.transaction_item?.transaction;
@@ -420,7 +442,9 @@ export default function ForDeliveryPanel({
                     p={p}
                     tx={tx}
                     idx={idx}
-                    poNumber={poNumber}
+                    // A merged row can span several POs of the transaction —
+                    // print the order(s) it was actually drawn from.
+                    poNumber={opt.__poNos?.length ? opt.__poNos.join(", ") : poNumber}
                     onBrandClick={onBrandClick}
                   >
                     <DeliveryDateLabel
@@ -470,16 +494,15 @@ export default function ForDeliveryPanel({
                       }}
                     >
                       {fmtQty(left)}
-                      <Typography
-                        component="span"
-                        sx={{
-                          fontSize: "0.5rem",
-                          ml: 0.3,
-                          color: gray.textSecondary,
-                        }}
-                      >
-                        {p?.strUOM}
-                      </Typography>
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: "0.5rem",
+                        lineHeight: 1,
+                        color: gray.textSecondary,
+                      }}
+                    >
+                      {p?.strUOM}
                     </Typography>
                   </Box>
 
@@ -795,7 +818,7 @@ export default function ForDeliveryPanel({
                         saving={savingReceive}
                         // An APPROVED inventory row means a JEV was already
                         // raised for this item — the record is closed.
-                        locked={hasApprovedInventory(q)}
+                        locked={hasApprovedInventory(q, "receive")}
                         // …and the JEV behind it is named in the notice.
                         jevs={approvedJevs(q, "receive")}
                         currentSerials={(q?.receivedSerialNumbers || [])
@@ -820,6 +843,7 @@ export default function ForDeliveryPanel({
             </Box>
           );
         })}
+        </Box>
       </Box>
 
       {/* Camera scanner — opened from a row's S/N field, writing straight

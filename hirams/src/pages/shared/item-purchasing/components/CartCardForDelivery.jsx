@@ -194,18 +194,20 @@ export default function CartCardForDelivery({
 
     let active = true;
     const load = async () => {
-      const results = {};
-      await Promise.all(
-        ids.map(async (id) => {
-          try {
-            const res = await InventoryAPI.getHistory(id);
-            results[id] = res?.rows || res?.inventory || [];
-          } catch {
-            results[id] = [];
-          }
-        }),
-      );
-      if (active) setInventoryRows(results);
+      try {
+        // ONE call for every item of this card — the bulk endpoint queries
+        // all ids in a single request. The old per-item loop queued one
+        // history GET per item on the (single-process) server, which made
+        // the tab crawl on cards with many items.
+        const res = await InventoryAPI.getHistoryBulk(ids);
+        // Normalize: an item with no inventory rows yet must still map to
+        // an empty list, or its stats would read as "not loaded" forever.
+        const rowsMap = { ...(res?.rows ?? {}) };
+        for (const id of ids) rowsMap[id] ??= [];
+        if (active) setInventoryRows(rowsMap);
+      } catch {
+        if (active) setInventoryRows({});
+      }
     };
     load();
     window.addEventListener("inventory_data_updated", load);

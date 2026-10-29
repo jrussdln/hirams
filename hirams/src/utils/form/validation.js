@@ -158,7 +158,13 @@ export const VALIDATION_RULES = {
   },
   SUPPLIER: {
     fullName: { required: true, message: "Supplier Name is required" },
-    nickname: { required: true, message: "Supplier Nickname is required" },
+    nickname: {
+      required: true,
+      message: "Supplier Nickname is required",
+      validator: (value) =>
+        value.length <= 50 ? true : "Nickname must not exceed 50 characters",
+      maxLength: 50,
+    },
     tin: {
       required: false,
       validator: (value) => {

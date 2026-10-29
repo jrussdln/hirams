@@ -1009,6 +1009,7 @@ export default function useVoucherUpdate() {
     supplierTIN,
     supplierAddress,
     cPaymentTerms,
+    paymentTerms,
     isEligibleForPaid,
     isEligibleForUnpaid,
     hasArrivedItems,

@@ -199,6 +199,9 @@ export default function ItemPurchasingUpdateView({
   fetchPO,
   txnItemTotals,
   txnItemOptions,
+  // For Delivery / Delivered: the transaction's merged rows — the same rows
+  // the list card shows (see the hook).
+  groupPanelOptions,
   total,
   allOptionsAtPO,
   allOptionsAtPayment,
@@ -315,7 +318,9 @@ export default function ItemPurchasingUpdateView({
     [txnItemTotals],
   );
   const forDeliveryDone = React.useMemo(() => {
-    const list = liveOptions ?? [];
+    // The rows the panel actually renders — the transaction's merged rows,
+    // not just this PO's share (another PO of the item may still hold stock).
+    const list = groupPanelOptions ?? liveOptions ?? [];
     if (!list.length) return false;
     const dlvdOf = (o) => {
       const t =
@@ -329,7 +334,7 @@ export default function ItemPurchasingUpdateView({
     // hold deliverable quantity.
     const anythingOut = list.some((o) => dlvdOf(o) > 0);
     return anythingOut && !list.some((o) => rowLeft(o) > 0);
-  }, [liveOptions, txnItemTotals, rowLeft]);
+  }, [groupPanelOptions, liveOptions, txnItemTotals, rowLeft]);
 
   // Delivered gets its own panel (items already out) — For Delivery keeps the
   // remaining-to-deliver list. Once nothing is left the For Delivery panel
@@ -1000,7 +1005,7 @@ export default function ItemPurchasingUpdateView({
             />
           ) : isDeliveredPhase ? (
             <DeliveredPanel
-              options={liveOptions}
+              options={groupPanelOptions}
               txnTotals={txnItemTotals}
               poNumber={po?.strPurchaseOrderNo}
               suggestedReceiptNo={suggestedReceiptNo}
@@ -1012,7 +1017,7 @@ export default function ItemPurchasingUpdateView({
             />
           ) : isForDeliveryPhase ? (
             <ForDeliveryPanel
-              options={liveOptions}
+              options={groupPanelOptions}
               forms={deliverForms}
               setForms={setDeliverForms}
               txnTotals={txnItemTotals}
