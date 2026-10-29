@@ -45,6 +45,9 @@ export default function RowEditForm({
   form = {},
   onChange,
   onSave,
+  // The per-form Save button moved to the PAGE FOOTER (one click saves
+  // every open form) — the panels pass false and the button is not drawn.
+  showSave = true,
   saving = false,
   // S/N this line has ON RECORD (received / delivered, depending on mode).
   // They fill the list when the form opens so the correction shows them, and
@@ -380,7 +383,7 @@ export default function RowEditForm({
           >
             {receiptLabel}
           </Typography>
-          {!locked && <Box sx={{ width: SAVE_W, flexShrink: 0 }} />}
+          {showSave && !locked && <Box sx={{ width: SAVE_W, flexShrink: 0 }} />}
         </Box>
 
         {/* Qty + S/N + Receipt No. + Save Changes — all in ONE row */}
@@ -487,9 +490,10 @@ export default function RowEditForm({
             }}
           />
 
-          {/* Save Changes — same row, right after the receipt field. A locked
-              line can never be saved, so the button is not drawn at all. */}
-          {!locked && (
+          {/* Save Changes — used to sit right after the receipt field; it
+              lives in the PAGE FOOTER now (see ItemPurchasingUpdateView),
+              so it is only drawn when a caller asks for it. */}
+          {showSave && !locked && (
             <Box
               component="button"
               onClick={() => canSave && onSave?.()}

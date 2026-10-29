@@ -17,6 +17,9 @@ export default function PendingReceiptPanel({
   options = [],
   forms,
   setForms,
+  // Registers the footer's Close runner while receive quantities are being
+  // typed into the rows — null while nothing is in progress.
+  onFooterEntryChange,
   onBrandClick,
 }) {
   const theme = useTheme();
@@ -103,6 +106,35 @@ export default function PendingReceiptPanel({
     [scanOption?.strBrand, scanOption?.strModel].filter(Boolean).join(" · ") ||
     scanOption?.transaction_item?.strName ||
     "Item";
+
+  // ── Footer entry-form controls ────────────────────────────────────────
+  // The footer's Close + Confirm Received show while receive forms are
+  // OPEN or have quantities typed into them. Close discards every typed
+  // value, collapses every open row, and by that the button pair again.
+  const receiving = Object.values(forms || {}).some(
+    (f) =>
+      Number(f.qty) > 0 ||
+      (f.receiptNo || "").trim() ||
+      (f.serials || []).length > 0,
+  );
+  const entryOpen = expandedIds.size > 0 || receiving;
+  const closeEntry = () => {
+    setForms({});
+    setScanKey(null);
+    setExpandedIds(new Set());
+  };
+  const closeEntryRef = React.useRef(null);
+  closeEntryRef.current = closeEntry;
+  React.useEffect(() => {
+    if (!onFooterEntryChange) return undefined;
+    // The runner rides in an OBJECT — a bare function passed through
+    // setState is read as an UPDATER by React and runs the moment it is
+    // registered.
+    onFooterEntryChange(
+      entryOpen ? { close: () => closeEntryRef.current?.() } : null,
+    );
+    return () => onFooterEntryChange(null);
+  }, [entryOpen, onFooterEntryChange]);
 
   return (
     <>
@@ -316,7 +348,7 @@ export default function PendingReceiptPanel({
                     sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}
                   >
                     <Box sx={{ display: "flex", gap: 1.5 }}>
-                      <Typography sx={{ ...labelSx, flex: isSingle ? 1.4 : 1 }}>
+                      <Typography sx={{ ...labelSx, flex: 1 }}>
                         Quantity to Receive
                       </Typography>
                       <Box sx={{ width: 78, flexShrink: 0 }} />
@@ -335,7 +367,7 @@ export default function PendingReceiptPanel({
                           component="button"
                           onClick={() => applyQty(form.qty === "1" ? "" : "1")}
                           sx={{
-                            flex: 1.4,
+                            flex: 1,
                             height: 32,
                             fontSize: "0.65rem",
                             fontWeight: 700,

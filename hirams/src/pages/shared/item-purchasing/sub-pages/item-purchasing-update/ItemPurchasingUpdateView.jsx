@@ -372,6 +372,20 @@ export default function ItemPurchasingUpdateView({
   // The Freight / EWT editor — opened from the For Approval stage.
   const [showFreightEwtModal, setShowFreightEwtModal] = React.useState(false);
 
+  // The row edit forms no longer carry their own Save buttons — each panel
+  // registers a "save every open form" runner here and the page footer
+  // renders ONE Save Changes button for it (DeliveredPanel /
+  // ForDeliveryPanel). Note the button shows only while an edit form is
+  // open, and always runs the latest runner through the panels' ref.
+  // The runner rides inside `{ run }` — a bare function passed through
+  // setState would be read as an UPDATER and invoked on registration.
+  const [footerFormSave, setFooterFormSave] = React.useState(null);
+  // Same hand-over for the ENTRY forms: PendingReceiptPanel /
+  // ForDeliveryPanel register a Close runner while receive / deliver
+  // quantities are being typed into the rows — that is also when the
+  // footer's Confirm Received / Confirm Delivered become visible.
+  const [footerEntryClose, setFooterEntryClose] = React.useState(null);
+
   const handleViewForPurchase = async () => {
     await openForPurchase(navigate, {
       transaction: transactionObj,
@@ -469,13 +483,54 @@ export default function ItemPurchasingUpdateView({
         flexWrap: "wrap",
       }}
     >
-      {canCancelPO && canCancelPORole && (
+      {/* While ANY row form is open — a row's edit form, or the receive /
+          delivery entry forms being filled — the Cancel (PO) button hides
+          to keep the footer uncluttered; closing is what the Close button
+          beside the save / confirm button is for. */}
+      {canCancelPO && canCancelPORole && !footerFormSave?.run && !footerEntryClose?.close && (
         <BaseButton
           label="Cancel"
           icon={icons.cancel}
           onClick={() => setConfirmAction(cancelledPOKey)}
           actionColor="delete"
           disabled={isLoadingPage || actionLoading}
+        />
+      )}
+
+      {/* CLOSE — discards EVERY open row edit form without saving. */}
+      {footerFormSave?.run && (
+        <BaseButton
+          label="Close"
+          icon={icons.close}
+          tooltip="Discard every open edit form"
+          onClick={footerFormSave.close}
+          actionColor="close"
+          disabled={
+            isLoadingPage ||
+            actionLoading ||
+            deliverSaving ||
+            receiveSaving
+          }
+        />
+      )}
+
+      {/* SAVE CHANGES — one click records every open row edit form's lines
+          and closes the rows that ended up clean. The per-form buttons used
+          to sit inside each form; they moved here after the Cancel button
+          so the forms stay tight. */}
+      {footerFormSave?.run && (
+        <BaseButton
+          label="Save Changes"
+          icon={icons.save}
+          tooltip="Save every open edit form"
+          onClick={footerFormSave.run}
+          actionColor="save"
+          disabled={
+            isLoadingPage ||
+            actionLoading ||
+            deliverSaving ||
+            receiveSaving
+          }
         />
       )}
 
@@ -577,21 +632,47 @@ export default function ItemPurchasingUpdateView({
         />
       )}
 
-      {selectedStatusCode === pendingReceiptKey && (
+      {/* CLOSE — discards the receive quantities typed into the rows. The
+          footer receipt pair shows only while something is actually in
+          progress on the Pending Receipt tab. */}
+      {selectedStatusCode === pendingReceiptKey &&
+        footerEntryClose?.close && (
+          <BaseButton
+            label="Close"
+            icon={icons.close}
+            tooltip="Discard the received quantities"
+            onClick={footerEntryClose.close}
+            actionColor="close"
+            disabled={isLoadingPage || actionLoading || receiveSaving}
+          />
+        )}
+      {selectedStatusCode === pendingReceiptKey &&
+        footerEntryClose?.close && (
+          <BaseButton
+            label="Confirm Received"
+            icon={icons.approve}
+            onClick={handleConfirmReceived}
+            actionColor="approve"
+            disabled={
+              isLoadingPage ||
+              actionLoading ||
+              receiveSaving ||
+              !Object.values(receiveForms).some((f) => Number(f.qty) > 0)
+            }
+          />
+        )}
+      {/* CLOSE — discards the delivery quantities typed into the rows. */}
+      {isForDeliveryPhase && !isDeliveredPhase && footerEntryClose?.close && (
         <BaseButton
-          label="Confirm Received"
-          icon={icons.approve}
-          onClick={handleConfirmReceived}
-          actionColor="approve"
-          disabled={
-            isLoadingPage ||
-            actionLoading ||
-            receiveSaving ||
-            !Object.values(receiveForms).some((f) => Number(f.qty) > 0)
-          }
+          label="Close"
+          icon={icons.close}
+          tooltip="Discard the delivery quantities"
+          onClick={footerEntryClose.close}
+          actionColor="close"
+          disabled={isLoadingPage || actionLoading || deliverSaving}
         />
       )}
-      {isForDeliveryPhase && !isDeliveredPhase && (
+      {isForDeliveryPhase && !isDeliveredPhase && footerEntryClose?.close && (
         <BaseButton
           label="Confirm Delivered"
           icon={icons.approve}
@@ -1001,6 +1082,7 @@ export default function ItemPurchasingUpdateView({
               pendingReceiptKey={pendingReceiptKey}
               forDeliveryKey={forDeliveryKey}
               deliveredKey={deliveredKey}
+              onFooterEntryChange={setFooterEntryClose}
               onBrandClick={brandLinkClick}
             />
           ) : isDeliveredPhase ? (
@@ -1013,6 +1095,7 @@ export default function ItemPurchasingUpdateView({
               savingDeliver={deliverSaving}
               onLoadReceiptNo={getLineReceiptNo}
               txnItemOptions={txnItemOptions}
+              onFooterSaveChange={setFooterFormSave}
               onBrandClick={brandLinkClick}
             />
           ) : isForDeliveryPhase ? (
@@ -1027,6 +1110,8 @@ export default function ItemPurchasingUpdateView({
               savingReceive={receiveSaving}
               onLoadReceiptNo={getLineReceiptNo}
               txnItemOptions={txnItemOptions}
+              onFooterSaveChange={setFooterFormSave}
+              onFooterEntryChange={setFooterEntryClose}
               onBrandClick={brandLinkClick}
             />
           ) : (

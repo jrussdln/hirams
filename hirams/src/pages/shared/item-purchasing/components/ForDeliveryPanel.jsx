@@ -41,6 +41,13 @@ export default function ForDeliveryPanel({
   // Every purchase option per transaction item (all POs) — a row whose
   // quantity is shared by several suppliers opens one form per supplier.
   txnItemOptions,
+  // Registers the footer's Save Changes runner — null while no row's edit
+  // form is open. ItemPurchasingUpdateView renders the button after the
+  // Cancel PO button.
+  onFooterSaveChange,
+  // Registers the footer's Close (discard deliver entries) runner while
+  // delivery quantities are being typed into the rows.
+  onFooterEntryChange,
   // The brand · model is a link — it opens the transaction for purchase.
   onBrandClick,
 }) {
@@ -202,7 +209,9 @@ export default function ForDeliveryPanel({
         // Baseline for "did the user change the receipt" — the button treats
         // a receipt edit alone as a change (see RowEditForm).
         origReceiptNo: receiptByRow[id] ?? (onLoadReceiptNo ? "" : ""),
-        showSN: true,
+        // The S/N list only opens when the line actually holds serial
+        // numbers on record; otherwise it waits behind the + SN button.
+        showSN: recorded.length > 0,
         serials: recorded,
       },
     }));
@@ -262,6 +271,103 @@ export default function ForDeliveryPanel({
     });
   };
 
+  // ── Footer's Save Changes ─────────────────────────────────────────────
+  // The per-form Save button moved to the PAGE FOOTER. One click there
+  // walks every open row and saves each of its supplier lines through the
+  // same hook the button used to reach; a row where nothing failed closes.
+  const saveLine = async (qk) => {
+    if (!onSaveReceive) return false;
+    const qForm = getEditForm(qk);
+    return onSaveReceive({
+      nPurchaseItemId: Number(qk),
+      target: Number(qForm.qty),
+      strReceiptNumber: (qForm.receiptNo || "").trim() || null,
+      serials: qForm.serials || [],
+    });
+  };
+
+  // True when a form still matches the record — the footer save skips such
+  // a line silently instead of poking the hook for a no-op.
+  const lineUnchanged = (q) => {
+    const f = getEditForm(String(q?.nPurchaseItemId));
+    if (!f) return true;
+    const target = Number(f.qty);
+    if (!Number.isInteger(target) || target !== num(q?.nInventoryQty))
+      return false;
+    const recorded = (q?.receivedSerialNumbers || [])
+      .filter(Boolean)
+      .map(String);
+    const want = (f.serials || []).map(String);
+    if (
+      want.length !== new Set(recorded).size ||
+      want.some((sn) => !recorded.includes(sn))
+    )
+      return false;
+    return (
+      (f.receiptNo || "").trim() === String(f.origReceiptNo ?? "").trim()
+    );
+  };
+
+  const saveAllOpenForms = async () => {
+    let anyFailed = false;
+    for (const k of [...editIds]) {
+      const entry = visible.find(
+        ({ opt, origIdx }) => getKey(opt, origIdx) === k,
+      );
+      const list = entry ? contributors(entry.opt) : [];
+      if (!list.length) {
+        anyFailed = true;
+        continue;
+      }
+      let rowFailed = false;
+      for (const q of list) {
+        // Nothing typed on this line — nothing to record; the row's form
+        // just closes with its neighbours.
+        if (lineUnchanged(q)) continue;
+        const ok = await saveLine(String(q?.nPurchaseItemId));
+        if (!ok) rowFailed = true;
+      }
+      if (rowFailed) anyFailed = true;
+      else closeEdit(k, entry.opt);
+    }
+    return !anyFailed;
+  };
+
+  // ── Footer's Close (discard) ──────────────────────────────────────────
+  // Closes EVERY open edit row without saving — the footer counterpart to
+  // the per-row X. Newest values stay in the record untouched.
+  const closeAllOpenForms = () => {
+    for (const k of [...editIds]) {
+      const entry = visible.find(
+        ({ opt, origIdx }) => getKey(opt, origIdx) === k,
+      );
+      if (entry) closeEdit(k, entry.opt);
+    }
+  };
+  const closeAllRef = React.useRef(null);
+  closeAllRef.current = closeAllOpenForms;
+
+  // The footer buttons appear only while a row's edit form is open, and
+  // always run the LATEST runner through the refs — the panel re-renders
+  // many times while a form is being typed into. The runners ride in an
+  // OBJECT — a bare function passed through setState is read as an UPDATER
+  // by React, which called it the moment it was registered: the save ran
+  // on open and closed the form instantly.
+  const saveAllRef = React.useRef(null);
+  saveAllRef.current = saveAllOpenForms;
+  React.useEffect(() => {
+    if (!onFooterSaveChange) return undefined;
+    onFooterSaveChange(
+      editIds.size > 0
+        ? {
+            run: () => saveAllRef.current?.(),
+            close: () => closeAllRef.current?.(),
+          }
+        : null,
+    );
+    return () => onFooterSaveChange(null);
+  }, [editIds.size, onFooterSaveChange]);
+
   const labelSx = {
     fontSize: "0.55rem",
     fontWeight: 700,
@@ -287,6 +393,37 @@ export default function ForDeliveryPanel({
     scanKey != null
       ? visible.find(({ opt, origIdx }) => getKey(opt, origIdx) === scanKey)
       : null;
+
+  // ── Footer entry-form controls ────────────────────────────────────────
+  // The footer's Close + Confirm Delivered show while deliver forms are
+  // OPEN or have quantities typed into them. Close discards every typed
+  // value, collapses every open row, and by that the button pair again.
+  // The row's EDIT (receive) forms are a different footer pair — theirs
+  // registers through onFooterSaveChange above.
+  const delivering = Object.values(forms || {}).some(
+    (f) =>
+      Number(f.qty) > 0 ||
+      (f.receiptNo || "").trim() ||
+      (f.serials || []).length > 0,
+  );
+  const entryOpen = expandedIds.size > 0 || delivering;
+  const closeEntry = () => {
+    setForms({});
+    setScanKey(null);
+    setExpandedIds(new Set());
+  };
+  const closeEntryRef = React.useRef(null);
+  closeEntryRef.current = closeEntry;
+  React.useEffect(() => {
+    if (!onFooterEntryChange) return undefined;
+    // The runner rides in an OBJECT — a bare function passed through
+    // setState is read as an UPDATER by React and runs the moment it is
+    // registered.
+    onFooterEntryChange(
+      entryOpen ? { close: () => closeEntryRef.current?.() } : null,
+    );
+    return () => onFooterEntryChange(null);
+  }, [entryOpen, onFooterEntryChange]);
   const scanForm = scanKey != null ? getForm(scanKey) : { serials: [] };
   const scanCap = scanEntry
     ? Math.max(0, Math.min(Number(scanForm.qty) || 0, rowFree(scanEntry.opt)))
@@ -596,7 +733,7 @@ export default function ForDeliveryPanel({
                     sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}
                   >
                     <Box sx={{ display: "flex", gap: 1.5 }}>
-                      <Typography sx={{ ...labelSx, flex: isSingle ? 1.4 : 1 }}>
+                      <Typography sx={{ ...labelSx, flex: 1 }}>
                         Quantity to Deliver
                       </Typography>
                       <Box sx={{ width: 78, flexShrink: 0 }} />
@@ -615,7 +752,7 @@ export default function ForDeliveryPanel({
                           component="button"
                           onClick={() => applyQty(form.qty === "1" ? "" : "1")}
                           sx={{
-                            flex: 1.4,
+                            flex: 1,
                             height: 32,
                             fontSize: "0.65rem",
                             fontWeight: 700,
@@ -825,16 +962,12 @@ export default function ForDeliveryPanel({
                           .filter(Boolean)
                           .map(String)}
                         onSave={async () => {
-                          if (!onSaveReceive) return;
-                          const ok = await onSaveReceive({
-                            nPurchaseItemId: Number(qk),
-                            target: Number(qForm.qty),
-                            strReceiptNumber:
-                              (qForm.receiptNo || "").trim() || null,
-                            serials: qForm.serials || [],
-                          });
+                          const ok = await saveLine(qk);
                           if (ok) closeEdit(k, opt);
                         }}
+                        // The Save button lives in the PAGE FOOTER now -
+                        // one click saves every open edit form.
+                        showSave={false}
                       />
                     );
                   })}
