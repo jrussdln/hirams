@@ -38,6 +38,7 @@ import { useThemeMode } from "../../../../../hooks/useThemeMode";
 import getThemeColors from "../../../../../utils/style/getThemeColors";
 import BaseButton from "../../../../../components/ui/form/BaseButton";
 import AIChatbotWidget from "../../../../../components/ui/widget/AIChatBotWidget";
+import NotificationSidePanel from "../../../../../components/ui/widget/NotificationsSidePanel";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import UpDownIndicatorWidget from "../../../../../components/ui/widget/UpDownIndicatorWidget";
@@ -270,8 +271,38 @@ const Layout2 = ({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 pl-1 sm:pl-2.5 min-w-0 flex-1">
+            {/* MOBILE ONLY — the icon-rail sidebar is gone below lg, so the
+                header opens the full sidebar as an overlay instead. Sits
+                right before the blue vertical line. */}
+            <div className="lg:hidden flex-shrink-0">
+              <Tooltip title="Open sidebar">
+                <IconButton
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent("mobile_sidebar_open"))
+                  }
+                  size="small"
+                  aria-label="Open sidebar"
+                  sx={{
+                    p: 0.5,
+                    borderRadius: "50%",
+                    "&:hover": { bgcolor: colors.hoverSubtle },
+                  }}
+                >
+                  {/* The menu glyph. */}
+                  <MenuIcon
+                    sx={{
+                      fontSize: 22,
+                      color: colors.textSecondary,
+                      transition: "color 0.2s",
+                    }}
+                  />
+                </IconButton>
+              </Tooltip>
+            </div>
+            {/* Blue accent line — desktop only; on mobile the menu button
+                takes its place before the title. */}
             <div
-              className="w-1 h-6 rounded-full flex-shrink-0"
+              className="w-1 h-6 rounded-full flex-shrink-0 hidden lg:block"
               style={{ backgroundColor: colors.blueText }}
             />
             <div className="flex flex-col justify-center min-w-0">
@@ -607,6 +638,7 @@ const Layout2 = ({
             />
           )}
         </div>
+        <NotificationSidePanel />
         {aiChatBotEnabled && <AIChatbotWidget accentColor={colors.blueText} />}
       </div>
       {/* FOOTER */}

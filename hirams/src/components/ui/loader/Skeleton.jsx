@@ -1204,4 +1204,97 @@ const Skeletons = {
   VoucherUpdate: VoucherUpdateSkeleton,
 };
 
+/* ═══════════════════════════════════════════════════════════════════
+   NotificationSkeleton
+   ─────────────────────────────────────────────────────────────────
+   Loading state for the notification surfaces (bell dropdown, mobile
+   bottom sheet, right-side panel). Mirrors a notification row:
+   type circle · title + message lines · action buttons.
+   Usage: {loading && <NotificationSkeleton rows={4} />}
+═══════════════════════════════════════════════════════════════════ */
+export function NotificationSkeleton({ rows = 4 }) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+  const colors = useMemo(() => getThemeColors(isDark), [isDark]);
+
+  return (
+    <Box>
+      {Array.from({ length: rows }).map((_, i) => (
+        <Box
+          key={i}
+          sx={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 1.25,
+            px: 1.75,
+            py: 1.25,
+            borderBottom: `1px solid ${colors.skeleton.rule}`,
+            "&:last-child": { borderBottom: "none" },
+          }}
+        >
+          {/* Type circle */}
+          <Skeleton
+            variant="circular"
+            width={32}
+            height={32}
+            animation="wave"
+            sx={{ flexShrink: 0, bgcolor: colors.skeleton.bar }}
+          />
+
+          {/* Title + message lines */}
+          <Box sx={{ flex: 1, minWidth: 0, px: 0.25 }}>
+            <Skeleton
+              variant="text"
+              animation="wave"
+              width="60%"
+              height={14}
+              sx={{ mb: 0.5, bgcolor: colors.skeleton.bar }}
+            />
+            <Skeleton
+              variant="text"
+              animation="wave"
+              width="92%"
+              height={12}
+              sx={{ bgcolor: colors.skeleton.barFaint }}
+            />
+            <Skeleton
+              variant="text"
+              animation="wave"
+              width="70%"
+              height={12}
+              sx={{ bgcolor: colors.skeleton.barFaint }}
+            />
+          </Box>
+
+          {/* Action buttons */}
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 0.75,
+              flexShrink: 0,
+              mt: 0.25,
+            }}
+          >
+            <Skeleton
+              variant="rounded"
+              width={16}
+              height={16}
+              animation="wave"
+              sx={{ borderRadius: 0.75, bgcolor: colors.skeleton.barFaint }}
+            />
+            <Skeleton
+              variant="rounded"
+              width={16}
+              height={16}
+              animation="wave"
+              sx={{ borderRadius: 0.75, bgcolor: colors.skeleton.barFaint }}
+            />
+          </Box>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 export default Skeletons;

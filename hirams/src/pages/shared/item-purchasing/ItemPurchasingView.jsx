@@ -16,6 +16,10 @@ import { CartSkeleton } from "./components/shared/Skeleton.jsx";
 import CartCardPanel from "./components/CartCardPanel.jsx";
 import CartCardForDelivery from "./components/CartCardForDelivery.jsx";
 import { TIME_PERIOD_ORDER, TIME_PERIOD_LABELS } from "./useItemPurchasing.js";
+import {
+  getToDeliver,
+  getDelivered,
+} from "../../../utils/helpers/purchaseProgress.js";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 
 const useColors = (c) => ({
@@ -276,8 +280,22 @@ export default function ItemPurchasingView({
   // One card per transaction, but still wrapped in the usual time-period
   // groups (This Week / This Month / This Year) — a transaction that spans
   // periods therefore gets one card per period.
+  // A card must qualify for the tab ON ITS OWN: one PO can carry items of
+  // more than one transaction, and the PO-level filter (useItemPurchasing)
+  // only checks the PO. Without this, delivering only ONE transaction's
+  // items drags the sibling card into Delivered with a "0" and leaves a
+  // fully delivered card idling under For Delivery with nothing inside.
   const groupsByPeriod = React.useMemo(() => {
     if (!isDeliveryTab) return {};
+    const isForDeliveryTab =
+      String(selectedStatusCode) === String(forDeliveryKey);
+    const isDeliveredTab = String(selectedStatusCode) === String(deliveredKey);
+    const groupQualifies = (entries) =>
+      isForDeliveryTab
+        ? entries.some(({ opt }) => getToDeliver(opt?.purchase_option) > 0)
+        : isDeliveredTab
+          ? entries.some(({ opt }) => getDelivered(opt?.purchase_option) > 0)
+          : true;
     const out = {};
     for (const period of TIME_PERIOD_ORDER) {
       const pos = groupedByPeriod[period] || [];
@@ -297,10 +315,18 @@ export default function ItemPurchasingView({
           group.entries.push({ po, opt });
         }
       }
-      out[period] = [...byKey.values()];
+      out[period] = [...byKey.values()].filter((g) =>
+        groupQualifies(g.entries),
+      );
     }
     return out;
-  }, [groupedByPeriod, isDeliveryTab]);
+  }, [
+    groupedByPeriod,
+    isDeliveryTab,
+    selectedStatusCode,
+    forDeliveryKey,
+    deliveredKey,
+  ]);
 
   const renderTransactionGroupedList = () => {
     const card = (group) => (

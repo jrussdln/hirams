@@ -313,14 +313,19 @@ function CartActionButtons({
   if (isProgressed)
     return (
       <>
+        {/* The Edit button is visible ONLY in the money-review stages:
+            Cart, For Approval, and For Payment (stageAllowsRemove).
+            Pending Receipt, For Delivery, and Delivered never show Edit. */}
+        {stageAllowsRemove && (
+          <BaseButton
+            icon={<Edit sx={{ fontSize: "0.9rem" }} />}
+            tooltip={isDisabled ? "Not allowed" : "Edit"}
+            onClick={() => !isDisabled && onEditOption(option)}
+            disabled={isDisabled}
+            size="small"
+          />
+        )}
         {viewCartButton}
-        <BaseButton
-          icon={<Edit sx={{ fontSize: "0.9rem" }} />}
-          tooltip={isDisabled ? "Not allowed" : "Edit"}
-          onClick={() => !isDisabled && onEditOption(option)}
-          disabled={isDisabled}
-          size="small"
-        />
         {/* Still in a cart-stage order (For Approval / For Payment
             included) → the same remove-from-cart the cart branch offers.
             Later stages or existing stock never reach this. */}
@@ -347,7 +352,6 @@ function CartActionButtons({
   if (canRemove)
     return (
       <>
-        {viewCartButton}
         <BaseButton
           icon={<Edit sx={{ fontSize: "0.9rem" }} />}
           tooltip={isDisabled ? "Not allowed" : "Edit"}
@@ -355,6 +359,7 @@ function CartActionButtons({
           disabled={isDisabled}
           size="small"
         />
+        {viewCartButton}
         {removing ? (
           <Spinner color={colors.voidColor} colors={colors} />
         ) : (
@@ -376,7 +381,6 @@ function CartActionButtons({
   if (isInCart)
     return (
       <>
-        {viewCartButton}
         <BaseButton
           icon={<Edit sx={{ fontSize: "0.9rem" }} />}
           tooltip={isDisabled ? "Not allowed" : "Edit"}
@@ -384,6 +388,7 @@ function CartActionButtons({
           disabled={isDisabled}
           size="small"
         />
+        {viewCartButton}
       </>
     );
 
@@ -686,6 +691,7 @@ const PurchaseOptionRow = ({
   isAssignedToMe = false,
   isProcurement = false,
   isProcurementTL = false,
+  isFinanceOfficer = false,
 }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -778,6 +784,21 @@ const PurchaseOptionRow = ({
     ? Number(option.bPurchaseIncluded) === 1
     : !!option.bIncluded;
   const rowDisabled = isPurchase && (readOnly || !isAssignedToMe);
+
+  // PURCHASE STAGES — the money-review trio. Viewers whose full cart
+  // column is folded away (procurement / procurement TL) get ONE thing:
+  // the Edit button, and only while the option has not left those
+  // stages — a cart-stage order, For Approval or For Payment. The
+  // assigned AO and management keep the whole cart row, and FINANCE
+  // sees no column at all.
+  const isEditOnly =
+    isPurchase &&
+    !isFinanceOfficer &&
+    !checkboxOptionsEnabled &&
+    latestHistory != null &&
+    [String(cartKey), String(forApprovalKey), String(forPaymentKey)].includes(
+      String(latestHistory.nStatus),
+    );
 
   const handleAddToCart = () => {
     if (readOnly) return;
@@ -1277,7 +1298,7 @@ const PurchaseOptionRow = ({
             )}
           </Box>
 
-          {checkboxOptionsEnabled && (
+          {(checkboxOptionsEnabled || isEditOnly) && (
             <Box
               sx={{
                 flex: 1,
@@ -1288,7 +1309,23 @@ const PurchaseOptionRow = ({
               }}
             >
               {isPurchase ? (
-                isCancelled ? (
+                /* Purchase mode.
+                   - AO / Management: full cart row (View Cart eye, Edit,
+                     Remove / Add to cart) via CartActionButtons.
+                   - Procurement / Proc TL: their column is folded away
+                     (checkboxOptionsEnabled = false), so this branch only
+                     fires when isEditOnly is true — Edit alone at the
+                     money-review stages.
+                   - Finance: column is fully hidden above — never reaches
+                     here. */
+                isEditOnly ? (
+                  <BaseButton
+                    icon={<Edit sx={{ fontSize: "0.9rem" }} />}
+                    tooltip="Edit"
+                    onClick={() => onEditOption(option)}
+                    size="small"
+                  />
+                ) : isCancelled ? (
                   // A CANCELLED order is still an order — the cart is
                   // where it lives, so the button goes there (the eye
                   // that used to open the details modal is gone).
@@ -1313,7 +1350,6 @@ const PurchaseOptionRow = ({
                   <CartActionButtons
                     latestHistory={latestHistory}
                     option={option}
-                    // Purchase page shows the eye glyph for View Cart.
                     eyeViewCart={eyeViewCart}
                     isIncluded={isIncluded}
                     cartKey={cartKey}
@@ -1334,7 +1370,8 @@ const PurchaseOptionRow = ({
                     colors={colors}
                   />
                 )
-              ) : (
+              ) : checkboxOptionsEnabled ? (
+                // Canvas mode — Edit + Delete
                 <>
                   <BaseButton
                     icon={<Edit sx={{ fontSize: "0.9rem" }} />}
@@ -1350,7 +1387,7 @@ const PurchaseOptionRow = ({
                     size="small"
                   />
                 </>
-              )}
+              ) : null}
             </Box>
           )}
         </Box>

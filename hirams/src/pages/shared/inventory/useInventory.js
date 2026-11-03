@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import InventoryAPI from "../../../api/endpoints/inventory.api.js";
 import CompanyAPI from "../../../api/endpoints/company.api.js";
 import JevAPI from "../../../api/endpoints/jev.api.js";
 import JevEntriesAPI from "../../../api/endpoints/jev-entries.api.js";
 import { computeJevBalance } from "../../../hooks/useJEVBalance.js";
 import { showSwal, withSpinner } from "../../../utils/helpers/swal.jsx";
+import { rowTransactionId } from "./itemRows.js";
 
-import { getItem } from "../../../utils/storage/localStorage";
+import { getItem, removeItem } from "../../../utils/storage/localStorage";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 export default function useInventory() {
   const [itemsLoading, setItemsLoading] = useState(false);
@@ -26,6 +28,8 @@ export default function useInventory() {
     jevPendingKey,
     isManagement,
     isFinanceOfficer,
+    isAO,
+    isAOTL,
   } = useKeysLabels();
   const [items, setItems] = useState([]);
   const [companies, setCompanies] = useState([]);
@@ -135,6 +139,19 @@ export default function useInventory() {
     const isPendingStatus =
       inventoryPendingKey &&
       String(selectedStatusCode) === String(inventoryPendingKey);
+    // Pending JEV ONLY — a plain Account Officer (not the team lead) sees
+    // the PENDING groups of transactions ASSIGNED to them. The AO team
+    // lead (and every other role, on every tab) sees everything.
+    if (isPendingStatus && isAO && !isAOTL && currentUserId != null) {
+      // Laravel snake-cases relation keys in JSON ("transaction_item"),
+      // so both spellings are read — same trick as itemRows.js.
+      result = result.filter((i) => {
+        const txn =
+          i.purchaseOption?.transactionItem?.transaction ??
+          i.purchaseOption?.transaction_item?.transaction;
+        return Number(txn?.nAssignedAO) === Number(currentUserId);
+      });
+    }
 
     if (companyFilter !== "all" && !isPendingStatus)
       result = result.filter((i) => i.strCompanyNickName === companyFilter);
@@ -158,7 +175,7 @@ export default function useInventory() {
       result = result.filter((i) => Number(i.nQuantity) > 0 === wantReceived);
     }
 
-    return result;
+  return result;
   }, [
     items,
     selectedStatusCode,
@@ -166,6 +183,9 @@ export default function useInventory() {
     search,
     inventoryPendingKey,
     directionFilter,
+    isAO,
+    isAOTL,
+    currentUserId,
   ]);
 
   // ── Create JEV (Pending JEV screen) ───────────────────────────────
@@ -578,6 +598,74 @@ export default function useInventory() {
     (_, p) => setGroupListPage(p),
     [],
   );
+
+  // ── Deep link from Item Purchasing ───────────────────────────────────
+  // The "Manage JEV" footer button on a For Delivery / Delivered PO
+  // navigates here with `state.openPendingGroupTxnId` (mirrored in
+  // localStorage) and re-selects the Pending JEV tab BEFORE landing —
+  // the sidebar + the status effect both listen for the same event a
+  // click would dispatch. Once the rows are in, this opens the
+  // transaction's supplier / client group and drops the request so a
+  // refresh never re-opens it.
+  const location = useLocation();
+  const routerNavigate = useNavigate();
+  const autoOpenTxnId =
+    location.state?.openPendingGroupTxnId ?? getItem("pendingJevOpenTxnId");
+  useEffect(() => {
+    const txnId = autoOpenTxnId;
+    if (txnId == null || mappingLoading) return;
+    if (
+      !inventoryPendingKey ||
+      String(selectedStatusCode) !== String(inventoryPendingKey)
+    )
+      return;
+    // The initial render lands BEFORE the fetch even starts (itemsLoading
+    // is still false), so "no items yet" must WAIT, not decide — the
+    // rows below are compared with items already on screen.
+    if (items.length === 0) return;
+    const rows = filteredItems.filter(
+      (r) => Number(rowTransactionId(r)) === Number(txnId),
+    );
+    if (rows.length) {
+      // For Delivery first: a transaction can hold both directions in
+      // Pending JEV — received batches (positive = supplier group, the
+      // goods not yet fully delivered) and delivered ones (negative =
+      // client group). Open the FOR DELIVERY group while there is still
+      // stock of that direction; only when there is none do we land on
+      // the DELIVERED group.
+      const first =
+        rows.find((r) => Number(r.nQuantity ?? 0) > 0) ?? rows[0];
+      const qty = Number(first.nQuantity ?? 0);
+      // Received batches sit positive (supplier group), delivered ones
+      // negative (client group) — the same rule the group table follows.
+      const scope = qty < 0 ? "client" : "supplier";
+      openGroupView(
+        scope,
+        (scope === "supplier"
+          ? first.strSupplierNickName
+          : first.strClientNickName) || "—",
+        first.strCompanyNickName || "—",
+      );
+    }
+    // Consume the request from BOTH carriers either way — opened, or
+    // genuinely nothing in Pending JEV for this transaction.
+    routerNavigate(`${location.pathname}${location.search || ""}`, {
+      replace: true,
+      state: null,
+    });
+    removeItem("pendingJevOpenTxnId");
+  }, [
+    autoOpenTxnId,
+    filteredItems,
+    items,
+    selectedStatusCode,
+    inventoryPendingKey,
+    mappingLoading,
+    openGroupView,
+    routerNavigate,
+    location.pathname,
+    location.search,
+  ]);
   const closeDetails = useCallback(() => {
     setDetailsOpen(false);
     setSelectedItemId(null);
@@ -612,6 +700,8 @@ export default function useInventory() {
     jevPendingKey,
     isManagement,
     isFinanceOfficer,
+    isAO,
+    isAOTL,
     groupView,
     openGroupView,
     closeGroupView,

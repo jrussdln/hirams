@@ -17,11 +17,15 @@ import PendingReceiptPanel from "../../components/PendingReceiptPanel.jsx";
 import ForDeliveryPanel from "../../components/ForDeliveryPanel.jsx";
 import DeliveredPanel from "../../components/DeliveredPanel.jsx";
 import PurchaseCartUpdateModal from "../../modal/PurchaseCartUpdateModal.jsx";
+import { ITEM_PURCHASING_CONFIRM_STYLES } from "../../../../../utils/style/sharedConfirmStyles.jsx";
 import PODetailsUpdateModal from "../../modal/PODetailsUpdateModal.jsx";
 import FreightEWTUpdateModal from "../../modal/FreightEWTUpdateModal.jsx";
 import ManagePOVoucherModal from "../../modal/ManagePOVoucherModal.jsx";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
 import { openForPurchase } from "../../../../../utils/helpers/openForPurchase.js";
+import {
+  setItem,
+} from "../../../../../utils/storage/localStorage.js";
 import {
   getToDeliver,
   getDelivered,
@@ -266,6 +270,7 @@ export default function ItemPurchasingUpdateView({
   priceFinalizeVerificationKey,
   itemPurchasingStatus,
   selectedStatusCode,
+  inventoryPendingKey,
   handlePreviewPO,
 }) {
   const theme = useTheme();
@@ -352,7 +357,16 @@ export default function ItemPurchasingUpdateView({
     (f) => Number(f.qty) > 0 && !(f.receiptNo || "").trim(),
   );
   const navigate = useNavigate();
-  const firstOption = options[0];
+  // A PO can carry items of more than one transaction; the card's row that
+  // opened this view rides in as optionId — anchor the header on THAT
+  // transaction's option, not blindly on the PO's first one.
+  const firstOption =
+    initialOptionId != null
+      ? (options.find(
+          (o) =>
+            Number(o?.nPurchaseOrder_ItemId) === Number(initialOptionId),
+        ) ?? options[0])
+      : options[0];
 
   const companyInfo =
     firstOption?.purchase_option?.transaction_item?.transaction?.company;
@@ -371,6 +385,9 @@ export default function ItemPurchasingUpdateView({
   const [historyView, setHistoryView] = React.useState(null); // { tone, onBack } | null
   // The Freight / EWT editor — opened from the For Approval stage.
   const [showFreightEwtModal, setShowFreightEwtModal] = React.useState(false);
+  // Manage JEV confirmation — the footer button asks before jumping to
+  // Inventory's Pending JEV (the jump itself lives in handleManageJev).
+  const [showManageJevConfirm, setShowManageJevConfirm] = React.useState(false);
 
   // The row edit forms no longer carry their own Save buttons — each panel
   // registers a "save every open form" runner here and the page footer
@@ -429,6 +446,28 @@ export default function ItemPurchasingUpdateView({
   // purchase. Finance officers have no such view, so for them it stays
   // plain text.
   const brandLinkClick = isFinanceOfficer ? undefined : handleViewForPurchase;
+
+  // ── MANAGE JEV (For Delivery / Delivered) ────────────────────────────
+  // Hands the transaction's batches over to the Inventory screen's
+  // Pending JEV tab: the tab is re-selected (sidebar remembers it + the
+  // page listens for the same event a sidebar click dispatches) and the
+  // hook auto-opens the transaction's group via the navigation state.
+  const handleManageJev = React.useCallback(() => {
+    const txnId = transactionObj?.nTransactionId;
+    if (!inventoryPendingKey || txnId == null) return;
+    setItem("selectedInventoryStatusCode", inventoryPendingKey);
+    // A second carrier beside the router state — if the state ever gets
+    // dropped the Inventory hook still picks the request up from here.
+    setItem("pendingJevOpenTxnId", txnId);
+    window.dispatchEvent(
+      new CustomEvent("inventory_status_changed", {
+        detail: { code: inventoryPendingKey },
+      }),
+    );
+    navigate("/inventory", {
+      state: { openPendingGroupTxnId: txnId },
+    });
+  }, [inventoryPendingKey, transactionObj, navigate]);
 
   const toConfirmSlot = (key) => {
     if (key === "undo_approval") return "undo_approval";
@@ -687,6 +726,20 @@ export default function ItemPurchasingUpdateView({
           }
         />
       )}
+      {/* MANAGE JEV — For Delivery / Delivered only: hands the
+          transaction over to Inventory's Pending JEV tab, opened on this
+          transaction's supplier / client group. */}
+      {isForDeliveryPhase && transactionObj?.nTransactionId != null && (
+        <BaseButton
+          label="Manage JEV"
+          icon={icons.manage}
+          tooltip="Open this transaction's Pending JEV in Inventory"
+          onClick={() => setShowManageJevConfirm(true)}
+          actionColor="default"
+          disabled={isLoadingPage || actionLoading}
+        />
+      )}
+
       {(allOptionsAtPO || allOptionsAtPayment) && (
         <BaseButton
           label="View PO"
@@ -1163,6 +1216,21 @@ export default function ItemPurchasingUpdateView({
         loading={actionLoading}
         onConfirm={handleConfirm}
         onClose={() => setConfirmAction(null)}
+      />
+      {/* MANAGE JEV — asks before handing the transaction over to
+          Inventory's Pending JEV tab. Its own slot so confirmAction,
+          which the status-change API answers to, stays untouched. */}
+      <PurchaseCartUpdateModal
+        open={showManageJevConfirm}
+        action="manage_jev"
+        styles={ITEM_PURCHASING_CONFIRM_STYLES}
+        purchaseOrderNumber={po?.strPurchaseOrderNo}
+        loading={false}
+        onConfirm={() => {
+          setShowManageJevConfirm(false);
+          handleManageJev();
+        }}
+        onClose={() => setShowManageJevConfirm(false)}
       />
       <PODetailsUpdateModal
         open={showPaymentForm}

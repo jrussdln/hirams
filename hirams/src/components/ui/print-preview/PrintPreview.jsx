@@ -11,6 +11,8 @@ import {
   Menu,
   Typography,
 } from "@mui/material";
+import { ThemeProvider, createTheme } from "@mui/material/styles";
+import { getDesignTokens } from "../../../utils/style/theme.js";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 import { useNavigate } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
@@ -51,8 +53,11 @@ export { EditableCell };
 
 const useColors = (c) => ({
   border: c.slate.border,
-  innerBg: c.slate.innerBg,
-  headerBg: c.slate.itemHeaderBg,
+  // The scroll area behind the paper — the SAME surface the page layout's
+  // content area uses (surfaceBg = outerBg), not the tinted innerBg it had.
+  innerBg: c.slate.outerBg,
+  // Solid, opaque surface for sticky header & footer so scrolling content doesn't bleed through
+  headerBg: c.slate.itemHeaderBgSolid,
 });
 
 // ─── PAPER SIZES ───
@@ -88,6 +93,19 @@ export default function PrintPreview({
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
   const c = useColors(base);
+
+  // The paper and everything ON it must render in the app's LIGHT palette
+  // even while the chrome around it is dark: a dark-mode user is still
+  // editing a document that prints on white paper. Everything below uses a
+  // nested ThemeProvider forced to "light" (MUI components follow
+  // useTheme(), hand-styled ones follow getThemeColors(false)) plus the
+  // light tokens for the paper shell itself. The toolbar, banners and
+  // sub-footer stay dark-aware — only the document is pinned to light.
+  const lightBase = React.useMemo(() => getThemeColors(false), []);
+  const lightTheme = React.useMemo(
+    () => createTheme(getDesignTokens("light")),
+    [],
+  );
   const printRef = useRef(null);
   // Per-page PDF capture nodes (one per rendered PDF page), collected
   // via ref callbacks during render.
@@ -847,7 +865,8 @@ export default function PrintPreview({
                 py: 0.75,
                 mx: "-12px",
                 flexShrink: 0,
-                bgcolor: banner.color.bg,
+                bgcolor: c.headerBg,
+                backgroundImage: `linear-gradient(${banner.color.bg}, ${banner.color.bg})`,
                 borderBottom: `1px dashed ${banner.color.border}`,
               }}
             >
@@ -921,25 +940,29 @@ export default function PrintPreview({
           `}</style>
           {/* ─── NORMAL VIEW — header + full content + footer, no pagination ─── */}
           {viewMode === "normal" && (
-            <Box
-              sx={{
-                width: "100%",
-                maxWidth,
-                mx: "auto",
-                bgcolor: base.slate.itemHeaderBgSolid,
-                border: `1px dashed ${base.slate.totalBorder}`,
-                boxShadow: `0 2px 8px ${base.shadow.low}`,
-                p: 3,
-                boxSizing: "border-box",
-                transform: `scale(${scale})`,
-                transformOrigin: "top center",
-                transition: "transform 0.15s ease",
-              }}
-            >
-              {header}
-              {children}
-              {footer}
-            </Box>
+            <ThemeProvider theme={lightTheme}>
+              <Box
+                sx={{
+                  width: "100%",
+                  maxWidth,
+                  mx: "auto",
+                  bgcolor: "#ffffff",
+                  color: lightBase.print.text,
+                  colorScheme: "light",
+                  border: `1px dashed ${lightBase.slate.totalBorder}`,
+                  boxShadow: `0 2px 8px ${lightBase.shadow.low}`,
+                  p: 3,
+                  boxSizing: "border-box",
+                  transform: `scale(${scale})`,
+                  transformOrigin: "top center",
+                  transition: "transform 0.15s ease",
+                }}
+              >
+                {header}
+                {children}
+                {footer}
+              </Box>
+            </ThemeProvider>
           )}
 
           {/* ─── PRINT VIEW — header + paginated items window + footer, repeated per page ───
@@ -950,65 +973,69 @@ export default function PrintPreview({
                The slide animation is now driven by `slideDir` alone (cleared via a
                timeout effect above), so the DOM node stays mounted throughout. */}
           {viewMode === "print" && (
-            <Box
-              sx={{
-                width: PAGE_W,
-                minHeight: PAGE_H,
-                bgcolor: base.slate.itemHeaderBgSolid,
-                boxShadow: `0 2px 8px ${base.shadow.low}`,
-                border: `1px solid ${base.slate.totalBorder}`,
-                transform: `scale(${scale})`,
-                transformOrigin: "top center",
-                transition: "transform 0.15s ease",
-                flexShrink: 0,
-                boxSizing: "border-box",
-                animation:
-                  slideDir === 1
-                    ? "pageSlideNext 0.2s ease"
-                    : slideDir === -1
-                      ? "pageSlidePrev 0.2s ease"
-                      : "none",
-              }}
-            >
+            <ThemeProvider theme={lightTheme}>
               <Box
                 sx={{
-                  p: marginPreset.preview,
+                  width: PAGE_W,
+                  minHeight: PAGE_H,
+                  bgcolor: "#ffffff",
+                  color: lightBase.print.text,
+                  colorScheme: "light",
+                  boxShadow: `0 2px 8px ${lightBase.shadow.low}`,
+                  border: `1px solid ${lightBase.slate.totalBorder}`,
+                  transform: `scale(${scale})`,
+                  transformOrigin: "top center",
+                  transition: "transform 0.15s ease",
+                  flexShrink: 0,
                   boxSizing: "border-box",
-                  display: "flex",
-                  flexDirection: "column",
+                  animation:
+                    slideDir === 1
+                      ? "pageSlideNext 0.2s ease"
+                      : slideDir === -1
+                        ? "pageSlidePrev 0.2s ease"
+                        : "none",
                 }}
               >
-                {/* header — full, repeats every page */}
-                <Box ref={headerRef}>{header}</Box>
-
                 <Box
                   sx={{
-                    height: Math.min(
-                      usablePageHeight,
-                      Math.max(
-                        0,
-                        contentTotalHeight -
-                          (currentPage - 1) * usablePageHeight,
-                      ),
-                    ),
-                    overflow: "hidden",
-                    position: "relative",
+                    p: marginPreset.preview,
+                    boxSizing: "border-box",
+                    display: "flex",
+                    flexDirection: "column",
                   }}
                 >
+                  {/* header — full, repeats every page */}
+                  <Box ref={headerRef}>{header}</Box>
+
                   <Box
-                    ref={contentRef}
                     sx={{
-                      transform: `translateY(-${(currentPage - 1) * usablePageHeight}px)`,
+                      height: Math.min(
+                        usablePageHeight,
+                        Math.max(
+                          0,
+                          contentTotalHeight -
+                            (currentPage - 1) * usablePageHeight,
+                        ),
+                      ),
+                      overflow: "hidden",
+                      position: "relative",
                     }}
                   >
-                    {children}
+                    <Box
+                      ref={contentRef}
+                      sx={{
+                        transform: `translateY(-${(currentPage - 1) * usablePageHeight}px)`,
+                      }}
+                    >
+                      {children}
+                    </Box>
                   </Box>
-                </Box>
 
-                {/* footer — full, sits directly after the items window, no gap */}
-                <Box ref={footerRef}>{footer}</Box>
+                  {/* footer — full, sits directly after the items window, no gap */}
+                  <Box ref={footerRef}>{footer}</Box>
+                </Box>
               </Box>
-            </Box>
+            </ThemeProvider>
           )}
         </Box>
 
@@ -1020,18 +1047,22 @@ export default function PrintPreview({
             width: `${PRINT_W_MM}mm`,
           }}
         >
-          <div
-            ref={printRef}
-            style={{
-              width: `${PRINT_W_MM}mm`,
-              filter: colorMode === "grayscale" ? "grayscale(1)" : "none",
-              background: "#ffffff",
-            }}
-          >
-            {header}
-            {children}
-            {footer}
-          </div>
+          <ThemeProvider theme={lightTheme}>
+            <div
+              ref={printRef}
+              style={{
+                width: `${PRINT_W_MM}mm`,
+                filter: colorMode === "grayscale" ? "grayscale(1)" : "none",
+                background: "#ffffff",
+                color: "#1E293B",
+                colorScheme: "light",
+              }}
+            >
+              {header}
+              {children}
+              {footer}
+            </div>
+          </ThemeProvider>
         </Box>
         {/* ─── HIDDEN PDF PAGES — one page-sized node per PDF page, each
              mirroring the print view exactly (margin padding, repeated
@@ -1047,7 +1078,8 @@ export default function PrintPreview({
               width: `${PRINT_W_MM}mm`,
             }}
           >
-            {Array.from({ length: totalPages }, (_, i) => i).map((i) => {
+            <ThemeProvider theme={lightTheme}>
+              {Array.from({ length: totalPages }, (_, i) => i).map((i) => {
               const sliceH = Math.min(
                 usablePageHeight,
                 Math.max(
@@ -1069,6 +1101,8 @@ export default function PrintPreview({
                     filter:
                       colorMode === "grayscale" ? "grayscale(1)" : "none",
                     background: "#ffffff",
+                    color: "#1E293B",
+                    colorScheme: "light",
                     display: "flex",
                     flexDirection: "column",
                   }}
@@ -1093,6 +1127,7 @@ export default function PrintPreview({
                 </div>
               );
             })}
+            </ThemeProvider>
           </Box>
         )}
         {/* ─── SUBFOOTER (pagination + zoom, print view only) ─── */}

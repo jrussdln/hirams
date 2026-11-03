@@ -164,6 +164,10 @@ export default function PendingInventory({
   jevPendingKey = "",
   isManagement = false,
   isFinanceOfficer = false,
+  // Title / entry editing override — handed to the JEV panels so ACCOUNT
+  // OFFICERS (AO / AOTL) can name a Pending journal and manage its entries
+  // here, without being finance or management.
+  canManageJevEntries = false,
 }) {
   // ✅ Standardized color wiring
   const theme = useTheme();
@@ -232,14 +236,22 @@ export default function PendingInventory({
           id: `${scope}:${key}`,
           name,
           company,
+          aoNicks: new Set(),
           scope,
           total: 0,
         };
+        if (r.strAONickName && r.strAONickName !== "—") {
+          entry.aoNicks.add(r.strAONickName);
+        }
         entry.total += qty * unitPrice;
         byKey.set(key, entry);
       });
 
       [...byKey.values()]
+        .map((entry) => ({
+          ...entry,
+          aoNick: [...entry.aoNicks].join(", "),
+        }))
         .sort(
           (a, b) =>
             a.name.localeCompare(b.name) || a.company.localeCompare(b.company),
@@ -275,20 +287,19 @@ export default function PendingInventory({
                 <span className="truncate uppercase tracking-wide text-[0.625rem] font-medium leading-tight text-gray-500 dark:text-gray-400">
                   {row.company || "—"}
                 </span>
-                {directionFilter === "all" && (
-                  <span
-                    className="shrink-0 px-1 py-px text-[0.5rem] font-medium uppercase leading-none rounded-full"
-                    style={{
-                      backgroundColor: tint.bg,
-                      color: tint.text,
-                      border: `1px solid ${colors.border}`,
-                    }}
-                  >
-                    {isReceived
-                      ? inventoryReceivedLabel
-                      : inventoryDeliveredLabel}
-                  </span>
-                )}
+                <span
+                  className="shrink-0 px-1 py-px text-[0.5rem] font-medium uppercase leading-none rounded-full"
+                  style={{
+                    backgroundColor: tint.bg,
+                    color: tint.text,
+                    border: `1px solid ${colors.border}`,
+                  }}
+                >
+                  {isReceived
+                    ? inventoryReceivedLabel
+                    : inventoryDeliveredLabel}
+                  {row.aoNick && row.aoNick !== "—" ? ` - ${row.aoNick}` : ""}
+                </span>
               </div>
               <span className="block truncate italic tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
                 {val || "—"}
@@ -573,6 +584,7 @@ export default function PendingInventory({
                     jevPendingKey={jevPendingKey}
                     isManagement={isManagement}
                     isFinanceOfficer={isFinanceOfficer}
+                    canEditEntries={canManageJevEntries || undefined}
                     isAssigneeType={false}
                     assigneeLinks={[]}
                     supplierLinks={[]}

@@ -93,6 +93,7 @@ class InventoryService extends CrudService
                 'purchaseOption.supplier',
                 'purchaseOption.transactionItem.transaction.client',
                 'purchaseOption.transactionItem.transaction.company',
+                'purchaseOption.transactionItem.transaction.user',
                 // The PO a batch was bought on — the items header card
                 // prints it.
                 'purchaseOption.purchaseOrderOption.purchaseOrder',
@@ -123,9 +124,11 @@ class InventoryService extends CrudService
                             'nQuantity'           => $pendingRow->nQuantity,
                             'cStatus'             => 'P',
                             'purchaseOption'      => $pendingRow->purchaseOption,
+                            'nAssignedAO'         => $pendingRow->purchaseOption?->transactionItem?->transaction?->nAssignedAO,
                             'strSupplierNickName' => $pendingRow->purchaseOption?->supplier?->strSupplierNickName ?? '—',
                             'strClientNickName'   => $pendingRow->purchaseOption?->transactionItem?->transaction?->client?->strClientNickName ?? '—',
                             'strCompanyNickName'  => $pendingRow->purchaseOption?->transactionItem?->transaction?->company?->strCompanyNickName ?? '—',
+                            'strAONickName'       => $pendingRow->purchaseOption?->transactionItem?->transaction?->user?->strNickName ?? '—',
                             'strPurchaseOrderNo'  => $pendingRow->purchaseOption?->purchaseOrderOption?->purchaseOrder?->strPurchaseOrderNo ?? '—',
                             // The PO's id — the items table links the PO code
                             // to the PO in Item Purchasing.
@@ -146,9 +149,11 @@ class InventoryService extends CrudService
                         'nQuantity'           => $cancelledRow->nQuantity,
                         'cStatus'             => 'C',
                         'purchaseOption'      => $cancelledRow->purchaseOption,
+                        'nAssignedAO'         => $cancelledRow->purchaseOption?->transactionItem?->transaction?->nAssignedAO,
                         'strSupplierNickName' => $cancelledRow->purchaseOption?->supplier?->strSupplierNickName ?? '—',
                         'strClientNickName'   => $cancelledRow->purchaseOption?->transactionItem?->transaction?->client?->strClientNickName ?? '—',
                         'strCompanyNickName'  => $cancelledRow->purchaseOption?->transactionItem?->transaction?->company?->strCompanyNickName ?? '—',
+                        'strAONickName'       => $cancelledRow->purchaseOption?->transactionItem?->transaction?->user?->strNickName ?? '—',
                         'strPurchaseOrderNo'  => $cancelledRow->purchaseOption?->purchaseOrderOption?->purchaseOrder?->strPurchaseOrderNo ?? '—',
                         'nPurchaseOrderId'    => $cancelledRow->purchaseOption?->purchaseOrderOption?->purchaseOrder?->nPurchaseOrderId ?? null,
                         'serialNumbers'       => $cancelledRow->serialNumbers->pluck('strSerialNumber')->filter()->values(),
@@ -165,9 +170,11 @@ class InventoryService extends CrudService
                         'nPurchaseItemId'   => $first->nPurchaseItemId,
                         'dtLog'               => $first->dtLog,
                         'purchaseOption'      => $first->purchaseOption,
+                        'nAssignedAO'         => $first->purchaseOption?->transactionItem?->transaction?->nAssignedAO,
                         'strSupplierNickName' => $first->purchaseOption?->supplier?->strSupplierNickName ?? '—',
                         'strClientNickName'   => $first->purchaseOption?->transactionItem?->transaction?->client?->strClientNickName ?? '—',
                         'strCompanyNickName'  => $first->purchaseOption?->transactionItem?->transaction?->company?->strCompanyNickName ?? '—',
+                        'strAONickName'       => $first->purchaseOption?->transactionItem?->transaction?->user?->strNickName ?? '—',
                         'strPurchaseOrderNo'  => $first->purchaseOption?->purchaseOrderOption?->purchaseOrder?->strPurchaseOrderNo ?? '—',
                         'nPurchaseOrderId'    => $first->purchaseOption?->purchaseOrderOption?->purchaseOrder?->nPurchaseOrderId ?? null,
                     ];

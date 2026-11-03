@@ -147,7 +147,10 @@ export default function CartCardForDelivery({
         tiId != null ? `ti-${tiId}` : `oi-${opt?.nPurchaseOrder_ItemId ?? i}`;
       // The order(s) this row belongs to — a row is one item, but the item
       // can be bought on more than one PO, so the numbers are collected.
+      // The PO ID travels too: two different transactions can carry the
+      // SAME PO number, so only the id identifies the right order to open.
       const poNo = po?.strPurchaseOrderNo ?? "";
+      const poId = po?.nPurchaseOrderId;
       const row = byKey.get(key);
       if (!row) {
         byKey.set(key, {
@@ -155,11 +158,13 @@ export default function CartCardForDelivery({
           opt,
           parts: [p],
           poNos: poNo ? [poNo] : [],
+          poIds: poId != null ? [poId] : [],
         });
         return;
       }
       row.parts.push(p);
       if (poNo && !row.poNos.includes(poNo)) row.poNos.push(poNo);
+      if (poId != null && !row.poIds.includes(poId)) row.poIds.push(poId);
       const mp = row.opt.purchase_option;
       row.opt = {
         ...row.opt,
@@ -336,8 +341,11 @@ export default function CartCardForDelivery({
     .filter(Boolean)
     .sort()[0];
 
-  const openPO = (po) =>
-    onUpdateClick?.({ po, statusLabel, viewStatus: listStatus });
+  // optionId — the exact purchase_order_option the clicked row shows, so the
+  // update view anchors on THIS card's transaction (a PO can carry items of
+  // several transactions; each gets its own card in For Delivery).
+  const openPO = (po, optionId) =>
+    onUpdateClick?.({ po, statusLabel, viewStatus: listStatus, optionId });
 
   const headerRow = (sm) => (
     <Box
@@ -664,29 +672,40 @@ export default function CartCardForDelivery({
               </Box>
             )}
 
-            {visibleRows.map((row, idx) => (
-              <CartRowPanel
-                key={row.key}
-                opt={row.opt}
-                idx={idx}
-                totalCount={visibleRows.length}
-                colors={base}
-                tableLayout
-                // The card is one per TRANSACTION, so the row carries the
-                // order it belongs to — the one line that says which PO
-                // this item went out on.
-                poNumber={row.poNos.join(", ")}
-                onRowClick={() => openPO(firstPO)}
-                showRemove={false}
-                hasAnyEWT={hasAnyEWT}
-                poIsPaidRcvdDvrd={poIsPaidRcvdDvrd}
-                isForDelivery={listStatus === String(forDeliveryKey)}
-                isDelivered={isDeliveredTab}
-                arrivedStats={
-                  poIsPaidRcvdDvrd ? statsForRow(row) : null
-                }
-              />
-            ))}
+            {visibleRows.map((row, idx) => {
+              // The PO(s) THIS row was bought on — matched by ID, because
+              // two different transactions can carry the SAME PO number
+              // (e.g. two PO2026-0053s), so the number alone picks the
+              // wrong order.
+              const rowPO =
+                pos.find((p) => row.poIds?.includes(p.nPurchaseOrderId)) ??
+                firstPO;
+              return (
+                <CartRowPanel
+                  key={row.key}
+                  opt={row.opt}
+                  idx={idx}
+                  totalCount={visibleRows.length}
+                  colors={base}
+                  tableLayout
+                  // The card is one per TRANSACTION, so the row carries the
+                  // order it belongs to — the one line that says which PO
+                  // this item went out on.
+                  poNumber={row.poNos.join(", ")}
+                  onRowClick={() =>
+                    openPO(rowPO, row.opt?.nPurchaseOrder_ItemId)
+                  }
+                  showRemove={false}
+                  hasAnyEWT={hasAnyEWT}
+                  poIsPaidRcvdDvrd={poIsPaidRcvdDvrd}
+                  isForDelivery={listStatus === String(forDeliveryKey)}
+                  isDelivered={isDeliveredTab}
+                  arrivedStats={
+                    poIsPaidRcvdDvrd ? statsForRow(row) : null
+                  }
+                />
+              );
+            })}
           </Box>
 
           {/* Footer */}
@@ -740,7 +759,9 @@ export default function CartCardForDelivery({
               </Box>
             ) : (
               <Box
-                onClick={() => openPO(firstPO)}
+                onClick={() =>
+                  openPO(firstPO, itemRows[0]?.opt?.nPurchaseOrder_ItemId)
+                }
                 sx={{
                   display: "inline-flex",
                   alignItems: "center",

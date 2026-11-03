@@ -17,6 +17,7 @@ use App\Http\Controllers\Api\Finance\JournalAccountController;
 use App\Http\Controllers\Api\Masters\MappingController;
 use App\Http\Controllers\Api\Masters\PricingSetController;
 use App\Http\Controllers\Api\MediaController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\Purchasing\PurchaseOptionsController;
 use App\Http\Controllers\Api\Purchasing\PurchaseOrderController;
 use App\Http\Controllers\Api\Purchasing\PurchaseOrderOptionsController;
@@ -78,6 +79,17 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // ── AUTH ────────────────────────────────────────────────
     Route::post('auth/verify-password', [AuthController::class, 'verifyPassword']);
     Route::post('logout', [AuthController::class, 'logout']);
+    // Presence: the open tab proves it's alive; the closing tab says bye.
+    Route::post('auth/heartbeat', [AuthController::class, 'heartbeat']);
+    Route::post('auth/offline', [AuthController::class, 'goOffline']);
+
+    // ── NOTIFICATIONS ───────────────────────────────────────
+    Route::prefix('notifications')->group(function () {
+        Route::put('read-all', [NotificationController::class, 'markAllRead']);
+        Route::put('{id}/read', [NotificationController::class, 'markRead']);
+        Route::delete('{id}', [NotificationController::class, 'destroy']);
+        Route::get('/', [NotificationController::class, 'index']);
+    });
 
     // ── DASHBOARD ───────────────────────────────────────────
     Route::prefix('dashboard')->group(function () {

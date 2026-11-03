@@ -73,9 +73,9 @@ console.log(onlineLabel);
           qty: 1,
           uom: (p.strUOM ?? "").toUpperCase(),
           unitPrice: Number(p.amount ?? 0),
-          // Supplier nickname under the PO code — supplier-type rows
+          // Supplier nickname and JEV title under the PO code — supplier-type rows
           // only, forced to caps.
-          subline: (payeeNickName ?? "").toUpperCase(),
+          subline: (voucher?.jev?.strTitle ?? "").toUpperCase(),
         },
   );
 
@@ -90,6 +90,9 @@ console.log(onlineLabel);
 
     payeeName: payeeName ?? "—",
     payeeAddress: supplierAddress ?? "",
+
+    // JEV title for supplier type
+    jevTitle: voucher?.jev?.strTitle,
 
     items,
 

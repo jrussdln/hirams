@@ -279,11 +279,12 @@ export default function JEVUpdatePanel({
               // (for a D JEV: the delivered group's, which the panel
               // never caps an R/D entry with anyway).
               particularsGrandTotal={itemsTotal}
-              // Entry CRUD, Management / Finance Officer only. With the
-              // roles off the panel renders no Add / Edit / Delete
-              // Entry at all.
+              // Entry CRUD, Management / Finance Officer — plus ACCOUNT
+              // OFFICERS (AO / AOTL), who hand it in via the explicit
+              // override: they manage entries without being finance.
               isManagement={canManage ? isManagement : undefined}
               isFinanceOfficer={canManage ? isFinanceOfficer : undefined}
+              canEditEntries={canManage ? true : undefined}
               // …and only while the journal is still PENDING: the moment
               // it is finalized (Active) the gate is withheld, the panel's
               // own pending-only rule kicks in, and the journal renders

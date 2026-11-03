@@ -35,23 +35,9 @@ const Sidebar = ({ collapsed, mobileOpen, setMobileOpen, toggleCollapse }) => {
         <SidebarContent collapsed={collapsed} toggleCollapse={toggleCollapse} />
       </div>
 
-      {/* Mobile: always-visible collapsed strip */}
-      <div
-        className="flex lg:hidden rounded-xl overflow-hidden border flex-shrink-0"
-        style={{
-          height: "calc(100vh - 1rem)",
-          width: "3.5rem",
-          backgroundColor: colors.sidebarBg,
-          borderColor: colors.borderColor,
-        }}
-      >
-        <SidebarContent
-          collapsed={true}
-          toggleCollapse={() => setMobileOpen(true)}
-        />
-      </div>
-
-      {/* Mobile: expanded overlay */}
+      {/* Mobile — no collapsed rail anymore: the full sidebar opens as an
+          overlay from the page layout's header button (mobile_sidebar_open
+          event, answered in layout/Layout.jsx). */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
           <div

@@ -150,9 +150,17 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
   }, [fetchJev]);
 
   // ── Roles ────────────────────────────────────────────────────────────
-  // The viewer's entry CRUD gate — Management / Finance Officer only,
-  // exactly what the list page handed the modal as entryCrud.
-  const canManage = Boolean(isManagement || isFinanceOfficer);
+  // The viewer's entry CRUD gate — Management / Finance Officer, PLUS the
+  // Account Officers (plain AO and the AOTL alike), who build the journal:
+  // title, date and entries. The status rule further narrows Account
+  // Officers to PENDING journals (see JEVUpdatePanel / JevViewPanel);
+  // finalized (Active) or cancelled journals stay read-only for them.
+  const canManage = Boolean(
+    isManagement || isFinanceOfficer || isAccountOfficer,
+  );
+  // Finalizing (and Undo Finalize) is the accounting close — it stays with
+  // Management / Finance even though an Account Officer may edit.
+  const canFinalize = Boolean(isManagement || isFinanceOfficer);
 
   // Who gets the blue navigation links — every "open this voucher / this
   // transaction / this PO" is a jump only finance and management make; the
@@ -622,6 +630,7 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
     isManagement,
     isFinanceOfficer,
     canManage,
+    canFinalize,
     canNavigate,
     // Mappings for the panel header
     jev_types,

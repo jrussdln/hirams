@@ -329,9 +329,11 @@ export default function PurchaseView(props) {
             !statusChangedAlert &&
             /* Delivery details are the PROCUREMENT side of an order —
                the assigned AO, management, and now Proc / Proc TL all
-               update them. The DR / SI / collection buttons below stay
-               with the assigned AO and management only. */
-            (isAssignedToMe || isProcurement || isProcurementTL) && (
+               update them. Finance reads this page but never edits
+               delivery details, so the button stays away from them;
+               the DR / SI / collection buttons below still show. */
+            (isAssignedToMe || isProcurement || isProcurementTL) &&
+            !isFinanceOfficer && (
               <BaseButton
                 label="Delivery Info"
                 icon={icons.delivery}
@@ -340,8 +342,10 @@ export default function PurchaseView(props) {
               />
             )}
 
-          {/* Direct Cost lives here too — right after Delivery Info. */}
-          {(isManagement || isAccountOfficer) && !isCompareActive && (
+          {/* Direct Cost lives here too — right after Delivery Info.
+              Management and finance both carry it, same purchase view. */}
+          {(isManagement || isAccountOfficer || isFinanceOfficer) &&
+            !isCompareActive && (
             <BaseButton
               label="Direct Cost"
               icon={icons.breakdown}
@@ -551,11 +555,15 @@ export default function PurchaseView(props) {
                       showPurchaseOptions={showPurchaseOptions}
                       /* PROCUREMENT READS THE TABLE — Proc / Proc TL have
                          no cart actions on the purchase page, so the whole
-                         Action column after EWT folds away for them. */
+                         Action column after EWT folds away for them.
+                         FINANCE READS IT TOO — the column folds away and
+                         the checkboxes render disabled (still visible). */
                       checkboxOptionsEnabled={
                         purchaseCheckboxOptionsEnabled &&
-                        !(isProcurement || isProcurementTL)
+                        !(isProcurement || isProcurementTL) &&
+                        !isFinanceOfficer
                       }
+                      isFinanceOfficer={isFinanceOfficer}
                       anyItemHasABC={anyItemHasABC}
                       statusChangedAlert={statusChangedAlert}
                       isManagement={isManagement}
@@ -663,8 +671,12 @@ export default function PurchaseView(props) {
         onClose={() => setDeliveryModalOpen(false)}
         transaction={transaction}
         /* Proc TL edits on the same gate as Proc — without it the TL
-           sees the Delivery Info button but the modal stays read-only. */
-        isProcurement={isProcurement || isProcurementTL || isAccountOfficer}
+           sees the Delivery Info button but the modal stays read-only.
+           Finance rides the same edit grant: same purchase view as
+           management. */
+        isProcurement={
+          isProcurement || isProcurementTL || isAccountOfficer || isFinanceOfficer
+        }
         isManagement={isManagement}
         onSuccess={() => setDeliveryModalOpen(false)}
       />

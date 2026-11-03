@@ -474,6 +474,9 @@ function TransactionItemsTable({
   isAssignedToMe,
   isProcurement,
   isProcurementTL,
+  /* FINANCE READS THE PURCHASE TABLE — no option authoring, so the
+     flag rides along to hide the Get Suggestions / Option buttons. */
+  isFinanceOfficer,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -1285,9 +1288,11 @@ function TransactionItemsTable({
                   {/* The two buttons stay available in the PURCHASE stage
                       even when the item is fully covered (12 / 12) or an
                       add-on was just added — the options of an item can
-                      always grow. Only a read-only view or a status change
-                      (the transaction moved on) hides them. */}
-                  {(checkboxOptionsEnabled || isPurchase) &&
+                      always grow. Only a read-only view, a status change
+                      (the transaction moved on) or a finance reader (no
+                      option authoring) hides them. */}
+                  {!isFinanceOfficer &&
+                    (checkboxOptionsEnabled || isPurchase) &&
                     !statusChangedAlert &&
                     !readOnly &&
                     (() => {
@@ -1375,7 +1380,23 @@ function TransactionItemsTable({
                     {h}
                   </Box>
                 ))}
-                {checkboxOptionsEnabled && (
+                {(checkboxOptionsEnabled ||
+                  /* PROCUREMENT / PROC TL — their full cart column is
+                     folded away, so the header only stands while an
+                     option is at the money-review stages (cart / For
+                     Approval / For Payment), where the cell carries the
+                     Edit button alone. Finance sees no column at all. */
+                  (isPurchase &&
+                    !isFinanceOfficer &&
+                    item.purchaseOptions.some((o) => {
+                      const st = latestHistories[o.nPurchaseItemId]?.nStatus;
+                      return (
+                        st != null &&
+                        [cartKey, forApprovalKey, forPaymentKey].includes(
+                          String(st),
+                        )
+                      );
+                    }))) && (
                   <Box sx={{ flex: 1, textAlign: "center" }}>Action</Box>
                 )}
               </Box>
@@ -1502,6 +1523,7 @@ function TransactionItemsTable({
                       isAssignedToMe={isAssignedToMe}
                       isProcurement={isProcurement}
                       isProcurementTL={isProcurementTL}
+                      isFinanceOfficer={isFinanceOfficer}
                     />
                   );
                 })

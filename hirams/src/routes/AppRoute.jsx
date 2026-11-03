@@ -7,6 +7,8 @@ import ProtectedRoute from "./ProtectedRoute";
 import DotSpinner from "../components/ui/loader/DotSpinner";
 import PageChunkErrorBoundary from "../components/ui/error-boundary/PageChunkErrorBoundary";
 import pageLoaders, { preloadRoute } from "./pageLoaders";
+import { useIdleLogout } from "../utils/auth/useIdleLogout.js";
+import { useHeartbeat } from "../utils/auth/useHeartbeat.js";
 
 // ── Eager (needed for first paint / error handling) ─────────────────────────
 import Login from "../pages/auth/login";
@@ -334,6 +336,16 @@ export default function AppRoute() {
       else clearTimeout(id);
     };
   }, []);
+
+  // ── Global inactivity watcher ────────────────────────────────────────────
+  // Signs the user out after 2 idle hours — mounted once here so it spans
+  // every route (guarded internally: inert while not signed in).
+  useIdleLogout();
+
+  // ── Presence heartbeat ───────────────────────────────────────────────────
+  // Proves "this session is alive" (open tab = user online) and fires a
+  // goodbye ping when the tab closes so offline status is instant.
+  useHeartbeat();
 
   if (mappingLoading) {
     return (

@@ -29,15 +29,18 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
     inventoryStatusAoProc,
     isAccountOfficer, // AO and AOTL alike
     isProcurement, // Procurement Officer and TL alike
+    isAO,
+    isAOTL,
     inventoryStatus,
     inventoryPendingKey,
     loading: mappingLoading,
   } = useKeysLabels();
 
-  // Accounting is finance's realm: AO / AOTL and Procurement read the AO /
-  // Procurement list; everyone else (management, finance, ...) the full one.
-  const aoOrProc = isAccountOfficer || isProcurement;
-  const effectiveInventoryStatus = aoOrProc
+  // Account Officers use the full inventory status (including Pending JEV).
+  // Procurement uses the procurement list (without Pending JEV).
+  const effectiveInventoryStatus = isAccountOfficer
+    ? inventoryStatus
+    : isProcurement
     ? inventoryStatusAoProc
     : inventoryStatus;
 
@@ -52,6 +55,9 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   const [inventoryItems, setInventoryItems] = useState([]);
   const [countLoading, setCountLoading] = useState(true);
   const isOnPage = location.pathname === "/inventory";
+
+  const currentUser = useMemo(() => getItem("user", {}), []);
+  const currentUserId = currentUser?.nUserId;
 
   // ── Sync status from localStorage ──
   useEffect(() => {
@@ -143,14 +149,23 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
 
   // ── Pending JEV badge — counts GROUPS, not items ───────────────────
   // Mirrors the Pending screen: per supplier (qty > 0) / client (qty < 0)
-  // WITHIN a company.
+  // WITHIN a company. A plain AO (not the team lead) only counts the
+  // groups of transactions ASSIGNED to them — same rule as the page.
   const pendingGroupCount = useMemo(() => {
     if (!pendingEntryCode) return 0;
+    const aoScoped = isAO && !isAOTL && currentUserId != null;
     const seen = new Set();
     inventoryItems.forEach((i) => {
       if (String(i.cStatus) !== pendingEntryCode) return;
       const qty = Number(i.nQuantity ?? 0);
       if (qty === 0) return;
+      if (aoScoped) {
+        // Laravel snake-cases relation keys in JSON ("transaction_item").
+        const txn =
+          i.purchaseOption?.transactionItem?.transaction ??
+          i.purchaseOption?.transaction_item?.transaction;
+        if (Number(txn?.nAssignedAO) !== Number(currentUserId)) return;
+      }
       const scope = qty > 0 ? "supplier" : "client";
       const name =
         (scope === "supplier" ? i.strSupplierNickName : i.strClientNickName) ||
@@ -159,7 +174,7 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
       seen.add(`${scope}\u0000${name}\u0000${company}`);
     });
     return seen.size;
-  }, [inventoryItems, pendingEntryCode]);
+  }, [inventoryItems, pendingEntryCode, isAO, isAOTL, currentUserId]);
 
   if (mappingLoading) return null;
 

@@ -43,6 +43,10 @@ export const mapInventoryItems = (items = []) =>
     strSupplierNickName: i.strSupplierNickName ?? "—",
     strClientNickName: i.strClientNickName ?? "—",
     strCompanyNickName: i.strCompanyNickName ?? "—",
+    strAONickName:
+      i.strAONickName ??
+      txnItemOf(i)?.transaction?.user?.strNickName ??
+      "—",
     // The PO the batch was bought on — the items header card prints it
     // (received side) and every row prints it above its brand · model.
     strPurchaseOrderNo: i.strPurchaseOrderNo ?? "—",

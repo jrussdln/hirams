@@ -235,6 +235,9 @@ export default function useItemPurchasingUpdateView() {
     isManagement,
     isProcurement,
     isAOTL,
+    // Inventory's Pending JEV tab — the "Manage JEV" footer button hands the
+    // transaction over to that screen.
+    inventoryPendingKey,
   } = useKeysLabels();
 
   // ── PO data ───────────────────────────────────────────────────────────
@@ -623,7 +626,23 @@ export default function useItemPurchasingUpdateView() {
     }
   }, [selectedStatusCode]);
   const options = po?.purchase_order_options || [];
-  const firstOption = options[0];
+  // THE row this view was opened from. One PO can carry items of MORE than
+  // one transaction (a split purchase) — the For Delivery list then builds
+  // one card per transaction, all of them pointing at THIS PO. The card
+  // whose VIEW was clicked rides in the URL as optionId, so the header, the
+  // AO and the panel anchor on THAT transaction's row — never on the PO's
+  // first option, which may belong to a sibling transaction's card.
+  const anchorOption = useMemo(() => {
+    if (initialOptionId != null) {
+      const src = liveOptions.length ? liveOptions : options;
+      const hit = src.find(
+        (o) => Number(o?.nPurchaseOrder_ItemId) === Number(initialOptionId),
+      );
+      if (hit) return hit;
+    }
+    return liveOptions[0] ?? options[0] ?? null;
+  }, [initialOptionId, liveOptions, options]);
+  const firstOption = anchorOption ?? options[0];
 
   // ── Transaction-wide panel rows (For Delivery / Delivered) ────────────
   // The LIST shows one card per transaction: every item of every PO sharing
@@ -644,7 +663,7 @@ export default function useItemPurchasingUpdateView() {
       const tx = txOf(opt) ?? {};
       return String(tx?.strCode || tx?.nTransactionId || "");
     };
-    const anchor = liveOptions[0] ?? po?.purchase_order_options?.[0];
+    const anchor = firstOption;
     const myKey = groupKeyOf(anchor);
     if (!myKey) return liveOptions;
 
@@ -742,6 +761,7 @@ export default function useItemPurchasingUpdateView() {
     liveOptions,
     po,
     inActiveTab,
+    firstOption,
   ]);
 
   // ── Deliver form: the card's next receipt number ──────────────────────
@@ -1845,6 +1865,7 @@ export default function useItemPurchasingUpdateView() {
     transacstatus,
     itemPurchasingStatus,
     selectedStatusCode,
+    inventoryPendingKey,
     handlePreviewPO,
     isFinanceOfficer,
   };

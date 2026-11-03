@@ -144,6 +144,7 @@ return [
         '340' => 'For Purchase/Delivery', //it filters and fetch transactions that code = 340 the created_by is equal to the current nUserID, and displays count
     ],
     'finance_status' => [ //this is for finance officer
+     '340' => 'For Purchase/Delivery',
         '350' => 'For Collection', //it filters and fetch all transactions that code = 200, 210, 220, 225, 230, 240, 245 and displays count
 
     ],
@@ -211,9 +212,8 @@ return [
         'D' => 'Delivered',
         'P' => 'Pending JEV',
         'C' => 'Cancelled'
-
     ],
-    'inventory_status_ao_proc' => [
+    'inventory_status_proc' => [
         'S' => 'For Delivery',
         'D' => 'Delivered',
         'C' => 'Cancelled'
@@ -234,5 +234,14 @@ return [
         'A' => 'Active', //0
         'P' => 'Pending', //
         'C' => 'Cancelled', //1
+    ],
+    'notif_type' => [
+        'I' => 'Info', //0
+        'W' => 'Warning', //
+        'S' => 'Security', //1
+    ],
+    'notif_category' => [
+        'A' => 'auth', //0
+        'B' => 'account', //
     ],
 ];

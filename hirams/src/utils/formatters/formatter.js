@@ -22,7 +22,7 @@ export const fmtDate = (val) => {
  * Falls back to 0.00 if value is missing/invalid
  */
 export const fmtPHP = (n) =>
-  `${Number(n || 0).toLocaleString("en-PH", {
+  `₱${Number(n || 0).toLocaleString("en-PH", {
     minimumFractionDigits: 2,
   })}`;
 

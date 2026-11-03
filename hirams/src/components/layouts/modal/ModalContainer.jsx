@@ -38,7 +38,6 @@ function ModalContainer({
   saveLabel = "Save",
   showFooter = true,
   showSave = true,
-  footerLogo = `${import.meta.env.BASE_URL}images/hirams-icon-rectangle.png`,
   width,
   loading = false,
   showCancel = true,
@@ -378,22 +377,13 @@ function ModalContainer({
               <Box
                 sx={{
                   display: "flex",
-                  justifyContent: "space-between",
+                  justifyContent: "flex-end",
                   alignItems: "center",
                   p: 1,
                   bgcolor: colors.headerFooterBg, // ✅ SOLID
                   borderTop: `1px solid ${colors.border}`,
                 }}
               >
-                {footerLogo && (
-                  <Box
-                    component="img"
-                    src={footerLogo}
-                    alt="Logo"
-                    sx={{ height: 32 }}
-                  />
-                )}
-
                 <Box sx={{ display: "flex", gap: 1 }}>
                   {showCancel && (
                     <BaseButton

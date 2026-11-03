@@ -61,6 +61,8 @@ export default function InventoryView({
   jevPendingKey,
   isManagement,
   isFinanceOfficer,
+  isAO,
+  isAOTL,
   selectedItemId,
   detailsOpen,
   page,
@@ -404,6 +406,9 @@ export default function InventoryView({
           jevPendingKey={jevPendingKey}
           isManagement={isManagement}
           isFinanceOfficer={isFinanceOfficer}
+          // Account Officers (plain AO and the AOTL alike) build the
+          // Pending JEVs here: title/date plus Add / Edit / Delete entries.
+          canManageJevEntries={isManagement || isFinanceOfficer || isAO || isAOTL}
         />
       ) : (
         <>

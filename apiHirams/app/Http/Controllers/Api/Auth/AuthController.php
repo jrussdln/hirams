@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Api\Auth;
 
 
 use App\Services\Notifications\MailService;
+use App\Events\NotificationUpdated;
 use App\Http\Controllers\Api\ApiController;
+use App\Models\Notification;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -36,17 +38,43 @@ class AuthController extends ApiController
         }
 
         if (!Hash::check($validated['strPassword'], $user->strPassword)) {
+            self::record([
+                'nUserId'           => $user->nUserId,
+                'strTitle'          => 'Failed sign-in attempt',
+                'strNotification'   => 'There was a failed sign-in attempt on your account from '
+                    . self::deviceLabel($request) . '.',
+                'cNotificationType' => 'S', // Security
+                'cCategory'         => 'A', // auth
+                'strData'           => self::deviceData($request),
+                'dtNotifiedAt'      => now(),
+            ]);
+
             return response()->json(['success' => false, 'message' => 'password_error'], 401);
         }
 
-        $user->tokens()->delete();
-        $token = $user->createToken('auth_token')->plainTextToken;
+        // Multi-device sessions: a new login mints a NEW token and must
+        // NOT revoke the tokens of other devices that are still signed
+        // in. (Password reset + account deactivation still revoke all.)
+        $token = $user->createToken(self::deviceLabel($request))->plainTextToken;
 
         $user->update([
             'bIsActive'  => 0,
             'dtLoggedIn' => now(),
+            'dtLastSeen' => now(), // first heartbeat — the prune command reads this
         ]);
         broadcast(new UserUpdated('status_changed', $user->nUserId))->toOthers();
+
+        self::record([
+            'nUserId'           => $user->nUserId,
+            'strTitle'          => 'Signed in',
+            'strNotification'   => 'You signed in to your account from '
+                . self::deviceLabel($request) . '.',
+            'cNotificationType' => 'I', // Info
+            'cCategory'         => 'A', // auth
+            'strData'           => self::deviceData($request),
+            'dtNotifiedAt'      => now(),
+        ]);
+
         return response()->json([
             'success' => true,
             'user'    => $user,
@@ -62,15 +90,144 @@ class AuthController extends ApiController
 
         $user = User::find($validated['nUserId']);
         if ($user) {
-            $user->tokens()->delete();
+            // Revoke only the token of the device sending this logout —
+            // sessions on other devices must keep working.
+            $request->user()?->currentAccessToken()?->delete();
             $user->update([
                 'bIsActive'  => 1,
                 'dtLoggedIn' => now(),
             ]);
             broadcast(new UserUpdated('status_changed', $user->nUserId))->toOthers();
+
+            self::record([
+                'nUserId'           => $user->nUserId,
+                'strTitle'          => 'Signed out',
+                'strNotification'   => 'You signed out of your account from '
+                    . self::deviceLabel($request) . '.',
+                'cNotificationType' => 'I', // Info
+                'cCategory'         => 'A', // auth
+                'strData'           => self::deviceData($request),
+                'dtNotifiedAt'      => now(),
+            ]);
         }
 
         return response()->json(['success' => true, 'message' => 'Logged out successfully']);
+    }
+
+    // ── Presence (heartbeat) ─────────────────────────────────────────────────
+    /**
+     * POST /auth/heartbeat — the browser pings this every 30s while the
+     * session is alive. dtLastSeen is what lets the prune command tell
+     * "app still open" (ping seconds ago) apart from "browser vanished"
+     * (nothing for minutes). The write is throttled to once per 20s so
+     * several open tabs don't stamp the row 20 times a minute.
+     *
+     * A user the prune command already flipped offline comes back
+     * online here — with one broadcast so lists live-update.
+     */
+    public function heartbeat(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $staleStamp = !$user->dtLastSeen
+            || $user->dtLastSeen->diffInSeconds(now()) >= 20;
+
+        if ($staleStamp) {
+            $wasOffline = (int) $user->bIsActive !== 0;
+
+            $user->update([
+                'dtLastSeen' => now(),
+                'bIsActive'  => 0,
+            ]);
+
+            if ($wasOffline) {
+                broadcast(new UserUpdated('status_changed', $user->nUserId));
+            }
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    /**
+     * POST /auth/offline — the "goodbye ping". Fired with a keepalive
+     * fetch on pagehide, it flips the user offline the instant the tab
+     * closes instead of waiting for the prune command. Harmless when the
+     * browser was reloaded: the next heartbeat returns them right away.
+     */
+    public function goOffline(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if ((int) $user->bIsActive !== 1) {
+            $user->update(['bIsActive' => 1]);
+            broadcast(new UserUpdated('status_changed', $user->nUserId));
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    // ── Auth notifications ───────────────────────────────────────────────────
+    /**
+     * A human-readable device label from the user agent —
+     * "Chrome on Windows". Used directly in the notification text.
+     */
+    private static function deviceLabel(Request $request): string
+    {
+        $ua = (string) $request->userAgent();
+
+        $browser = match (true) {
+            str_contains($ua, 'Edg/') || str_contains($ua, 'Edge') => 'Edge',
+            str_contains($ua, 'OPR/') || str_contains($ua, 'Opera') => 'Opera',
+            str_contains($ua, 'Chrome') => 'Chrome',
+            str_contains($ua, 'Firefox') => 'Firefox',
+            str_contains($ua, 'Safari') => 'Safari',
+            default => 'Browser',
+        };
+
+        $os = match (true) {
+            str_contains($ua, 'Windows') => 'Windows',
+            str_contains($ua, 'Android') => 'Android',
+            str_contains($ua, 'iPhone') || str_contains($ua, 'iPad') => 'iOS',
+            str_contains($ua, 'Mac OS X') || str_contains($ua, 'Macintosh') => 'macOS',
+            str_contains($ua, 'Linux') => 'Linux',
+            default => 'an unknown device',
+        };
+
+        return $os === 'an unknown device' ? $os : "{$browser} on {$os}";
+    }
+
+    /**
+     * The flexible device fingerprint stored beside every auth event.
+     * Kept short so it always fits the longtext column even when a
+     * browser sends an unusually long UA string.
+     */
+    private static function deviceData(Request $request): array
+    {
+        return [
+            'ip'     => $request->ip(),
+            'device' => Str::limit((string) $request->userAgent(), 250),
+            'label'  => self::deviceLabel($request),
+        ];
+    }
+
+    /**
+     * Best-effort notification insert — an auth event already happened,
+     * so a failed write (or a dead broadcaster) must never break the
+     * response. Failures land in the log via report(). The row is
+     * broadcast so every other signed-in device updates its badge live.
+     */
+    private static function record(array $attributes): void
+    {
+        try {
+            $notification = Notification::create($attributes);
+            broadcast(new NotificationUpdated(
+                'created',
+                $notification->nUserId,
+                $notification->toArray(),
+            ));
+        } catch (Exception $e) {
+            report($e);
+        }
     }
 
     public function verifyPassword(Request $request): JsonResponse

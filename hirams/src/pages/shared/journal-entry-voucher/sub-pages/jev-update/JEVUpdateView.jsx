@@ -25,6 +25,7 @@ export default function JEVUpdateView() {
     isManagement,
     isFinanceOfficer,
     canManage,
+    canFinalize,
     jev_types,
     jev_status,
     jevPendingKey,
@@ -81,7 +82,7 @@ export default function JEVUpdateView() {
   // Undo works on an Active journal regardless. A Cancelled journal gets
   // no buttons at all.
   const footerRActions = (() => {
-    if (!jev || !canManage || !isFinalizableStatus) return null;
+    if (!jev || !canFinalize || !isFinalizableStatus) return null;
 
     const finalizeNeeds =
       balance.loading

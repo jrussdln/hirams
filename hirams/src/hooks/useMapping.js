@@ -66,12 +66,11 @@ const parseData = (data, setters) => {
   setVoucherStatus(data.voucher_status || {});
   setVoucherType(data.voucher_type || {});
   setInventoryStatus(data.inventory_status || {});
-  // The AO / Procurement inventory statuses — the same list WITHOUT the
-  // Pending JEV stage, which finance closes. Falls back to deriving it
-  // (anything not Pending) so a stale mappings cache still hides the
-  // entry until the next fresh fetch lands.
+  // Procurement-only inventory statuses — the same list WITHOUT the
+  // Pending JEV stage, which finance closes. AO now uses the full
+  // inventory_status (which includes Pending JEV).
   setInventoryStatusAoProc(
-    data.inventory_status_ao_proc ||
+    data.inventory_status_proc ||
       Object.fromEntries(
         Object.entries(data.inventory_status || {}).filter(
           ([, label]) => !/pending/i.test(String(label)),

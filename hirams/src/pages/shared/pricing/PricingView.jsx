@@ -284,7 +284,7 @@ export default function PricingView(props) {
               Object.keys(expandedRows).length
                 ? {}
                 : Object.fromEntries(
-                    items.map((i) => [i.id, { specs: true, options: true }]),
+                    items.map((i) => [i.id, { specs: false, options: true }]),
                   ),
             )
           }

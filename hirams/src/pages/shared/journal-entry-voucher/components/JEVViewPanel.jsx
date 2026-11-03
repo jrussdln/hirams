@@ -126,6 +126,11 @@ export default function JevViewPanel({
   supplierLinks = [],
   isFinanceOfficer,
   isManagement,
+  // Explicit entry-CRUD override: when handed in (true) it replaces the
+  // role check entirely. The JEV update page passes it for ACCOUNT
+  // OFFICERS — who manage entries without being finance / management —
+  // while every other caller keeps the role rule as-is.
+  canEditEntries,
   logsPanel = null,
   supplierInfo = null,
   supplierLabel = "Supplier",
@@ -221,7 +226,9 @@ export default function JevViewPanel({
   // Entry anywhere.
   const canManageEntries =
     !readOnly &&
-    (isManagement || isFinanceOfficer) &&
+    (typeof canEditEntries === "boolean"
+      ? canEditEntries
+      : Boolean(isManagement || isFinanceOfficer)) &&
     (entryStatusGate === "all" || jev?.cStatus === pendingStatusKey);
 
   const [entries, setEntries] = useState(jev?.entries ?? []);

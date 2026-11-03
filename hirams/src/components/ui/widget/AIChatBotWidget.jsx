@@ -40,6 +40,23 @@ function AIChatbotWidget({ accentColor }) {
 
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
+  // The notifications side panel shares this content row — while it is
+  // open the chatbot (panel AND floating button) steps aside entirely.
+  const [yielded, setYielded] = useState(false);
+
+  React.useEffect(() => {
+    const yieldRow = () => {
+      setYielded(true);
+      setOpen(false); // the chat panel collapses with the row's tenant switch
+    };
+    const claimRow = () => setYielded(false);
+    window.addEventListener("open_notifications_panel", yieldRow);
+    window.addEventListener("close_notifications_panel", claimRow);
+    return () => {
+      window.removeEventListener("open_notifications_panel", yieldRow);
+      window.removeEventListener("close_notifications_panel", claimRow);
+    };
+  }, []);
 
   const handleSend = useCallback(
     async (text) => {
@@ -72,7 +89,7 @@ function AIChatbotWidget({ accentColor }) {
 
   return (
     <>
-      {!isMobile && (
+      {yielded ? null : !isMobile && (
         <AIChatBotPanel
           open={open}
           onClose={() => setOpen(false)}
@@ -81,7 +98,7 @@ function AIChatbotWidget({ accentColor }) {
         />
       )}
 
-      {!open && (
+      {!yielded && !open && (
         <Tooltip title="Ask AI" placement="left">
           <IconButton
             onClick={() => setOpen((prev) => !prev)}

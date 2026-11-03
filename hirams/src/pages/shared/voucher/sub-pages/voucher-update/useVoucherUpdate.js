@@ -770,6 +770,7 @@ export default function useVoucherUpdate() {
           ewtAmount,
           company,
           jevEntries,
+          jevTitle: voucher?.jev?.strTitle, // Add JEV title
           onlineKey,
           onlineLabel,
           cashKey,

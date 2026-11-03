@@ -1,4 +1,4 @@
-import React, { Suspense, useState, useMemo } from "react";
+import React, { Suspense, useState, useEffect, useMemo } from "react";
 import { Outlet } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
 import Sidebar from "./Sidebar";
@@ -22,6 +22,15 @@ function Layout() {
 
   const toggleCollapse = () => setSidebarCollapsed(!sidebarCollapsed);
   const toggleMobileSidebar = () => setMobileSidebarOpen(!mobileSidebarOpen);
+
+  // Mobile: the sidebar strip no longer renders on small screens, so the
+  // page layout's header button (inside the Outlet) opens the overlay —
+  // wired through the same window event the rest of the app uses.
+  useEffect(() => {
+    const handler = () => setMobileSidebarOpen((v) => !v);
+    window.addEventListener("mobile_sidebar_open", handler);
+    return () => window.removeEventListener("mobile_sidebar_open", handler);
+  }, []);
 
   return (
     <>

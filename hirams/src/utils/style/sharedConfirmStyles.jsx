@@ -327,6 +327,17 @@ export const ITEM_PURCHASING_CONFIRM_STYLES = {
     desc: "This will restore the cancelled batch quantity back into the received/delivered counts.",
     confirmLabel: "Yes, Re-activate",
   },
+  // The footer button on a For Delivery / Delivered PO — hands the
+  // transaction over to Inventory's Pending JEV tab (wired in
+  // ItemPurchasingUpdateView.jsx through PurchaseCartUpdateModal with
+  // styles={ITEM_PURCHASING_CONFIRM_STYLES}).
+  manage_jev: {
+    variant: "blue",
+    Icon: BadgeOutlined,
+    title: "Open this transaction's JEV?",
+    desc: "You will be taken to Inventory's Pending JEV tab with this transaction's group opened, ready to manage its JEV title and entries.",
+    confirmLabel: "Yes, Manage JEV",
+  },
 };
 // ── Inventory confirm dialogs (Pending JEV screen) ───────────────────────
 // Wired in pages/shared/inventory/InventoryView.jsx through

@@ -728,7 +728,7 @@ export default function useCanvas() {
       anyOpen
         ? {}
         : items.reduce((acc, item) => {
-            acc[item.id] = { specs: true, options: showPurchaseOptions };
+            acc[item.id] = { specs: false, options: showPurchaseOptions };
             return acc;
           }, {}),
     );

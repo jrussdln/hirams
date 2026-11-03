@@ -264,8 +264,14 @@ export default function useTransactionWorkspace() {
   const purchaseCheckboxOptionsEnabled =
     !statusChangedAlert && forPurchaseKey.includes(statusCode);
   const hasAssignedAO = Number(transaction?.nAssignedAO) > 0;
+  // MANAGEMENT and FINANCE always read as "assigned" — the officer touches
+  // only transactions already at For Purchase/Delivery / For Collection, and
+  // this gate is what lets finance see the SAME purchase actions management
+  // sees (Delivery Info, Print DR / SI, For Collection) instead of a
+  // read-only page.
   const isAssignedToMe =
     isManagement ||
+    isFinanceOfficer ||
     (currentUserId && transaction?.nAssignedAO
       ? String(currentUserId) === String(transaction.nAssignedAO)
       : false);
@@ -507,7 +513,7 @@ export default function useTransactionWorkspace() {
       anyOpen
         ? {}
         : items.reduce((acc, item) => {
-            acc[item.id] = { specs: true, options: showPurchaseOptions };
+            acc[item.id] = { specs: false, options: showPurchaseOptions };
             return acc;
           }, {}),
     );

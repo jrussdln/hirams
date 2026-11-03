@@ -7,6 +7,9 @@ return [
     'update_success' => ':name has been updated successfully.',
     'update_failed' => 'Failed to update :name.',
 
+    'read_success' => ':name loaded successfully.',
+    'read_failed' => 'Failed to load :name.',
+
     'delete_success' => ':name has been deleted successfully.',
     'delete_failed' => 'Failed to delete :name.',
 

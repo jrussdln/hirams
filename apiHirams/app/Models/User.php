@@ -29,7 +29,8 @@ class User extends Authenticatable
         'bIsActive', // ✅ Fixed: Changed from 'bisActive' to 'bIsActive'
         'cStatus',
         'dtCreatedAt',
-        'dtLoggedIn'
+        'dtLoggedIn',
+        'dtLastSeen', // presence heartbeat stamp
     ];
 
     /**
@@ -46,6 +47,7 @@ class User extends Authenticatable
     protected $casts = [
         'bIsActive' => 'boolean',
         'dtCreatedAt' => 'datetime',
+        'dtLastSeen' => 'datetime', // presence heartbeat stamp
     ];
 
     // Disable timestamps

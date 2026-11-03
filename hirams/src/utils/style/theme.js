@@ -113,3 +113,6 @@ export const getDesignTokens = (mode) => {
     },
   };
 };
+
+export default getDesignTokens;
+

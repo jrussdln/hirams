@@ -491,12 +491,17 @@ export default function useItemPurchasing() {
 
   // viewStatus = the tab the card was clicked from, so VIEW opens the PO in
   // that same view (a partially received PO sits under For Delivery while its
-  // own status is still Pending Receipt).
-  const handleUpdateClick = ({ po, viewStatus }) => {
+  // own status is still Pending Receipt). optionId = the exact purchase
+  // order option row the card showed — one PO can carry items of several
+  // transactions, and the view must anchor on the card that was clicked.
+  const handleUpdateClick = ({ po, viewStatus, optionId }) => {
     const status = viewStatus
       ? `&status=${encodeURIComponent(String(viewStatus))}`
       : "";
-    navigate(`/item-purchasing-update?id=${po.nPurchaseOrderId}${status}`);
+    const option = optionId ? `&optionId=${encodeURIComponent(optionId)}` : "";
+    navigate(
+      `/item-purchasing-update?id=${po.nPurchaseOrderId}${status}${option}`,
+    );
   };
 
   // Expand All / Collapse All — the CARDS and the time-period SECTIONS move

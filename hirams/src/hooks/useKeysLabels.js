@@ -244,9 +244,15 @@ export default function useKeysLabels() {
   const aotlForPurchaseKey = aotlStatusKeys[7] ?? "";
 
   // ──────────────────────────────────────────────────────────────
-  // ✅ FINANCE KEY
+  // ✅ FINANCE KEYS
   // ──────────────────────────────────────────────────────────────
-  const financeForCollectionKey = financestatusKeys[0] ?? "";
+  // finance_status carries the officer's two tabs in a FIXED order —
+  // 340 For Purchase/Delivery first, 350 For Collection second — the same
+  // codes TransactionController::indexFinance serves (array_keys of the
+  // mapping). Position decides, so keep the mapping order intact: keys[0]
+  // is never "For Collection".
+  const financeForPurchaseKey = financestatusKeys[0] ?? "";
+  const financeForCollectionKey = financestatusKeys[1] ?? "";
 
   // ──────────────────────────────────────────────────────────────
   // ✅ CONDITIONAL KEYS — Fixed AO logic
@@ -354,7 +360,9 @@ export default function useKeysLabels() {
     ? mgmtForPurchaseKey
     : isAOTL
       ? aotlForPurchaseKey
-      : aoForPurchaseKey;
+      : isFinanceOfficer
+        ? financeForPurchaseKey
+        : aoForPurchaseKey;
   const forCollectionKey = isManagement
     ? mgmtForCollectionKey
     : financeForCollectionKey;
@@ -672,6 +680,7 @@ export default function useKeysLabels() {
     aotlForPurchaseKey,
 
     // ─── Finance ───
+    financeForPurchaseKey,
     financeForCollectionKey,
 
     // ─── Status Transaction Raw ───
