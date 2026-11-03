@@ -1,7 +1,7 @@
-import React, { useMemo } from "react";
+﻿import React, { useMemo } from "react";
 import { Box, Modal, Slide, useTheme } from "@mui/material";
-import getThemeColors from "../../../../utils/style/getThemeColors";
-import AIChatbotLayout from "../../../../components/layouts/chatbot/structure";
+import getThemeColors from "../../../utils/style/getThemeColors";
+import AIChatbotLayout from "../../../components/layouts/chatbot/structure";
 
 const useColors = (c) => ({
   surfaceBg: c.slate.outerBg,

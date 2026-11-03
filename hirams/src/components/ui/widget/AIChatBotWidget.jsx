@@ -3,8 +3,8 @@ import { IconButton, Tooltip, useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import AutoAwesome from "@mui/icons-material/AutoAwesome";
 import getThemeColors from "../../../utils/style/getThemeColors";
-import AIChatBotPanel from "../../../pages/shared/ai-chatbot/component/AIChatBotPanel";
-import AIChatBotModal from "../../../pages/shared/ai-chatbot/modal/AIChatBotModal";
+import AIChatBotPanel from "../../../pages/utility/panel/AIChatBotPanel";
+import AIChatBotModal from "../../../pages/utility/panel/AIChatBotModal";
 import AIChatBotAPI from "../../../api/endpoints/ai-chatbot.api";
 
 // ── INLINE COLOR MAP - per-file useColors pattern ──────────────────

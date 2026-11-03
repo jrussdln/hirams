@@ -183,7 +183,7 @@ export default function JournalEntryVoucherView({
         key: "totalLabel",
         label: "Amount",
         align: "right",
-        render: (val) => `₱${val}`,
+        render: (val) => val,
       },
       { key: "dtOccur", label: "Created", align: "right" },
       {

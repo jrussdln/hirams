@@ -446,8 +446,8 @@ export default function JevViewPanel({
     return {
       balanced,
       text: balanced
-        ? `To and From are equal: To ₱${fmtPHP(toTotal)} = From ₱${fmtPHP(fromTotal)}`
-        : `To and From must be equal. To: ₱${fmtPHP(toTotal)} · From: ₱${fmtPHP(fromTotal)} · Difference: ₱${fmtPHP(
+        ? `To and From are equal: To ${fmtPHP(toTotal)} = From ${fmtPHP(fromTotal)}`
+        : `To and From must be equal. To: ${fmtPHP(toTotal)} · From: ${fmtPHP(fromTotal)} · Difference: ${fmtPHP(
             Math.abs(toTotal - fromTotal),
           )}`,
     };

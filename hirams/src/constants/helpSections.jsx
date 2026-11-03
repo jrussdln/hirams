@@ -4,7 +4,6 @@ import {
   Fullscreen,
   AccountCircleOutlined,
   MailOutline,
-  MenuBookOutlined,
   PointOfSaleOutlined,
   LocalShippingOutlined,
   Inventory2Outlined,
@@ -258,12 +257,6 @@ export const SECTIONS = [
     title: "Need more help?",
     kind: "links",
     items: [
-      {
-        title: "System documentation",
-        to: "/documentation",
-        icon: <MenuBookOutlined sx={{ fontSize: "0.95rem" }} />,
-        text: "The long-form guide: what each module is for and how the pieces fit together.",
-      },
       {
         title: "Contact the IT team",
         href: "mailto:support@hiramswholesale.com",

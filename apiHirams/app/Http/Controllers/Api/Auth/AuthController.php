@@ -66,9 +66,13 @@ class AuthController extends ApiController
 
         self::record([
             'nUserId'           => $user->nUserId,
-            'strTitle'          => 'Signed in',
-            'strNotification'   => 'You signed in to your account from '
-                . self::deviceLabel($request) . '.',
+            'strTitle'          => 'Successful login',
+            // Timestamp is NOT embedded here — tblnotifications.dtNotifiedAt
+            // carries it and the feed UI renders the full date on the row.
+            'strNotification'   => 'Successful login from '
+                . self::locationLabel($request)
+                . ' (' . $request->ip() . ') using '
+                . Str::limit((string) $request->userAgent(), 250),
             'cNotificationType' => 'I', // Info
             'cCategory'         => 'A', // auth
             'strData'           => self::deviceData($request),
@@ -167,6 +171,19 @@ class AuthController extends ApiController
     }
 
     // ── Auth notifications ───────────────────────────────────────────────────
+    /**
+     * The place the sign-in came from, shown in the login notification —
+     * "Successful login from Unknown (180.191.80.219) using …".
+     *
+     * No IP-to-location service is wired up yet, so every login reads
+     * "Unknown" until one is added; real IP + user agent still identify
+     * the session in strData and the message itself.
+     */
+    private static function locationLabel(Request $request): string
+    {
+        return 'Unknown';
+    }
+
     /**
      * A human-readable device label from the user agent —
      * "Chrome on Windows". Used directly in the notification text.

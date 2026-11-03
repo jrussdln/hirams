@@ -400,7 +400,7 @@ export const PRINT_PREVIEW_CONFIRM_STYLES = {
 };
 
 // ── Settings confirm dialogs (My Account tab) ────────────────────────────
-// Wired in pages/shared/settings/components/AccountPanel.jsx through
+// Wired in pages/utility/settings/components/AccountPanel.jsx through
 // SettingsConfirmationModal (pass style={SETTINGS_CONFIRM_STYLES[action]}).
 export const SETTINGS_CONFIRM_STYLES = {
   save_profile: {

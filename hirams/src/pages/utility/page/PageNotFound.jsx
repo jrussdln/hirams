@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+﻿import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate, useRouteError } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
-import getThemeColors from "../../utils/style/getThemeColors";
+import getThemeColors from "../../../utils/style/getThemeColors";
 
-// ── INLINE COLOR MAP - per-file useColors pattern ──────────────────
-// Decorative indigo→violet poster palette, held in the `decor` token group.
+// â”€â”€ INLINE COLOR MAP - per-file useColors pattern â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Decorative indigoâ†’violet poster palette, held in the `decor` token group.
 const useColors = (c) => ({
   pageBg: c.decor.pageBg,
   orbIndigo: c.decor.orbIndigo,
@@ -33,8 +33,9 @@ const useColors = (c) => ({
   footNote: c.gray.textMuted,
 });
 
-export default function RoutePermission() {
+export default function PageNotFound() {
   const navigate = useNavigate();
+  const error = useRouteError();
   const [mounted, setMounted] = useState(false);
 
   const theme = useTheme();
@@ -46,7 +47,10 @@ export default function RoutePermission() {
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    if (error) {
+      console.error("Route error:", error);
+    }
+  }, [error]);
 
   return (
     <div
@@ -194,9 +198,9 @@ export default function RoutePermission() {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="8" y1="11" x2="14" y2="11" />
             </svg>
           </div>
         </div>
@@ -217,7 +221,7 @@ export default function RoutePermission() {
             animation: "shimmer 3s linear infinite",
           }}
         >
-          Error 403 · Access Denied
+          Error 404 Â· Page Not Found
         </div>
 
         {/* Title */}
@@ -232,7 +236,7 @@ export default function RoutePermission() {
             letterSpacing: "-0.3px",
           }}
         >
-          Access Not Available
+          Page Not Available
         </h1>
 
         {/* Description */}
@@ -246,8 +250,8 @@ export default function RoutePermission() {
             fontWeight: 300,
           }}
         >
-          The page you're trying to access is not available for your current
-          login status or role.
+          The page you're trying to reach doesn't exist, may have been moved, or
+          the URL might be mistyped.
         </p>
 
         {/* Info chips */}
@@ -260,28 +264,26 @@ export default function RoutePermission() {
             margin: "24px 0 32px 0",
           }}
         >
-          {["Insufficient Permissions", "Role Restricted", "Auth Required"].map(
-            (tag, i) => (
-              <span
-                key={i}
-                style={{
-                  fontFamily: "'DM Sans', sans-serif",
-                  fontSize: "0.7rem",
-                  fontWeight: 500,
-                  color: colors.chipText,
-                  background: colors.chipBg,
-                  border: `1px solid ${colors.chipBorder}`,
-                  borderRadius: "99px",
-                  padding: "4px 12px",
-                  letterSpacing: "0.3px",
-                  animation: `fadeUp 0.5s ease forwards ${0.2 + i * 0.1}s`,
-                  opacity: 0,
-                }}
-              >
-                {tag}
-              </span>
-            ),
-          )}
+          {["Invalid URL", "Page Moved", "Not Found"].map((tag, i) => (
+            <span
+              key={i}
+              style={{
+                fontFamily: "'DM Sans', sans-serif",
+                fontSize: "0.7rem",
+                fontWeight: 500,
+                color: colors.chipText,
+                background: colors.chipBg,
+                border: `1px solid ${colors.chipBorder}`,
+                borderRadius: "99px",
+                padding: "4px 12px",
+                letterSpacing: "0.3px",
+                animation: `fadeUp 0.5s ease forwards ${0.2 + i * 0.1}s`,
+                opacity: 0,
+              }}
+            >
+              {tag}
+            </span>
+          ))}
         </div>
 
         {/* Divider */}
@@ -295,10 +297,9 @@ export default function RoutePermission() {
 
         {/* Button */}
         <button
+          className="go-back-btn"
           onClick={() => {
-            // "/" is the login route — there is no "/login" path, and the
-            // catch-all turns that into a 404.
-            navigate("/");
+            navigate(-1);
           }}
           style={{
             width: "100%",
@@ -316,7 +317,7 @@ export default function RoutePermission() {
             boxShadow: colors.btnShadow,
           }}
         >
-          ← Go Back / Login
+          â† Go Back
         </button>
 
         {/* Footer note */}
@@ -330,7 +331,8 @@ export default function RoutePermission() {
             fontWeight: 300,
           }}
         >
-          Contact your administrator if you believe this is an error.
+          If you followed a link to get here, let your administrator know so it
+          can be fixed.
         </p>
       </div>
     </div>

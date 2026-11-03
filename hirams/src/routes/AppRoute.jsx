@@ -12,7 +12,7 @@ import { useHeartbeat } from "../utils/auth/useHeartbeat.js";
 
 // ── Eager (needed for first paint / error handling) ─────────────────────────
 import Login from "../pages/auth/login";
-import PageNotFound from "../pages/utility-pages/PageNotFound.jsx";
+import PageNotFound from "../pages/utility/page/PageNotFound.jsx";
 
 const BASE_PATH = import.meta.env.MODE === "production" ? "/hirams" : "/";
 // import { UAParser } from "ua-parser-js";
@@ -36,7 +36,6 @@ const Register = lazyPage("/register");
 const ResetPassword = lazyPage("/reset-password");
 const Settings = lazyPage("/settings");
 const Dashboard = lazyPage("/dashboard");
-const Documentation = lazyPage("/documentation");
 const TransactionCanvas = lazyPage("/transaction-canvas"); //DONE - NV
 const TransactionPricing = lazyPage("/transaction-pricing"); //DONE - NV
 const TransactionPricingSet = lazyPage("/transaction-pricing-set"); //DONE - NV
@@ -214,7 +213,6 @@ export default function AppRoute() {
                     element: <Layout />,
                     children: [
                       { path: "/dashboard", element: <Dashboard /> },
-                      { path: "/documentation", element: <Documentation /> },
                       { path: "/help", element: <Help /> },
                       // Settings — open to every role (was Management-only
                       // /system-config).

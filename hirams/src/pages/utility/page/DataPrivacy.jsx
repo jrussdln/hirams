@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import {
   Accordion,
   AccordionDetails,
@@ -10,7 +10,7 @@ import {
 } from "@mui/material";
 import { ExpandMore, VerifiedUserOutlined } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import getThemeColors from "../../utils/style/getThemeColors";
+import getThemeColors from "../../../utils/style/getThemeColors";
 import {
   SYSTEM_NAME,
   SYSTEM_FULL_NAME,
@@ -20,9 +20,9 @@ import {
   termsPoints,
   privacyNotice,
   acceptanceNote,
-} from "../../constants/dataPrivacyText";
+} from "../../../constants/dataPrivacyText";
 
-// ── Component-specific color map: ONLY tokens this component uses ──
+// â”€â”€ Component-specific color map: ONLY tokens this component uses â”€â”€
 const useColors = (c) => ({
   pageBg: c.slate.outerBg,
   surface: c.slate.itemHeaderBg,
@@ -136,7 +136,7 @@ export default function DataPrivacy() {
         bgcolor: colors.pageBg,
       }}
     >
-      {/* ── Header ──────────────────────────────────────────────────── */}
+      {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Box
         component="header"
         sx={{
@@ -157,7 +157,14 @@ export default function DataPrivacy() {
             gap: 2,
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, minWidth: 0 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+              minWidth: 0,
+            }}
+          >
             <Box
               sx={{
                 width: 38,
@@ -208,7 +215,7 @@ export default function DataPrivacy() {
         </Box>
       </Box>
 
-      {/* ── Page container ──────────────────────────────────────────── */}
+      {/* â”€â”€ Page container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Box
         component="main"
         sx={{
@@ -244,7 +251,7 @@ export default function DataPrivacy() {
           </Typography>
         </Box>
 
-        {/* ── NPC registration seal (only when a number is configured) ── */}
+        {/* â”€â”€ NPC registration seal (only when a number is configured) â”€â”€ */}
         {hasRegistration && (
           <Box
             sx={{
@@ -303,12 +310,14 @@ export default function DataPrivacy() {
               >
                 NPC Registration No. {NPC_REGISTRATION.number}
               </Typography>
-              <Typography sx={bodySx}>{NPC_REGISTRATION.certificate}</Typography>
+              <Typography sx={bodySx}>
+                {NPC_REGISTRATION.certificate}
+              </Typography>
             </Box>
           </Box>
         )}
 
-        {/* ── Accordions ──────────────────────────────────────────────── */}
+        {/* â”€â”€ Accordions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <Accordion disableGutters sx={accordionSx}>
           <AccordionSummary
             expandIcon={<ExpandMore sx={{ color: colors.textPrimary }} />}
@@ -366,7 +375,7 @@ export default function DataPrivacy() {
         </Accordion>
       </Box>
 
-      {/* ── Footer ──────────────────────────────────────────────────── */}
+      {/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Box
         component="footer"
         sx={{

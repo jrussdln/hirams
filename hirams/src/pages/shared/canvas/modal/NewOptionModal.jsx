@@ -153,7 +153,13 @@ function NewOptionModal({
       setFormData({
         nSupplierId: editingOption.nSupplierId || "",
         quantity: editingOption.nQuantity || "",
-        uom: editingOption.strUOM || "",
+        // An add-on carries its OWN unit (editable when the UOM field
+        // shows); a normal option always uses the ITEM's UOM — so editing
+        // one that used to be an add-on reverts to the item's unit.
+        uom:
+          isAddOnLocked || editingOption.bAddOn
+            ? editingOption.strUOM || ""
+            : sourceItem?.uom ?? "",
         brand: editingOption.strBrand || "",
         model: editingOption.strModel || "",
         specs: editingOption.strSpecs || "",
@@ -174,7 +180,9 @@ function NewOptionModal({
         // reads ON and the option is an add-on.
         ...(isAddOnLocked ? { bAddOn: true, bIncluded: false } : null),
         quantity: sourceItem?.remainingQty ?? sourceItem?.qty ?? "",
-        uom: sourceItem?.uom ?? "",
+        // A locked add-on is a NEW extra — it types its own UOM, so the
+        // field starts empty instead of borrowing the item's unit.
+        uom: isAddOnLocked ? "" : sourceItem?.uom ?? "",
         specs: sourceItem?.specs ?? "",
       });
       setCalculatedEWT("");
@@ -265,7 +273,15 @@ function NewOptionModal({
       // It can never be neither — an option in neither list shows up
       // nowhere at all.
       if (name === "bAddOn") {
-        return { ...prev, bAddOn: checked, bIncluded: !checked };
+        return {
+          ...prev,
+          bAddOn: checked,
+          bIncluded: !checked,
+          // Add-On ON → the extra carries its own unit (the UOM field
+          // shows). Add-On OFF → it borrows the ITEM's unit and the
+          // field goes away.
+          uom: checked ? prev.uom || "" : sourceItem?.uom ?? "",
+        };
       }
       return { ...prev, [name]: checked };
     });
@@ -295,7 +311,11 @@ function NewOptionModal({
       nTransactionItemId: itemId,
       nSupplierId: formData.nSupplierId || null,
       quantity: Number(formData.quantity),
-      uom: formData.uom,
+      // A normal option never sends a typed UOM — it uses the item's own
+      // unit; only an add-on can carry the one it typed.
+      uom: formData.bAddOn
+        ? formData.uom
+        : sourceItem?.uom ?? formData.uom,
       brand: formData.brand || null,
       model: formData.model || null,
       specs: formData.specs || null,
@@ -405,14 +425,20 @@ function NewOptionModal({
       name: "quantity",
       label: "Quantity",
       type: "number",
-      xs: 4,
+      // Add-On ON: Quantity / UOM / Unit Price / EWT all share the first
+      // row (4 × xs3). Add-On OFF: back to the 3-field row (3 × xs4).
+      xs: formData.bAddOn ? 3 : 4,
       numberOnly: true,
     },
+    // The UOM field exists ONLY for add-ons — an extra carries its own
+    // unit (typed here). A normal option rides the ITEM's unit, so the
+    // field stays hidden and formData.uom holds the item's UOM.
+    ...(formData.bAddOn ? [{ name: "uom", label: "UOM", xs: 3 }] : []),
     {
       name: "unitPrice",
       label: "Unit Price",
       type: "peso",
-      xs: 4,
+      xs: formData.bAddOn ? 3 : 4,
       numberOnly: true,
     },
     {
@@ -420,7 +446,7 @@ function NewOptionModal({
       // the field only shows it and lets the user pick the type.
       name: "_ewtType",
       type: "custom",
-      xs: 4,
+      xs: formData.bAddOn ? 3 : 4,
       render: () => (
         <EwtTypeField
           value={formData.cEWTType}

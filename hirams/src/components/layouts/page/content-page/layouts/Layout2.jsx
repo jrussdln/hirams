@@ -38,7 +38,7 @@ import { useThemeMode } from "../../../../../hooks/useThemeMode";
 import getThemeColors from "../../../../../utils/style/getThemeColors";
 import BaseButton from "../../../../../components/ui/form/BaseButton";
 import AIChatbotWidget from "../../../../../components/ui/widget/AIChatBotWidget";
-import NotificationSidePanel from "../../../../../components/ui/widget/NotificationsSidePanel";
+import NotificationSidePanel from "../../../../../pages/utility/panel/NotificationsSidePanel";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import UpDownIndicatorWidget from "../../../../../components/ui/widget/UpDownIndicatorWidget";
@@ -462,7 +462,16 @@ const Layout2 = ({
                           }}
                         >
                           {/* ── Identity header ─────────────────────── */}
+                          {/* Clicking it opens Settings on the profile
+                              (My Account) tab, like the name/role would
+                              suggest. */}
                           <Box
+                            component="button"
+                            type="button"
+                            onClick={() => {
+                              setProfileOpen(false);
+                              navigate("/settings?tab=account");
+                            }}
                             sx={{
                               display: "flex",
                               alignItems: "center",
@@ -470,6 +479,21 @@ const Layout2 = ({
                               px: 0.75,
                               py: 0.75,
                               mb: 0.5,
+                              width: "100%",
+                              border: "none",
+                              borderRadius: 1.5,
+                              bgcolor: "transparent",
+                              textAlign: "left",
+                              fontFamily: "inherit",
+                              cursor: "pointer",
+                              transition: "background-color 0.15s",
+                              "&:hover": {
+                                bgcolor: colors.blueBg,
+                              },
+                              "&:focus-visible": {
+                                outline: `2px solid ${colors.blueText}`,
+                                outlineOffset: 1,
+                              },
                             }}
                           >
                             <Box

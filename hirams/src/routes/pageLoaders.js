@@ -17,13 +17,13 @@ const pageLoaders = {
   "/forgotPassword": () => import("../pages/auth/forgot-password"),
   "/register": () => import("../pages/auth/register"),
   "/reset-password": () => import("../pages/auth/reset-password"),
-  "/help": () => import("../pages/utility-pages/Help.jsx"),
+  "/help": () => import("../pages/utility/page/Help.jsx"),
+
   // Opened from the login consent banner in its own tab — public, no login.
-  "/data-privacy": () => import("../pages/utility-pages/DataPrivacy.jsx"),
+  "/data-privacy": () => import("../pages/utility/page/DataPrivacy.jsx"),
 
   // ── All roles ─────────────────────────────────────────────────────────
   "/dashboard": () => import("../pages/shared/overview/Dashboard.jsx"),
-  "/documentation": () => import("../pages/shared/documentation"),
   "/supplier": () => import("../pages/shared/supplier"),
   "/transaction": () => import("../pages/shared/transactions"),
   "/transaction-canvas": () => import("../pages/shared/canvas"),
@@ -63,7 +63,7 @@ const pageLoaders = {
   "/user": () => import("../pages/management/user"),
   "/company": () => import("../pages/management/company"),
   "/direct-cost": () => import("../pages/management/direct-cost"),
-  "/settings": () => import("../pages/shared/settings/index.jsx"),
+  "/settings": () => import("../pages/utility/settings/index.jsx"),
 };
 
 /**

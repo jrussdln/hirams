@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
 
@@ -12,6 +13,7 @@ const useColors = (c) => ({
 
 const SidebarHeader = ({ collapsed, forceExpanded = false }) => {
   const theme = useTheme();
+  const navigate = useNavigate();
   const isDark = theme.palette.mode === "dark";
 
   // ✅ Wired EXACTLY as PROMPT 1 specifies
@@ -23,10 +25,20 @@ const SidebarHeader = ({ collapsed, forceExpanded = false }) => {
 
   return (
     <div
-      className="flex items-center w-full px-0.5 py-0.5 h-9 gap-1"
+      className="flex items-center w-full px-0.5 py-0.5 h-9 gap-1 cursor-pointer select-none hover:opacity-80"
       style={{
         justifyContent: showFull ? "flex-start" : "center",
         transition: "all 0.3s ease-in-out",
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label="Go to dashboard"
+      onClick={() => navigate("/dashboard")}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          navigate("/dashboard");
+        }
       }}
     >
       <img

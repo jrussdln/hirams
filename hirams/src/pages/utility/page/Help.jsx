@@ -1,19 +1,19 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { Box, Collapse, Typography, useTheme } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowForwardOutlined,
   ChevronRightOutlined,
 } from "@mui/icons-material";
-import PageLayout from "../../components/layouts/page/content-page";
-import ContentHeaderStructure from "../../components/ui/structure/ContentHeaderStructure";
-import CustomSearchField from "../../components/ui/form/SearchField";
-import BaseButton from "../../components/ui/form/BaseButton";
-import getThemeColors from "../../utils/style/getThemeColors";
-import icons from "../../utils/style/iconFormatStyles";
-import { SECTIONS } from "../../constants/helpSections";
+import PageLayout from "../../../components/layouts/page/content-page";
+import ContentHeaderStructure from "../../../components/ui/structure/ContentHeaderStructure";
+import CustomSearchField from "../../../components/ui/form/SearchField";
+import BaseButton from "../../../components/ui/form/BaseButton";
+import getThemeColors from "../../../utils/style/getThemeColors";
+import icons from "../../../utils/style/iconFormatStyles";
+import { SECTIONS } from "../../../constants/helpSections";
 
-// ── Local Color Map — only tokens used in this component ──────────────
+// â”€â”€ Local Color Map â€” only tokens used in this component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const useColors = (c) => ({
   border: c.slate.border,
   surface: c.slate.itemHeaderBg,
@@ -32,10 +32,12 @@ const haystack = (item) =>
 
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// ── Match highlight ───────────────────────────────────────────────────
+// â”€â”€ Match highlight â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Highlight({ text, query, colors }) {
   if (!query) return <>{text}</>;
-  const parts = String(text).split(new RegExp(`(${escapeRegExp(query)})`, "ig"));
+  const parts = String(text).split(
+    new RegExp(`(${escapeRegExp(query)})`, "ig"),
+  );
   return (
     <>
       {parts.map((part, i) =>
@@ -60,7 +62,7 @@ function Highlight({ text, query, colors }) {
   );
 }
 
-// ── Content card ──────────────────────────────────────────────────────
+// â”€â”€ Content card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Panel({ icon, title, children, colors, onClick, query }) {
   const body = (
     <>
@@ -119,7 +121,7 @@ function Panel({ icon, title, children, colors, onClick, query }) {
     width: "100%",
     textAlign: "left",
     fontFamily: "inherit",
-    // A <button> resets these — put the panel's own look back.
+    // A <button> resets these â€” put the panel's own look back.
     background: colors.surface,
     border: `0.5px solid ${colors.border}`,
     borderLeft: `3px solid ${colors.blue.border}`,
@@ -128,7 +130,9 @@ function Panel({ icon, title, children, colors, onClick, query }) {
     cursor: onClick ? "pointer" : "default",
     transition: "border-color 0.15s, background 0.15s",
     ...(onClick
-      ? { "&:hover": { bgcolor: colors.blue.bg, borderColor: colors.blue.text } }
+      ? {
+          "&:hover": { bgcolor: colors.blue.bg, borderColor: colors.blue.text },
+        }
       : {}),
   };
 
@@ -141,8 +145,7 @@ function Panel({ icon, title, children, colors, onClick, query }) {
   );
 }
 
-
-// ── Sub-heading inside a topic ────────────────────────────────────────
+// â”€â”€ Sub-heading inside a topic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function BlockLabel({ children, colors }) {
   return (
     <Typography
@@ -168,7 +171,7 @@ export default function Help() {
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useMemo(() => useColors(base), [base]);
 
-  // ── Search + open/closed state ───────────────────────────────────────
+  // â”€â”€ Search + open/closed state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState({ start: true });
 
@@ -184,33 +187,41 @@ export default function Help() {
       const items = section.items.filter(
         (item) => titleMatches || haystack(item).includes(q),
       );
-      return { ...section, items, hidden: items.length === 0, hits: items.length };
+      return {
+        ...section,
+        items,
+        hidden: items.length === 0,
+        hits: items.length,
+      };
     });
     return list.filter((section) => !section.hidden);
   }, [q]);
 
   // While searching, every section that still has a hit opens itself and
   // the rest are hidden entirely. A section the reader has explicitly
-  // opened or closed keeps that choice — the search never fights them.
+  // opened or closed keeps that choice â€” the search never fights them.
   const isOpen = (id) => {
     const saved = open[id];
     if (saved !== undefined) return saved;
     return q ? true : id === "start" || id === "users";
   };
   const toggle = (id) =>
-    setOpen((prev) => ({ ...prev, [id]: !(id in prev ? prev[id] : isOpen(id)) }));
+    setOpen((prev) => ({
+      ...prev,
+      [id]: !(id in prev ? prev[id] : isOpen(id)),
+    }));
 
   const handleBack = () =>
     window.history.length > 1 ? navigate(-1) : navigate("/dashboard");
 
-  // ── Body of a section, by kind ───────────────────────────────────────
+  // â”€â”€ Body of a section, by kind â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const renderItems = (section) => {
     const { kind, items } = section;
 
     if (kind === "blocks") {
       // Consecutive items of the same type become one block, so the
       // paragraphs, capability cards, steps and role rungs each keep their
-      // own layout — and a search that leaves only one kind behind still
+      // own layout â€” and a search that leaves only one kind behind still
       // reads correctly (its sub-heading comes with it).
       const blocks = [];
       items.forEach((item) => {
@@ -275,7 +286,9 @@ export default function Help() {
               return (
                 <Box key={b}>
                   <BlockLabel colors={colors}>Highest to lowest</BlockLabel>
-                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  <Box
+                    sx={{ display: "flex", flexDirection: "column", gap: 1 }}
+                  >
                     {block.items.map((item, i) => (
                       <Box
                         key={i}
@@ -363,7 +376,11 @@ export default function Help() {
                             mb: item.sees ? 0.6 : 0,
                           }}
                         >
-                          <Highlight text={item.text} query={q} colors={colors} />
+                          <Highlight
+                            text={item.text}
+                            query={q}
+                            colors={colors}
+                          />
                         </Typography>
 
                         {item.sees && (
@@ -446,7 +463,9 @@ export default function Help() {
         {items.map((item, i) => (
           <Panel
             key={i}
-            icon={item.icon ?? <ArrowForwardOutlined sx={{ fontSize: "0.85rem" }} />}
+            icon={
+              item.icon ?? <ArrowForwardOutlined sx={{ fontSize: "0.85rem" }} />
+            }
             title={item.title}
             colors={colors}
             query={q}
@@ -478,9 +497,7 @@ export default function Help() {
         />
       }
     >
-
-
-      {/* ── Search bar ────────────────────────────────────────────── */}
+      {/* â”€â”€ Search bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <Box sx={{ mt: 0.5, mb: 1.25 }}>
         <CustomSearchField
           label="Search help"
@@ -490,7 +507,7 @@ export default function Help() {
         />
       </Box>
 
-      {/* ── Clear search (only while a search is active) ─────────── */}
+      {/* â”€â”€ Clear search (only while a search is active) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {q && (
         <Box
           sx={{
@@ -509,7 +526,7 @@ export default function Help() {
         </Box>
       )}
 
-      {/* ── Topics ────────────────────────────────────────────────── */}
+      {/* â”€â”€ Topics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {sections.length === 0 ? (
         <Box
           sx={{
@@ -531,7 +548,11 @@ export default function Help() {
             No results for "{query.trim()}"
           </Typography>
           <Typography
-            sx={{ fontSize: "0.68rem", color: colors.gray.textSecondary, mb: 1.5 }}
+            sx={{
+              fontSize: "0.68rem",
+              color: colors.gray.textSecondary,
+              mb: 1.5,
+            }}
           >
             Try "voucher", "fullscreen", "Enter" or "inventory".
           </Typography>
@@ -561,12 +582,10 @@ export default function Help() {
               <Box
                 key={section.id}
                 sx={{
-                  borderTop: idx
-                    ? `0.5px solid ${colors.border}`
-                    : "none",
+                  borderTop: idx ? `0.5px solid ${colors.border}` : "none",
                 }}
               >
-                {/* Topic header — click to hide / show its content */}
+                {/* Topic header â€” click to hide / show its content */}
                 <Box
                   component="button"
                   onClick={() => toggle(section.id)}
@@ -619,7 +638,9 @@ export default function Help() {
                       lineHeight: 1.4,
                     }}
                   >
-                    {q ? `${section.hits} hit${section.hits === 1 ? "" : "s"}` : ""}
+                    {q
+                      ? `${section.hits} hit${section.hits === 1 ? "" : "s"}`
+                      : ""}
                   </Box>
                 </Box>
 
