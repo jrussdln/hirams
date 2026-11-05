@@ -1,20 +1,26 @@
 import React from "react";
-import { useTheme, Box, Typography, Paper } from "@mui/material";
+import {
+  useTheme,
+  useMediaQuery,
+  Box,
+  Typography,
+  Paper,
+  Tooltip,
+} from "@mui/material";
 import {
   Settings,
-  HelpOutline,
   PersonOutline as Person,
   History,
   Security,
   Tune,
   Storage as StorageIcon,
 } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
 import PageLayout from "../../../components/layouts/page/content-page";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import AccountPanel from "./components/AccountPanel.jsx";
 import StoragePanel from "./components/StoragePanel.jsx";
-import BaseButton from "../../../components/ui/form/BaseButton.jsx";
+import GeneralPanel from "./components/GeneralPanel.jsx";
+
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — pulls ONLY tokens THIS component actually uses
@@ -67,7 +73,6 @@ export default function SettingsView({
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = React.useMemo(() => useColors(base), [base]);
-  const navigate = useNavigate();
 
   const tabItems = [
     { label: "General", value: "general", icon: <Settings fontSize="small" /> },
@@ -78,11 +83,13 @@ export default function SettingsView({
     { label: "Storage", value: "storage", icon: <StorageIcon fontSize="small" /> },
   ];
 
+  const isSmall = useMediaQuery(theme.breakpoints.down("lg"));
   const panelHeight = "calc(100vh - 100px)";
 
   return (
     <PageLayout title="Settings" subtitle="Configure system-wide settings">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+      {/* Icon rail on small screens; full labelled sidebar from lg up */}
+      <div className="grid grid-cols-[auto_1fr] lg:grid-cols-12 gap-2 lg:gap-5 items-stretch">
         {/* Left Sidebar Navigation */}
         <div className="lg:col-span-3 flex flex-col">
           <Paper
@@ -93,26 +100,30 @@ export default function SettingsView({
               boxShadow: colors.shadow,
               borderRadius: colors.rounded,
               overflow: "hidden",
-              p: 1.5,
+              p: { xs: 0.75, lg: 1.5 },
               display: "flex",
               flexDirection: "column",
               gap: 0.5,
-              minHeight: panelHeight,
-              height: panelHeight,
+              alignItems: { xs: "center", lg: "stretch" },
+              width: { xs: "fit-content", lg: "auto" },
+              minHeight: { xs: "auto", lg: panelHeight },
+              height: { xs: "auto", lg: panelHeight },
             }}
           >
             {tabItems.map((item) => {
               const isActive = tab === item.value;
-              return (
+              const tabButton = (
                 <Box
-                  key={item.value}
                   onClick={(e) => handleTabChange(e, item.value)}
                   sx={{
                     display: "flex",
                     alignItems: "center",
+                    justifyContent: { xs: "center", lg: "flex-start" },
                     gap: 1.5,
-                    px: 2,
-                    py: 1.25,
+                    px: { xs: 1.25, lg: 2 },
+                    py: { xs: 1.25, lg: 1.25 },
+                    width: { xs: 48, lg: "auto" },
+                    height: { xs: 48, lg: "auto" },
                     borderRadius: 1.5,
                     cursor: "pointer",
                     backgroundColor: isActive ? colors.activeBg : "transparent",
@@ -129,17 +140,38 @@ export default function SettingsView({
                   <Box sx={{ display: "flex", alignItems: "center", color: isActive ? colors.activeText : "inherit" }}>
                     {item.icon}
                   </Box>
-                  <Typography sx={{ fontSize: 13, fontWeight: "inherit", color: "inherit" }}>
+                  <Typography
+                    sx={{
+                      display: { xs: "none", lg: "block" },
+                      fontSize: 13,
+                      fontWeight: "inherit",
+                      color: "inherit",
+                    }}
+                  >
                     {item.label}
                   </Typography>
                 </Box>
+              );
+
+              // Icon-only on small screens — the tooltip carries the label there.
+              return isSmall ? (
+                <Tooltip
+                  key={item.value}
+                  title={item.label}
+                  placement="right"
+                  arrow
+                >
+                  {tabButton}
+                </Tooltip>
+              ) : (
+                <React.Fragment key={item.value}>{tabButton}</React.Fragment>
               );
             })}
           </Paper>
         </div>
 
         {/* Right Content Area */}
-        <div className="lg:col-span-9 flex flex-col">
+        <div className="lg:col-span-9 flex flex-col min-w-0">
           <Paper
             elevation={0}
             sx={{
@@ -157,53 +189,7 @@ export default function SettingsView({
             <Box sx={{ flexGrow: 1, overflowY: "auto", minHeight: 0 }}>
               {tab === "account" && <AccountPanel />}
               {tab === "storage" && <StoragePanel />}
-              {tab === "general" && (
-                <Box sx={{ p: 3 }}>
-                  <ComingSoonPanel colors={colors} label="General" />
-                  {/* Help & Support Context Container */}
-                  <section
-                    className="mt-6 p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-                    style={{
-                      backgroundColor: colors.cardBg,
-                      border: `1px solid ${colors.border}`,
-                      boxShadow: colors.shadow,
-                      borderRadius: colors.rounded,
-                    }}
-                  >
-                    <div className="flex items-start gap-3.5">
-                      <div
-                        className="p-2.5 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{
-                          backgroundColor: base.blue?.bg || "rgba(37,99,235,0.1)",
-                          color: base.blue?.text || "#2563EB",
-                        }}
-                      >
-                        <HelpOutline sx={{ fontSize: 22 }} />
-                      </div>
-                      <div>
-                        <h3
-                          className="text-[14px] font-semibold mb-0.5"
-                          style={{ color: colors.textPrimary }}
-                        >
-                          Help & Support Center
-                        </h3>
-                        <p
-                          className="text-[12px] leading-relaxed max-w-2xl"
-                          style={{ color: colors.textSecondary }}
-                        >
-                          Need assistance with system workflows, user roles, or troubleshooting? Access documentation, guides, and support resources to help you navigate HIRAMS efficiently.
-                        </p>
-                      </div>
-                    </div>
-                    <BaseButton
-                      label="View Documentation"
-                      onClick={() => navigate("/help")}
-                      variant="outlined"
-                      size="small"
-                    />
-                  </section>
-                </Box>
-              )}
+              {tab === "general" && <GeneralPanel />}
               {tab === "users" && (
                 <ComingSoonPanel colors={colors} label="User Activities" />
               )}

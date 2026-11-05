@@ -111,6 +111,34 @@ class AuthNotificationService
     }
 
     /**
+     * "Signed out by Management" — posted to every user whose session the
+     * force sign-out ended. Security type, auth category; the request is
+     * the management user's own (its IP is recorded, not the victim's
+     * device — that session is already dead).
+     */
+    public function recordForceLogout(User $user, User $by, Request $request): void
+    {
+        $name = trim((string) ($by->strNickName ?? ''))
+            ?: trim(((string) ($by->strFName ?? '')) . ' ' . ((string) ($by->strLName ?? '')))
+            ?: 'Management';
+
+        $this->record([
+            'nUserId'           => $user->nUserId,
+            'strTitle'          => 'Signed out by Management',
+            'strNotification'   => 'Your session was signed out by Management ('
+                . $name . '). Please sign back in — if you were expecting it, no action is needed.',
+            'cNotificationType' => 'S', // Security
+            'cCategory'         => 'A', // auth
+            'strData'           => [
+                'forcedBy'    => $name,
+                'forcedById'  => $by->nUserId,
+                'forcedFromIp' => $request->ip(),
+            ],
+            'dtNotifiedAt'      => now(),
+        ]);
+    }
+
+    /**
      * The forgot-password page has NO signed-in session, so this row is
      * only visible once the user signs back in — it documents that the
      * reset email left the system, matching the link's token TTL.

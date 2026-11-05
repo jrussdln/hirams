@@ -79,6 +79,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
     // ── AUTH ────────────────────────────────────────────────
     Route::post('auth/verify-password', [AuthController::class, 'verifyPassword']);
     Route::post('logout', [AuthController::class, 'logout']);
+    Route::post('auth/logout-all', [AuthController::class, 'logoutAll']);
     // Presence: the open tab proves it's alive; the closing tab says bye.
     Route::post('auth/heartbeat', [AuthController::class, 'heartbeat']);
     Route::post('auth/offline', [AuthController::class, 'goOffline']);

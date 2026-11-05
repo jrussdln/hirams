@@ -112,6 +112,57 @@ class AuthController extends ApiController
         return response()->json(['success' => true, 'message' => 'Logged out successfully']);
     }
 
+    // ── Force sign-out ───────────────────────────────────────────────────────
+    /**
+     * POST /auth/logout-all — management only.
+     *
+     * Revokes the Sanctum token of every user currently marked online
+     * (bIsActive = 0), flips them offline and broadcasts status_changed so
+     * the user lists live-update. The caller's own session is kept — the
+     * management user pressing the button is not kicked.
+     *
+     * Returns the number of sessions that were ended.
+     */
+    public function logoutAll(Request $request): JsonResponse
+    {
+        // The same two user types the client gates this on: the first two
+        // keys of config('mappings.user_types') (e.g. Management, General Manager).
+        $types = array_keys(config('mappings.user_types', []));
+        $managementTypes = array_slice($types, 0, 2);
+        $callerType = (string) ($request->user()->cUserType ?? '');
+        if (!in_array($callerType, $managementTypes, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only management can log out all online users.',
+            ], 403);
+        }
+
+        $online = User::where('bIsActive', 0)
+            ->where('nUserId', '!=', $request->user()->nUserId)
+            ->get();
+
+        $by = $request->user();
+        foreach ($online as $user) {
+            // A Sanctum token stands on its own, so removing it is what
+            // actually ends the session — the client is kicked to the
+            // login page on its next API call (401).
+            $user->tokens()->delete();
+            $user->update([
+                'bIsActive'  => 1,
+                'dtLoggedIn' => now(),
+            ]);
+            // They find out why they were suddenly signed out — the row is
+            // in their feed, waiting for them at the next sign-in.
+            $this->notifications->recordForceLogout($user, $by, $request);
+            broadcast(new UserUpdated('status_changed', $user->nUserId))->toOthers();
+        }
+
+        return response()->json([
+            'success' => true,
+            'count'   => $online->count(),
+        ]);
+    }
+
     // ── Presence (heartbeat) ─────────────────────────────────────────────────
     /**
      * POST /auth/heartbeat — the browser pings this every 30s while the

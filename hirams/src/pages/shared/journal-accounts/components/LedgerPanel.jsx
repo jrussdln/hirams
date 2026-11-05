@@ -681,6 +681,8 @@ function LedgerPanel({
     return f ? `From ${f}` : `To ${t}`;
   }, [dateFilterActive, range]);
 
+
+
   // Rebuild the linked subtree from the FULL account list so an active search
   // on the page can't hide any of the account's links from this report.
   const children = useMemo(() => {
@@ -1006,9 +1008,9 @@ function LedgerPanel({
               </Box>
             </Box>
           </Box>
-              {/* All-time totals — the date window filters the entry rows
-                  below, never these numbers. A zero total is not worth
-                  showing — "Total: 0.00" only adds noise. */}
+          {/* All-time totals — the date window filters the entry rows
+              below, never these numbers. A zero total is not worth
+              showing — "Total: 0.00" only adds noise. */}
               {showHeaderTotals &&
                 (() => {
                   const { from, to, net } = grandTotalsById[account?.id] ?? {
@@ -1032,13 +1034,13 @@ function LedgerPanel({
                         position: "absolute",
                         top: 0,
                         bottom: 0,
-                        // Pulled well left of the strict column mirror — the
-                        // figures group sits toward the middle of the banner.
+                        // The overlay ends at the banner's own inset — the
+                        // date chip below is the last element, flush right.
                         left: "0px",
-                        right: "49px",
+                        right: "10px",
                         display: "flex",
                         alignItems: "stretch",
-                        gap: 1,
+                        gap: 0.25,
                         pointerEvents: "none",
                       }}
                     >
@@ -1093,11 +1095,58 @@ function LedgerPanel({
                           </Typography>
                         </Box>
                       ))}
-                      {/* The Transfer column — present only when the table
-                          below has one (finance's read drops that column). */}
-                      {!!handleTransferEntry && (
-                        <Box sx={{ flex: "0.9 1 0", minWidth: 0 }} />
-                      )}
+                      {/* Date window — right after the totals. The overlay
+                          is pointer-events: none, so the chip opts back in. */}
+                      <Box
+                        component={onEditRange ? "button" : "div"}
+                        type={onEditRange ? "button" : undefined}
+                        onClick={onEditRange ?? undefined}
+                        title={
+                          onEditRange
+                            ? `Change the date range of this ledger (${rangeLabel})`
+                            : `Date range of this ledger (${rangeLabel})`
+                        }
+                        aria-label={onEditRange ? "Change date range" : undefined}
+                        sx={{
+                          alignSelf: "center",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          px: 0.9,
+                          borderRadius: "7px",
+                          height: 32,
+                          fontFamily: "inherit",
+                          textAlign: "center",
+                          cursor: onEditRange ? "pointer" : "default",
+                          border: `1px solid ${dateFilterActive ? colors.blue.border : colors.border}`,
+                          background: dateFilterActive ? colors.blue.bg : colors.inputBg,
+                          color: dateFilterActive ? colors.blue.text : colors.gray.sec,
+                          fontSize: "0.7rem",
+                          fontWeight: 600,
+                          lineHeight: 1.3,
+                          whiteSpace: "nowrap",
+                          flexShrink: 0,
+                          ml: 1,
+                          pointerEvents: "auto",
+                          ...(onEditRange && {
+                            transition:
+                              "border-color 0.15s ease, box-shadow 0.15s ease",
+                            "&:hover": {
+                              borderColor: colors.blue.border,
+                              boxShadow: `0 0 0 2px ${colors.blue.bg}`,
+                            },
+                            "&:focus-visible": {
+                              outline: "none",
+                              borderColor: colors.blue.border,
+                            },
+                          }),
+                        }}
+                      >
+                        <EventOutlined
+                          sx={{ fontSize: "0.95rem", color: colors.gray.muted }}
+                        />
+                        {rangeLabel}
+                      </Box>
                     </Box>
                   );
                 })()}
@@ -1216,57 +1265,6 @@ function LedgerPanel({
                     "::placeholder": { color: colors.gray.muted },
                   }}
                 />
-              </Box>
-
-              {/* Date window chosen in LedgerFilterModal — clicking the
-                  chip reopens that same modal to change the range in place. */}
-              <Box
-                component={onEditRange ? "button" : "div"}
-                type={onEditRange ? "button" : undefined}
-                onClick={onEditRange ?? undefined}
-                title={
-                  onEditRange
-                    ? "Change the date range of this ledger"
-                    : "Date range of this ledger"
-                }
-                aria-label={onEditRange ? "Change date range" : undefined}
-                sx={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 0.5,
-                  px: 0.9,
-                  borderRadius: "7px",
-                  height: 32,
-                  fontFamily: "inherit",
-                  textAlign: "center",
-                  cursor: onEditRange ? "pointer" : "default",
-                  border: `1px solid ${dateFilterActive ? colors.blue.border : colors.border}`,
-                  background: dateFilterActive
-                    ? colors.blue.bg
-                    : colors.inputBg,
-                  color: dateFilterActive ? colors.blue.text : colors.gray.sec,
-                  fontSize: "0.7rem",
-                  fontWeight: 600,
-                  lineHeight: 1.3,
-                  whiteSpace: "nowrap",
-                  ...(onEditRange && {
-                    transition:
-                      "border-color 0.15s ease, box-shadow 0.15s ease",
-                    "&:hover": {
-                      borderColor: colors.blue.border,
-                      boxShadow: `0 0 0 2px ${colors.blue.bg}`,
-                    },
-                    "&:focus-visible": {
-                      outline: "none",
-                      borderColor: colors.blue.border,
-                    },
-                  }),
-                }}
-              >
-                <EventOutlined
-                  sx={{ fontSize: "0.95rem", color: colors.gray.muted }}
-                />
-                {rangeLabel}
               </Box>
 
               <Box

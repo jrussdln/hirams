@@ -14,6 +14,7 @@ import {
   PictureAsPdfOutlined,
   DeleteSweepOutlined,
   CleaningServicesOutlined,
+  GroupRemoveOutlined,
 } from "@mui/icons-material";
 
 // ── Shared color variants ─────────────────────────────────────────────────
@@ -434,6 +435,15 @@ export const SETTINGS_CONFIRM_STYLES = {
     title: "Clear App Caches?",
     desc: "This removes cached lists and temporary workspace data. Your login session stays intact.",
     confirmLabel: "Yes, Clear Caches",
+  },
+  // Settings > General — management only: ends every other online session;
+  // the management user pressing the button keeps their own.
+  force_logout_all: {
+    variant: "red",
+    Icon: GroupRemoveOutlined,
+    title: "Sign Out All Online Users?",
+    desc: "Every user currently online will be signed out immediately and will need to log back in. Your own session stays active.",
+    confirmLabel: "Yes, Sign Out All",
   },
   // StoragePanel — the wipe kills the login session too; the panel overrides
   // title / desc with the selected storage's label (Local / Session).
