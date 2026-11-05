@@ -2,22 +2,40 @@
 
 namespace App\Http\Controllers\Api\Auth;
 
-
-use App\Services\Notifications\MailService;
-use App\Events\NotificationUpdated;
+use App\Events\UserUpdated;
 use App\Http\Controllers\Api\ApiController;
-use App\Models\Notification;
 use App\Models\User;
+use App\Services\Notifications\AuthNotificationService;
+use App\Services\Auth\PasswordResetService;
+use App\Services\Auth\RegistrationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Str;
-use Illuminate\Database\QueryException;
-use Exception;
-use App\Events\UserUpdated;
 
+/**
+ * Thin HTTP layer for the auth endpoints: it validates the request
+ * shape, delegates the work to the auth services, and maps the result
+ * to a response. All real behaviour lives in app/Services/Auth:
+ *
+ * - AuthNotificationService — tblnotifications rows for every auth
+ *   event (login / failed attempt / sign-out / reset link) plus the
+ *   device fingerprint phrasing and the 3-failures streak.
+ * - PasswordResetService    — reset tokens in cache, the reset mail and
+ *   the password write.
+ * - RegistrationService     — the OTP flow and account creation.
+ */
 class AuthController extends ApiController
 {
+    public function __construct(
+        private readonly AuthNotificationService $notifications,
+        private readonly PasswordResetService $passwordReset,
+        private readonly RegistrationService $registration,
+    ) {}
+
+    /**
+     * POST /auth/login
+     * Body: { strUserName, strPassword }
+     */
     public function login(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -38,16 +56,9 @@ class AuthController extends ApiController
         }
 
         if (!Hash::check($validated['strPassword'], $user->strPassword)) {
-            self::record([
-                'nUserId'           => $user->nUserId,
-                'strTitle'          => 'Failed sign-in attempt',
-                'strNotification'   => 'There was a failed sign-in attempt on your account from '
-                    . self::deviceLabel($request) . '.',
-                'cNotificationType' => 'S', // Security
-                'cCategory'         => 'A', // auth
-                'strData'           => self::deviceData($request),
-                'dtNotifiedAt'      => now(),
-            ]);
+            // Records the per-attempt row, counts the consecutive-failure
+            // streak (alerting once every 3), and never throws.
+            $this->notifications->recordFailedAttempt($user, $request);
 
             return response()->json(['success' => false, 'message' => 'password_error'], 401);
         }
@@ -55,7 +66,7 @@ class AuthController extends ApiController
         // Multi-device sessions: a new login mints a NEW token and must
         // NOT revoke the tokens of other devices that are still signed
         // in. (Password reset + account deactivation still revoke all.)
-        $token = $user->createToken(self::deviceLabel($request))->plainTextToken;
+        $token = $user->createToken($this->notifications->deviceLabel($request))->plainTextToken;
 
         $user->update([
             'bIsActive'  => 0,
@@ -64,20 +75,8 @@ class AuthController extends ApiController
         ]);
         broadcast(new UserUpdated('status_changed', $user->nUserId))->toOthers();
 
-        self::record([
-            'nUserId'           => $user->nUserId,
-            'strTitle'          => 'Successful login',
-            // Timestamp is NOT embedded here — tblnotifications.dtNotifiedAt
-            // carries it and the feed UI renders the full date on the row.
-            'strNotification'   => 'Successful login from '
-                . self::locationLabel($request)
-                . ' (' . $request->ip() . ') using '
-                . Str::limit((string) $request->userAgent(), 250),
-            'cNotificationType' => 'I', // Info
-            'cCategory'         => 'A', // auth
-            'strData'           => self::deviceData($request),
-            'dtNotifiedAt'      => now(),
-        ]);
+        // Posts the "Successful login" row and clears the failure streak.
+        $this->notifications->recordSuccessfulLogin($user, $request);
 
         return response()->json([
             'success' => true,
@@ -86,6 +85,10 @@ class AuthController extends ApiController
         ]);
     }
 
+    /**
+     * POST /auth/logout
+     * Body: { nUserId }
+     */
     public function logout(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -103,16 +106,7 @@ class AuthController extends ApiController
             ]);
             broadcast(new UserUpdated('status_changed', $user->nUserId))->toOthers();
 
-            self::record([
-                'nUserId'           => $user->nUserId,
-                'strTitle'          => 'Signed out',
-                'strNotification'   => 'You signed out of your account from '
-                    . self::deviceLabel($request) . '.',
-                'cNotificationType' => 'I', // Info
-                'cCategory'         => 'A', // auth
-                'strData'           => self::deviceData($request),
-                'dtNotifiedAt'      => now(),
-            ]);
+            $this->notifications->recordSignedOut($user, $request);
         }
 
         return response()->json(['success' => true, 'message' => 'Logged out successfully']);
@@ -170,83 +164,12 @@ class AuthController extends ApiController
         return response()->json(['success' => true]);
     }
 
-    // ── Auth notifications ───────────────────────────────────────────────────
+    // ── Checks ───────────────────────────────────────────────────────────────
     /**
-     * The place the sign-in came from, shown in the login notification —
-     * "Successful login from Unknown (180.191.80.219) using …".
-     *
-     * No IP-to-location service is wired up yet, so every login reads
-     * "Unknown" until one is added; real IP + user agent still identify
-     * the session in strData and the message itself.
+     * POST /auth/verify-password — re-entry confirmation for sensitive
+     * actions (used by the settings Account tab).
+     * Body: { strPassword }
      */
-    private static function locationLabel(Request $request): string
-    {
-        return 'Unknown';
-    }
-
-    /**
-     * A human-readable device label from the user agent —
-     * "Chrome on Windows". Used directly in the notification text.
-     */
-    private static function deviceLabel(Request $request): string
-    {
-        $ua = (string) $request->userAgent();
-
-        $browser = match (true) {
-            str_contains($ua, 'Edg/') || str_contains($ua, 'Edge') => 'Edge',
-            str_contains($ua, 'OPR/') || str_contains($ua, 'Opera') => 'Opera',
-            str_contains($ua, 'Chrome') => 'Chrome',
-            str_contains($ua, 'Firefox') => 'Firefox',
-            str_contains($ua, 'Safari') => 'Safari',
-            default => 'Browser',
-        };
-
-        $os = match (true) {
-            str_contains($ua, 'Windows') => 'Windows',
-            str_contains($ua, 'Android') => 'Android',
-            str_contains($ua, 'iPhone') || str_contains($ua, 'iPad') => 'iOS',
-            str_contains($ua, 'Mac OS X') || str_contains($ua, 'Macintosh') => 'macOS',
-            str_contains($ua, 'Linux') => 'Linux',
-            default => 'an unknown device',
-        };
-
-        return $os === 'an unknown device' ? $os : "{$browser} on {$os}";
-    }
-
-    /**
-     * The flexible device fingerprint stored beside every auth event.
-     * Kept short so it always fits the longtext column even when a
-     * browser sends an unusually long UA string.
-     */
-    private static function deviceData(Request $request): array
-    {
-        return [
-            'ip'     => $request->ip(),
-            'device' => Str::limit((string) $request->userAgent(), 250),
-            'label'  => self::deviceLabel($request),
-        ];
-    }
-
-    /**
-     * Best-effort notification insert — an auth event already happened,
-     * so a failed write (or a dead broadcaster) must never break the
-     * response. Failures land in the log via report(). The row is
-     * broadcast so every other signed-in device updates its badge live.
-     */
-    private static function record(array $attributes): void
-    {
-        try {
-            $notification = Notification::create($attributes);
-            broadcast(new NotificationUpdated(
-                'created',
-                $notification->nUserId,
-                $notification->toArray(),
-            ));
-        } catch (Exception $e) {
-            report($e);
-        }
-    }
-
     public function verifyPassword(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -268,6 +191,10 @@ class AuthController extends ApiController
         ]);
     }
 
+    /**
+     * POST /auth/check-username — availability check for the register form.
+     * Body: { strUserName }
+     */
     public function checkUsername(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -281,6 +208,11 @@ class AuthController extends ApiController
         return response()->json(['exists' => $exists]);
     }
 
+    // ── Password reset ───────────────────────────────────────────────────────
+    /**
+     * POST /auth/forgot-password — email a reset link.
+     * Body: { strUserName, strEmail }
+     */
     public function forgotPassword(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -288,52 +220,35 @@ class AuthController extends ApiController
             'strEmail'    => 'required|email|max:100',
         ]);
 
-        $user = User::whereRaw('BINARY strUserName = ?', [$validated['strUserName']])
-            ->where('strEmail', $validated['strEmail'])
-            ->where('cStatus', 'A')
-            ->first();
+        $result = $this->passwordReset->forgotPassword(
+            $validated['strUserName'],
+            $validated['strEmail'],
+        );
 
-        if (!$user) {
-            return response()->json([
-                'message' => 'This email is not registered to the provided username.',
-            ], 404);
-        }
-
-        $token = Str::random(64);
-        cache()->put("password_reset_{$token}", $user->nUserId, now()->addMinutes(60));
-
-        $resetUrl = config('app.frontend_url')
-            . '/reset-password?token=' . $token
-            . '&username=' . urlencode($user->strUserName);
-
-        $sent = app(MailService::class)->forgotPassword($user, $resetUrl);
-
-        if (!$sent) {
-            return response()->json([
-                'message' => 'Failed to send reset email. Please try again.',
-            ], 500);
-        }
-
-        return response()->json([
-            'message' => 'Password reset link sent to your email.',
-        ]);
+        return response()->json(['message' => $result['message']], $result['status']);
     }
 
+    /**
+     * POST /auth/validate-reset-token — page-load check for reset-password.
+     * Body: { token }
+     */
     public function validateResetToken(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'token' => 'required|string',
         ]);
 
-        $userId = cache()->get("password_reset_{$validated['token']}");
-
-        if (!$userId) {
+        if (!$this->passwordReset->validateResetToken($validated['token'])) {
             return response()->json(['valid' => false, 'message' => 'Token is invalid or expired.'], 400);
         }
 
         return response()->json(['valid' => true]);
     }
 
+    /**
+     * POST /auth/reset-password — consume the token and set the password.
+     * Body: { token, strPassword, strPassword_confirmation }
+     */
     public function resetPassword(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -341,25 +256,15 @@ class AuthController extends ApiController
             'strPassword'  => 'required|string|min:6|confirmed',
         ]);
 
-        $userId = cache()->get("password_reset_{$validated['token']}");
+        $result = $this->passwordReset->resetPassword(
+            $validated['token'],
+            $validated['strPassword'],
+        );
 
-        if (!$userId) {
-            return response()->json(['message' => 'This reset link is invalid or has expired.'], 400);
-        }
-
-        $user = User::find($userId);
-        if (!$user) {
-            return response()->json(['message' => 'User not found.'], 404);
-        }
-
-        $user->update(['strPassword' => Hash::make($validated['strPassword'])]);
-        $user->tokens()->delete();
-        cache()->forget("password_reset_{$validated['token']}");
-
-        return response()->json(['message' => 'Password has been reset successfully.']);
+        return response()->json(['message' => $result['message']], $result['status']);
     }
 
-    // ── Register ──────────────────────────────────────────────────────────────
+    // ── Register ─────────────────────────────────────────────────────────────
     /**
      * Self-registration used by the public register page.
      *
@@ -400,71 +305,21 @@ class AuthController extends ApiController
             'otp.size'             => 'Verification code must be 6 digits.',
         ]);
 
-        $email     = $validated['strEmail'];
-        $cacheKey  = "reg_otp_{$email}";
-        $storedOtp = cache()->get($cacheKey);
+        $result = $this->registration->register($validated);
 
-        if (!$storedOtp) {
-            return response()->json([
-                'message' => 'OTP has expired. Please request a new one.',
-            ], 422);
-        }
-
-        if ($storedOtp !== $validated['otp']) {
-            return response()->json([
-                'message' => 'Invalid OTP. Please try again.',
-            ], 422);
-        }
-
-        // Duplicate checks run before the OTP is consumed so a retry with the
-        // same code still works after fixing the details.
-        if (User::whereRaw('BINARY strUserName = ?', [$validated['strUserName']])->exists()) {
-            return response()->json(['message' => 'This username already exists.'], 409);
-        }
-
-        if (User::where('strEmail', $email)->exists()) {
-            return response()->json(['message' => 'This email already exists.'], 409);
-        }
-
-        // Consume OTP so it cannot be reused.
-        cache()->forget($cacheKey);
-
-        try {
-            $user = User::create([
-                'strFName'    => $validated['strFName'],
-                'strMName'    => $validated['strMName'] ?? '',
-                'strLName'    => $validated['strLName'],
-                'strNickName' => $validated['strNickName'] ?? '',
-                'cSex'        => $validated['cSex'],
-                'strPhoneNo'  => $validated['strPhoneNo'] ?? '',
-                'strEmail'    => $email,
-                'strUserName' => $validated['strUserName'],
-                'strPassword' => Hash::make($validated['strPassword']),
-                'cUserType'   => 'V',
-                'cStatus'     => 'P', // status_user: For Approval
-            ]);
-        } catch (QueryException $e) {
-            return response()->json(['message' => 'This username or email already exists.'], 409);
-        }
-
-        // Broadcasting is best-effort — a Pusher hiccup must not fail a
-        // registration whose row was already written.
-        try {
-            broadcast(new UserUpdated('created', $user->nUserId))->toOthers();
-        } catch (Exception $e) {
-            report($e);
+        if (!$result['ok']) {
+            return response()->json(['message' => $result['message']], $result['status']);
         }
 
         return response()->json([
-            'message' => __('messages.create_success', ['name' => 'User']),
-            'user'    => $user,
-        ], 201);
+            'message' => $result['message'],
+            'user'    => $result['user'],
+        ], $result['status']);
     }
 
     // ── OTP: Send ─────────────────────────────────────────────────────────────
     /**
-     * Generate a 6-digit OTP, store it in cache keyed by email,
-     * and send it via email. Called during registration step 2 → 3.
+     * Email a 6-digit OTP. Called during registration step 2 → 3.
      *
      * POST /auth/send-otp
      * Body: { strEmail, strUserName }
@@ -476,26 +331,9 @@ class AuthController extends ApiController
             'strUserName' => 'nullable|string|max:50',
         ]);
 
-        $email = $validated['strEmail'];
+        $result = $this->registration->sendOtp($validated['strEmail']);
 
-        // Generate a cryptographically random 6-digit OTP
-        $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-
-        // Store OTP in cache for 10 minutes, keyed by email
-        // Format: "reg_otp_{email}" → otp string
-        cache()->put("reg_otp_{$email}", $otp, now()->addMinutes(10));
-
-        $sent = app(MailService::class)->sendOtp($email, $otp);
-
-        if (!$sent) {
-            return response()->json([
-                'message' => 'Failed to send OTP. Please try again.',
-            ], 500);
-        }
-
-        return response()->json([
-            'message' => 'OTP sent successfully.',
-        ]);
+        return response()->json(['message' => $result['message']], $result['status']);
     }
 
     // ── OTP: Verify ───────────────────────────────────────────────────────────
@@ -512,30 +350,11 @@ class AuthController extends ApiController
             'otp'      => 'required|string|size:6',
         ]);
 
-        $email      = $validated['strEmail'];
-        $cacheKey   = "reg_otp_{$email}";
-        $storedOtp  = cache()->get($cacheKey);
-
-        if (!$storedOtp) {
-            return response()->json([
-                'valid'   => false,
-                'message' => 'OTP has expired. Please request a new one.',
-            ], 422);
-        }
-
-        if ($storedOtp !== $validated['otp']) {
-            return response()->json([
-                'valid'   => false,
-                'message' => 'Invalid OTP. Please try again.',
-            ], 422);
-        }
-
-        // Consume OTP so it cannot be reused
-        cache()->forget($cacheKey);
+        $result = $this->registration->verifyOtp($validated['strEmail'], $validated['otp']);
 
         return response()->json([
-            'valid'   => true,
-            'message' => 'OTP verified successfully.',
-        ]);
+            'valid'   => $result['valid'],
+            'message' => $result['message'],
+        ], $result['status']);
     }
 }

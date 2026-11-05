@@ -13,6 +13,7 @@ import { fmtDate, fmtPHP } from "../../../utils/formatters/formatter.js";
 import { getDueDateColor } from "../../../utils/helpers/dueDateColor";
 import { ewtOfOption } from "../../../utils/helpers/calculateEWT.js";
 import { NO_TRANSACTION_ABC } from "../../../constants/tableDataFallbacks";
+import { getItem, setItem, removeItem, hasItem } from "../../../utils/storage/localStorage";
 
 const mapSuppliers = (suppliers) =>
   suppliers.map((s) => ({
@@ -82,11 +83,34 @@ export default function useCanvas() {
   const [expandedRows, setExpandedRows] = useState({});
   const [expandedOptions, setExpandedOptions] = useState({});
   const [isCompareActive, setIsCompareActive] = useState(false);
-  const [itemsLoading, setItemsLoading] = useState(true);
-  const [items, setItems] = useState([]);
+  const [itemsLoading, setItemsLoading] = useState(() => {
+    const txnId = state?.transaction?.nTransactionId;
+    if (!txnId) return true;
+    const cacheKey = `canvas_items_${txnId}`;
+    return !hasItem(cacheKey);
+  });
+  const [items, setItems] = useState(() => {
+    const txnId = state?.transaction?.nTransactionId;
+    if (!txnId) return [];
+    const cacheKey = `canvas_items_${txnId}`;
+    const cached = getItem(cacheKey, null);
+    if (cached) {
+      return cached.items || [];
+    }
+    return [];
+  });
   const [suppliers, setSuppliers] = useState([]);
   const [compareData, setCompareData] = useState(null);
-  const [cItemType, setCItemType] = useState(null);
+  const [cItemType, setCItemType] = useState(() => {
+    const txnId = state?.transaction?.nTransactionId;
+    if (!txnId) return null;
+    const cacheKey = `canvas_items_${txnId}`;
+    const cached = getItem(cacheKey, null);
+    if (cached) {
+      return cached.cItemType || null;
+    }
+    return null;
+  });
   const [editingOption, setEditingOption] = useState(null);
   const [optionModalItemId, setOptionModalItemId] = useState(null);
   const [optionModalItem, setOptionModalItem] = useState(null);
@@ -294,9 +318,9 @@ export default function useCanvas() {
     if (itemsManagementKey.includes(selectedStatusCode)) {
       if (transactionHasABC && totalItemsABC > 0) {
         if (totalItemsABC > Number(transaction.dTotalABC))
-          return `Items ABC total (₱${fmtPHP(totalItemsABC)}) exceeds Transaction ABC (₱${fmtPHP(transaction.dTotalABC)})`;
+          return `Items ABC total (${fmtPHP(totalItemsABC)}) exceeds Transaction ABC (${fmtPHP(transaction.dTotalABC)})`;
         if (totalItemsABC < Number(transaction.dTotalABC))
-          return `Items ABC total (₱${fmtPHP(totalItemsABC)}) must equal Transaction ABC (₱${fmtPHP(transaction.dTotalABC)})`;
+          return `Items ABC total (${fmtPHP(totalItemsABC)}) must equal Transaction ABC (${fmtPHP(transaction.dTotalABC)})`;
       }
       if (!transactionHasABC) {
         const missingABC = items.filter((i) => !i.abc || Number(i.abc) === 0);
@@ -306,7 +330,7 @@ export default function useCanvas() {
     }
     if (isCanvasStatus && transactionHasABC) {
       if (totalCanvas > Number(transaction.dTotalABC || 0))
-        return `Total Canvas (₱${fmtPHP(totalCanvas)}) exceeds Transaction ABC (₱${fmtPHP(transaction.dTotalABC)}). Please adjust the included purchase options.`;
+        return `Total Canvas (${fmtPHP(totalCanvas)}) exceeds Transaction ABC (${fmtPHP(transaction.dTotalABC)}). Please adjust the included purchase options.`;
       const overItems = items.filter((item) => {
         const tot = item.purchaseOptions
           .filter((o) => o.bIncluded)
@@ -319,7 +343,7 @@ export default function useCanvas() {
       if (anyItemHasABC && overItems.length > 0)
         return `The following item(s) have canvas totals exceeding their ABC: ${overItems.map((i) => `"${i.name}"`).join(", ")}. Please adjust the included purchase options.`;
       if (totalItemsABC > Number(transaction.dTotalABC))
-        return `Items ABC total (₱${fmtPHP(totalItemsABC)}) must not exceed Transaction ABC (₱${fmtPHP(transaction.dTotalABC)})`;
+        return `Items ABC total (${fmtPHP(totalItemsABC)}) must not exceed Transaction ABC (${fmtPHP(transaction.dTotalABC)})`;
       return null;
     }
     return null;
@@ -374,7 +398,7 @@ export default function useCanvas() {
       totalItemsABC > 0 &&
       totalItemsABC !== Number(transaction.dTotalABC)
     )
-      return `Items ABC total (₱${fmtPHP(totalItemsABC)}) must equal Transaction ABC (₱${fmtPHP(transaction.dTotalABC)})`;
+      return `Items ABC total (${fmtPHP(totalItemsABC)}) must equal Transaction ABC (${fmtPHP(transaction.dTotalABC)})`;
     if (!transactionHasABC && items.some((i) => !i.abc || Number(i.abc) === 0))
       return "All items must have an ABC value before finalizing";
     if (abcValidation) return abcValidation;
@@ -397,10 +421,10 @@ export default function useCanvas() {
     : items.reduce((s, i) => s + Number(i.abc || 0), 0);
   const abcValue = transactionHasABC
     ? Number(transaction.dTotalABC || 0) > 0
-      ? `₱ ${fmtPHP(transaction.dTotalABC)}`
+      ? `${fmtPHP(transaction.dTotalABC)}`
       : NO_TRANSACTION_ABC
     : Number(totalItemsABC || 0) > 0
-      ? `₱ ${fmtPHP(totalItemsABC)}`
+      ? `${fmtPHP(totalItemsABC)}`
       : NO_TRANSACTION_ABC;
   const abcSub =
     (itemsManagementKey.includes(selectedStatusCode) ||
@@ -409,17 +433,17 @@ export default function useCanvas() {
       canvasVerificationKey.includes(selectedStatusCode)) &&
     transactionHasABC &&
     totalItemsABC > 0
-      ? `Items ₱${fmtPHP(totalItemsABC)}`
+      ? `Items ${fmtPHP(totalItemsABC)}`
       : null;
 
   /* ── Data Fetchers ── */
   const fetchSuppliers = useCallback(async (force = false) => {
-    const cached = sessionStorage.getItem("suppliers_cache");
-    if (cached && !force) return setSuppliers(JSON.parse(cached));
+    const cached = getItem("suppliers_cache", null);
+    if (cached && !force) return setSuppliers(cached);
     try {
       const res = await SupplierAPI.getAll();
       const opts = mapSuppliers(res.suppliers);
-      sessionStorage.setItem("suppliers_cache", JSON.stringify(opts));
+      setItem("suppliers_cache", opts);
       setSuppliers(opts);
     } catch (err) {
       console.error("Error fetching suppliers:", err);
@@ -427,8 +451,23 @@ export default function useCanvas() {
   }, []);
 
   const fetchItems = useCallback(
-    async ({ restoreScroll = false } = {}) => {
+    async ({ restoreScroll = false, force = false } = {}) => {
       if (!transaction?.nTransactionId) return;
+      const cacheKey = `canvas_items_${transaction.nTransactionId}`;
+
+      if (!force) {
+        const cached = getItem(cacheKey, null);
+        if (cached) {
+          setCItemType(cached.cItemType);
+          setItems(cached.items);
+          setItemsLoading(false);
+        }
+      }
+
+      if (items.length === 0 && !hasItem(cacheKey)) {
+        setItemsLoading(true);
+      }
+
       const savedScroll =
         restoreScroll && scrollRef.current ? scrollRef.current.scrollTop : 0;
       try {
@@ -438,13 +477,19 @@ export default function useCanvas() {
             ? Object.keys(res.cItemType)[0]
             : res.cItemType;
         setCItemType(itemTypeKey);
-        setItems(
-          (res.items || []).map((item) => ({
-            ...item,
-            purchaseOptions: item.purchaseOptions || [],
-            optionsLoaded: true,
-            optionsLoading: false,
-          })),
+        const mappedItems = (res.items || []).map((item) => ({
+          ...item,
+          purchaseOptions: item.purchaseOptions || [],
+          optionsLoaded: true,
+          optionsLoading: false,
+        }));
+        setItems(mappedItems);
+        setItem(
+          cacheKey,
+          {
+            cItemType: itemTypeKey,
+            items: mappedItems,
+          },
         );
       } catch (err) {
         console.error("Error fetching items:", err);
@@ -459,22 +504,32 @@ export default function useCanvas() {
         }
       }
     },
-    [transaction],
+    [transaction, items.length],
   );
 
   const fetchAOs = useCallback(async () => {
     try {
       const res = await UserAPI.getActiveAccountOfficers();
       const list = res.accountOfficers || [];
-      sessionStorage.setItem("ao_cache", JSON.stringify(list));
+      setItem("ao_cache", list);
       setAccountOfficers(list);
     } catch (err) {
       console.error("Error fetching AOs:", err);
     }
   }, []);
 
-  const fetchPricingData = useCallback(async () => {
+  const fetchPricingData = useCallback(async (force = false) => {
     if (!transaction?.nTransactionId) return;
+    const cacheKey = `pricing_data_${transaction.nTransactionId}`;
+    if (!force) {
+      const cached = getItem(cacheKey, null);
+      if (cached) {
+        setPricingSet(cached.pricingSet);
+        setPricingItems(cached.pricingItems);
+        setUnitSellingPrices(cached.unitSellingPrices);
+        setPricingTaxes(cached.pricingTaxes);
+      }
+    }
     try {
       const setRes = await PricingAPI.getPricingSets(
         transaction.nTransactionId,
@@ -531,6 +586,16 @@ export default function useCanvas() {
       setPricingItems(shapedItems);
       setUnitSellingPrices(pricesMap);
       setPricingTaxes(taxMap);
+
+      setItem(
+        cacheKey,
+        {
+          pricingSet: activeSet,
+          pricingItems: shapedItems,
+          unitSellingPrices: pricesMap,
+          pricingTaxes: taxMap,
+        },
+      );
     } catch (err) {
       console.error("fetchPricingData error:", err);
     }
@@ -544,8 +609,8 @@ export default function useCanvas() {
 
   useEffect(() => {
     if (!userTypes) return;
-    const cached = sessionStorage.getItem("ao_cache");
-    cached ? setAccountOfficers(JSON.parse(cached)) : fetchAOs();
+    const cached = getItem("ao_cache", null);
+    cached ? setAccountOfficers(cached) : fetchAOs();
   }, [userTypes, fetchAOs]);
 
   useEffect(() => {
@@ -563,7 +628,7 @@ export default function useCanvas() {
       ) {
         return;
       }
-      fetchItems({ restoreScroll: true });
+      fetchItems({ restoreScroll: true, force: true });
     };
 
     const handleItemDeleted = (e) => {
@@ -574,12 +639,22 @@ export default function useCanvas() {
         return;
       }
       if (e.detail?.transactionItemId) {
-        setItems((prev) =>
-          prev.filter(
+        setItems((prev) => {
+          const next = prev.filter(
             (i) => String(i.id) !== String(e.detail.transactionItemId),
-          ),
-        );
+          );
+          const cacheKey = `canvas_items_${transaction.nTransactionId}`;
+          setItem(
+            cacheKey,
+            {
+              cItemType,
+              items: next,
+            },
+          );
+          return next;
+        });
       }
+      fetchItems({ restoreScroll: true, force: true });
     };
 
     window.addEventListener("transaction_item_data_updated", handleItemUpdated);
@@ -608,7 +683,7 @@ export default function useCanvas() {
       if (eventTxId !== currentTxId) return;
 
       console.log("[useCanvas] Purchase option changed → refreshing items ✅");
-      fetchItems({ restoreScroll: true });
+      fetchItems({ restoreScroll: true, force: true });
     };
 
     window.addEventListener("purchase_option_data_updated", handleOptionChange);
@@ -836,13 +911,13 @@ export default function useCanvas() {
             "&withEWT=1",
           ),
           (async () => {
-            const cached = sessionStorage.getItem("direct_cost_options_cache");
-            if (cached) return JSON.parse(cached);
+            const cached = getItem("direct_cost_options_cache", null);
+            if (cached) return cached;
             const res = await DirectCostOptionAPI.getDirectCostOptions();
             const opts = res.data || res || [];
-            sessionStorage.setItem(
+            setItem(
               "direct_cost_options_cache",
-              JSON.stringify(opts),
+              opts,
             );
             return opts;
           })(),
@@ -919,7 +994,7 @@ export default function useCanvas() {
       localActionRef.current = true;
       setActionModal(null);
       if (newStatusCode) {
-        sessionStorage.setItem(
+        setItem(
           isManagement
             ? "selectedStatusCode"
             : isProcurement

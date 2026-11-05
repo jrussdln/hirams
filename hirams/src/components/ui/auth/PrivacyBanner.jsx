@@ -18,7 +18,9 @@ import {
 
 // ── Component-specific color map: ONLY tokens this component uses ──
 const useColors = (c) => ({
-  bannerBg: c.slate.outerBgSolid,
+  // outerBgSolid with appended alpha hex — the sheet is heavily
+  // transparent over the dimmed login page; C0 = 75% opacity.
+  bannerBg: `${c.slate.outerBgSolid}C0`,
   surface: c.slate.itemHeaderBg,
   accent: c.navy.authAccent,
   accentText: c.navy.text,
@@ -32,6 +34,9 @@ const useColors = (c) => ({
 // half-typed login form stays put. BASE_URL carries the production "/hirams/"
 // prefix and nothing in dev, the same base the router uses.
 const PRIVACY_URL = `${import.meta.env.BASE_URL}data-privacy`;
+
+// Brand mark shown at the top of the sheet — rectangle variant.
+const LOGO_SRC = `${import.meta.env.BASE_URL}images/hirams-icon-rectangle.png`;
 
 /**
  * Consent sheet over the lower 60% of the login screen.
@@ -105,6 +110,22 @@ export default function PrivacyBanner({ onAgree }) {
           pb: "env(safe-area-inset-bottom)",
         }}
       >
+        {/* ── Logo header (stays put while content scrolls) ──────────── */}
+        <Box sx={{ px: { xs: 2, sm: 4, md: 8 }, pt: 1.5, pb: 0.5 }}>
+          <Box
+            component="img"
+            src={LOGO_SRC}
+            alt="HiRAMS"
+            sx={{
+              display: "block",
+              mx: "auto",
+              height: 36,
+              maxWidth: "100%",
+              objectFit: "contain",
+            }}
+          />
+        </Box>
+
         {/* ── Scrollable content ──────────────────────────────────────── */}
         <Box
           sx={{
@@ -214,7 +235,9 @@ export default function PrivacyBanner({ onAgree }) {
               disabled={!agreed}
               onClick={onAgree}
               actionColor="login"
-              sx={{ width: "100%", py: { xs: 1.3, sm: 1.6 } }}
+              // borderRadius 0.5 (4px) overrides BaseButton's default "20px"
+              // pill shape — the spec here calls for a squarer button.
+              sx={{ width: "100%", py: { xs: 1.3, sm: 1.6 }, borderRadius: 0.5 }}
             />
           </Box>
         </Box>

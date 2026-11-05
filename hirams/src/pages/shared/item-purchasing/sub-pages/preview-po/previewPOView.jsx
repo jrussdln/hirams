@@ -1,8 +1,12 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
+import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
+import icons from "../../../../../utils/style/iconFormatStyles.jsx";
 import { fmtPHP, fmtQty } from "../../../../../utils/formatters/formatter.js";
 import { numberToWords } from "../../../../../utils/helpers/numberToWords.js";
 import PrintAreaStructure from "../../../../../components/ui/print-preview/PrintPreview.jsx";
+import PrintPreviewPageFooter from "../../../../../components/ui/print-preview/PrintPreviewPageFooter.jsx";
 import EditableCell from "../../../../../components/ui/print-preview/EditableCell.jsx";
 import MediaRoute from "../../../../../routes/MediaRoute.jsx";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
@@ -838,31 +842,6 @@ function POFooterTable({
           </tr>
         </tbody>
       </table>
-
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          tableLayout: "fixed",
-        }}
-      >
-        {COLGROUP}
-        <tbody>
-          <tr>
-            <td
-              colSpan={6}
-              style={{
-                ...cellSx,
-                textAlign: "right",
-                fontWeight: 300,
-                fontStyle: "italic",
-              }}
-            >
-              System Generated PO - {new Date().toLocaleString("en-PH")}
-            </td>
-          </tr>
-        </tbody>
-      </table>
     </>
   );
 }
@@ -904,6 +883,17 @@ export default function PreviewPOView({
   const payable = payableProp ?? total - Number(ewt ?? 0);
 
   const [datesDisabled, setDatesDisabled] = useState(false);
+  const navigate = useNavigate();
+  const [printControls, setPrintControls] = React.useState(null);
+
+  const footerLActions = (
+    <BaseButton
+      label="Back"
+      icon={icons.back}
+      onClick={() => navigate(-1)}
+      actionColor="back"
+    />
+  );
 
   return (
     <PageLayout
@@ -914,9 +904,19 @@ export default function PreviewPOView({
         [poNo, supplierNickname].filter(Boolean).join(" - ") || "PO Preview"
       }
       upDownIndicator={false}
+      footerLActions={
+        printControls?.viewMode === "print" ? (
+          <PrintPreviewPageFooter printControls={printControls} side="left" />
+        ) : (
+          footerLActions
+        )
+      }
+      footerRActions={<PrintPreviewPageFooter printControls={printControls} />}
     >
       <PrintAreaStructure
         onExport={() => console.log("wire up export")}
+        onControlsReady={setPrintControls}
+        hideHeaderControls={true}
         onDisableDatesChange={setDatesDisabled}
         pdfFileName={pdfFileName}
         header={

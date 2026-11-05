@@ -26,9 +26,8 @@ const useColors = (c) => ({
   },
   slate: { btnBg: c.slate.btnBg },
   orange: { text: c.orange.text, border: c.orange.border },
-  // To/From balance line: red while the sides differ, green once they match
+  // Red is saveError's ink — the only feedback colour under the fields.
   red: { text: c.red.text },
-  green: { text: c.green.text },
 });
 
 const ARROW_INDEXES = [0, 1, 2, 3, 4];
@@ -152,9 +151,6 @@ export default function JEVEntryAEModal({
   // Non-voucher callers (the inventory Pending JEV screen) hand over
   // their own panel — the items or the logs.
   itemsPanel = null,
-  // To/From state for R/D JEVs — informational only. It is deliberately
-  // NOT written into formErrors, so Save Entry is never blocked by it.
-  balanceHint = null,
   // Save failure, shown under the fields: there is no SUCCESS/ERROR Swal
   // on this save anymore, so the form carries its own message.
   saveError = "",
@@ -387,26 +383,6 @@ export default function JEVEntryAEModal({
               handleChange={handleChange}
               autoFocus={true}
             />
-
-            {/* ── To / From state (R and D JEVs) ──────────────────────────
-                Shown in the wording of the old cap but purely informative:
-                it never lands in `errors`, so Save Entry is never blocked.
-                The Finalize button is what refuses an unbalanced JEV. */}
-            {balanceHint && (
-              <Typography
-                sx={{
-                  px: 0.5,
-                  mt: 0.75,
-                  fontSize: "0.62rem",
-                  fontWeight: 600,
-                  color: balanceHint.balanced
-                    ? colors.green.text
-                    : colors.red.text,
-                }}
-              >
-                {balanceHint.text}
-              </Typography>
-            )}
 
             {/* Save failure — the only feedback now that there is no Swal */}
             {saveError && (

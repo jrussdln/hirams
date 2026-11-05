@@ -21,6 +21,7 @@ import Toast from "../../../../components/ui/banner/Toast.jsx";
 import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
 import uiMessages from "../../../../utils/helpers/uiMessages";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import { getItem, setItem } from "../../../../utils/storage/localStorage.js";
 
 // ── Theme Mapping — only tokens THIS component actually uses ──────────────────
 const useColors = (c) => ({
@@ -423,8 +424,8 @@ function DirectCostModal({
     setOptionsLoading(true);
     try {
       let optionsData = null;
-      const cached = sessionStorage.getItem("direct_cost_options_cache");
-      if (cached) optionsData = JSON.parse(cached);
+      const cached = getItem("direct_cost_options_cache", null);
+      if (cached) optionsData = cached;
       const costsPromise = DirectCostAPI.getByTransaction(
         transaction.nTransactionId,
         "&withEWT=1",
@@ -438,9 +439,9 @@ function DirectCostModal({
       ]);
       const opts = optionsRes.data || optionsRes || [];
       if (!cached)
-        sessionStorage.setItem(
+        setItem(
           "direct_cost_options_cache",
-          JSON.stringify(opts),
+          opts,
         );
       setDirectCostOptions(opts);
       setDirectCostList(

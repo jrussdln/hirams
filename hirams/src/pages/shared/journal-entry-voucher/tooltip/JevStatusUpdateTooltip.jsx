@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Box,
-  Button,
   FormControlLabel,
   Radio,
   RadioGroup,
@@ -88,7 +87,6 @@ export default function JevStatusUpdateTooltip({
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useColors(base);
 
-  const [picked, setPicked] = useState("");
   const [saving, setSaving] = useState(false);
 
   const current = jev?.cStatus ?? "";
@@ -115,41 +113,28 @@ export default function JevStatusUpdateTooltip({
   // never preselect itself against the next one.
   useEffect(() => {
     if (open) {
-      setPicked("");
       setSaving(false);
     }
   }, [open, jev?.nJEVId]);
 
   const handleClose = () => {
-    setPicked("");
     setSaving(false);
     onClose?.();
   };
 
-  // Selecting only STAGES the change; the Set button below the list is what
-  // commits it.
-  const handleSave = async () => {
-    if (!jev?.nJEVId || !picked || picked === current || saving) return;
-    // The Active row is disabled while unbalanced, so this only guards the
-    // race where the verdict lands after the pick was staged.
-    if (picked === ACTIVE_CODE && !activeAllowed) return;
-    // Read up front: handleClose() clears the target on the next render, so
-    // everything the request and its toasts need is captured first.
+  // Committing happens straight from the radio change — no separate Set step.
+  const handleSave = async (next) => {
+    if (!jev?.nJEVId || !next || next === current || saving) return;
+    if (next === ACTIVE_CODE && !activeAllowed) return;
     const targetId = jev.nJEVId,
-      next = picked,
       label = jevStatus?.[next] ?? next;
 
-    // withSpinner already owns the progress UI, so the panel leaves
-    // immediately instead of holding the stage on its own loading state.
     handleClose();
     setSaving(true);
     try {
       await withSpinner(entity, async () => {
         await JevAPI.update(targetId, { cStatus: next });
       });
-      // The server's JevUpdated broadcast is toOthers() — this tab has to
-      // tell ITSELF the row changed, which the page hook's listener
-      // turns into a silent refetch.
       window.dispatchEvent(new CustomEvent("jev_data_updated"));
       await showSwal("SUCCESS", {}, { entity, action: `set to ${label}` });
       onSuccess?.(next);
@@ -163,11 +148,7 @@ export default function JevStatusUpdateTooltip({
 
   // The action only exists while a DIFFERENT status is staged — the current
   // row is disabled, so there is nothing to commit until something changes.
-  const showSetAction =
-    !!picked &&
-    picked !== current &&
-    // A staged Active loses its Set the moment the verdict says no.
-    !(picked === ACTIVE_CODE && !activeAllowed);
+  const showSetAction = false;
 
   return (
     <TooltipContainer
@@ -179,8 +160,13 @@ export default function JevStatusUpdateTooltip({
     >
       <RadioGroup
         name="jev-status"
-        value={picked}
-        onChange={(e) => setPicked(e.target.value)}
+        value={current}
+        onChange={(e) => {
+          const code = e.target.value;
+          if (code === current) return;
+          if (code === ACTIVE_CODE && !activeAllowed) return;
+          handleSave(code);
+        }}
       >
         {options.map(([code, label], idx) => {
           const tone = toneFor(code, colors);
@@ -193,7 +179,7 @@ export default function JevStatusUpdateTooltip({
           // UNBALANCED over a JEV that may yet square up.
           const showUnbalanced =
             code === ACTIVE_CODE && !balance.loading && !balance.balanced;
-          const isPicked = showSetAction && code === picked;
+          const isPicked = false;
           const isFirst = idx === 0;
           const isLast = idx === options.length - 1;
           const r = "6px";
@@ -295,31 +281,6 @@ export default function JevStatusUpdateTooltip({
                 }
               />
 
-              {/* Set cell: right end of the selected row, full row height,
-                  divider on its left. */}
-              {isPicked && (
-                <Button
-                  onClick={handleSave}
-                  disabled={saving}
-                  disableElevation
-                  sx={{
-                    flexShrink: 0,
-                    minWidth: 0,
-                    px: 2,
-                    borderRadius: 0,
-                    borderLeft: `1px solid ${colors.border}`,
-                    textTransform: "none",
-                    fontSize: "0.8rem",
-                    fontWeight: 500,
-                    color: colors.text.pri,
-                    background: "transparent",
-                    "&:hover": { background: colors.hoverBg },
-                    "&.Mui-disabled": { opacity: 0.45 },
-                  }}
-                >
-                  Set
-                </Button>
-              )}
             </Box>
           );
         })}

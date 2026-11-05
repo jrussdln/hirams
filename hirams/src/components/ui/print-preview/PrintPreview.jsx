@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useTheme } from "@mui/material/styles";
 import {
   Box,
@@ -14,7 +15,6 @@ import {
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { getDesignTokens } from "../../../utils/style/theme.js";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
-import { useNavigate } from "react-router-dom";
 import { useReactToPrint } from "react-to-print";
 import ArrowBackOutlined from "@mui/icons-material/ArrowBackOutlined";
 import PrintOutlined from "@mui/icons-material/PrintOutlined";
@@ -26,7 +26,8 @@ import PanToolOutlined from "@mui/icons-material/PanToolOutlined";
 import BackHandOutlined from "@mui/icons-material/BackHandOutlined";
 import ChevronLeftOutlined from "@mui/icons-material/ChevronLeftOutlined";
 import ChevronRightOutlined from "@mui/icons-material/ChevronRightOutlined";
-import TuneOutlined from "@mui/icons-material/TuneOutlined";
+import MenuOutlined from "@mui/icons-material/MenuOutlined";
+import PrintPreviewRightPanel from "./PrintPreviewRightPanel.jsx";
 import BaseButton from "../form/BaseButton.jsx";
 import Slider from "@mui/material/Slider";
 import EditOutlined from "@mui/icons-material/EditOutlined";
@@ -46,21 +47,15 @@ import {
 import { toCanvas } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { getFontEmbedCSS } from "../../../utils/print/getFontEmbedCSS.js";
-// EditableCell now lives in its own file (./EditableCell.jsx) — re-exported
-// here so existing `import { EditableCell } from ".../PrintPreview"` call
-// sites keep working without changes.
+
 export { EditableCell };
 
 const useColors = (c) => ({
   border: c.slate.border,
-  // The scroll area behind the paper — the SAME surface the page layout's
-  // content area uses (surfaceBg = outerBg), not the tinted innerBg it had.
   innerBg: c.slate.outerBg,
-  // Solid, opaque surface for sticky header & footer so scrolling content doesn't bleed through
   headerBg: c.slate.itemHeaderBgSolid,
 });
 
-// ─── PAPER SIZES ───
 export const PAPER_SIZES = {
   A4: { label: "A4", wMm: 210, hMm: 297, wPx: 794, hPx: 1123 },
   Letter: { label: "Letter (8.5×11)", wMm: 216, hMm: 279, wPx: 816, hPx: 1056 },
@@ -68,7 +63,6 @@ export const PAPER_SIZES = {
   "8.5x13": { label: "8.5 × 13", wMm: 216, hMm: 330, wPx: 816, hPx: 1248 },
 };
 
-// ─── MARGIN PRESETS ───
 export const MARGINS = {
   Normal: { label: "Normal (12mm)", preview: "12mm", print: "12mm" },
   Narrow: { label: "Narrow (5mm)", preview: "5mm", print: "5mm" },
@@ -87,60 +81,63 @@ export default function PrintPreview({
   defaultMargin = "Normal",
   maxWidth = "800px",
   pdfFileName = "document",
+  onControlsReady,
+  hideHeaderControls = false,
+  showSystemGenerated = true,
 }) {
-  const navigate = useNavigate();
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
   const c = useColors(base);
 
-  // The paper and everything ON it must render in the app's LIGHT palette
-  // even while the chrome around it is dark: a dark-mode user is still
-  // editing a document that prints on white paper. Everything below uses a
-  // nested ThemeProvider forced to "light" (MUI components follow
-  // useTheme(), hand-styled ones follow getThemeColors(false)) plus the
-  // light tokens for the paper shell itself. The toolbar, banners and
-  // sub-footer stay dark-aware — only the document is pinned to light.
   const lightBase = React.useMemo(() => getThemeColors(false), []);
   const lightTheme = React.useMemo(
     () => createTheme(getDesignTokens("light")),
     [],
   );
   const printRef = useRef(null);
-  // Per-page PDF capture nodes (one per rendered PDF page), collected
-  // via ref callbacks during render.
   const pdfPageRefs = useRef([]);
 
-  // ─── TOOLBAR BUTTON HELPER ───
-  // Every header/footer action button is a MiniBaseButton. "active" picks
-  // which colored variant to show (e.g. Edit Mode turns amber once on);
-  // when inactive it always falls back to the "neutral" (muted) variant,
-  // matching the old miniBtnSx(active, base) look without hand-rolled
-  // color overrides at each call site.
   const ToolbarButton = ({ active = false, variant = "blue", ...props }) => (
     <MiniBaseButton variant={active ? variant : "neutral"} {...props} />
   );
 
-  // ─── STATE ───
-  const [viewMode, setViewMode] = useState("normal"); // "normal" | "print"
+  const [viewMode, setViewMode] = useState("normal");
   const [paperSize, setPaperSize] = useState(defaultPaperSize);
   const [orientation, setOrientation] = useState(defaultOrientation);
   const [margin, setMargin] = useState(defaultMargin);
   const [scale, setScale] = useState(1);
-  // whether the print-options strip is expanded above the slim header bar
-  const [showPrintOptions, setShowPrintOptions] = useState(false);
-  // ─── PRINT-SPECIFIC CONTROLS ───
-  const [colorMode, setColorMode] = useState("color"); // "color" | "grayscale"
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [portalTarget, setPortalTarget] = useState(null);
+  const [colorMode, setColorMode] = useState("color");
 
-  // pagination
+  // Centralized "System Generated" stamp — captured once so the timestamp
+  // stays stable across re-renders, page changes, printing, and PDF export.
+  const [generatedAt] = useState(() => new Date().toLocaleString("en-PH"));
+
+  const systemGeneratedStamp = showSystemGenerated && (
+    <Box
+      sx={{
+        mt: 1,
+        width: "100%",
+        textAlign: "center",
+        fontSize: "0.65rem",
+        fontWeight: 300,
+        fontStyle: "italic",
+        color: "#64748B",
+        lineHeight: 1.4,
+      }}
+    >
+      System Generated at {generatedAt}
+    </Box>
+  );
+
   const [currentPage, setCurrentPage] = useState(1);
-  const [slideDir, setSlideDir] = useState(0); // -1 prev, 1 next, 0 none
+  const [slideDir, setSlideDir] = useState(0);
 
   const zoomIn = () => setScale((s) => Math.min(1.5, +(s + 0.1).toFixed(2)));
   const zoomOut = () => setScale((s) => Math.max(0.4, +(s - 0.1).toFixed(2)));
 
-  // refs to measure header/footer heights so the middle "items" window
-  // gets whatever vertical space is left on the page
   const headerRef = useRef(null);
   const footerRef = useRef(null);
   const contentRef = useRef(null);
@@ -149,20 +146,16 @@ export default function PrintPreview({
   const [headerH, setHeaderH] = useState(0);
   const [footerH, setFooterH] = useState(0);
 
-  // height of the slim toolbar (+ print-options strip when open), so the
-  // banner below it can stick right underneath instead of overlapping it
   const topBarRef = useRef(null);
   const [topBarH, setTopBarH] = useState(0);
 
-  // ─── DIMENSIONS ───
   const size = PAPER_SIZES[paperSize];
   const marginPreset = MARGINS[margin];
   const isLandscape = orientation === "landscape";
 
-  // ─── EDIT MODE ───
-  const [editingEnabled, setEditingEnabled] = useState(false);
+  // Edit mode is automatic: on in print view, off in normal view
+  const editingEnabled = viewMode === "print";
 
-  // ─── EDITABLE VALUES + UNDO/REDO HISTORY ───
   const [editableValues, setEditableValues] = useState({});
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -170,7 +163,7 @@ export default function PrintPreview({
   const setEditableValue = useCallback((id, val) => {
     setEditableValues((prev) => {
       setPast((p) => [...p, prev]);
-      setFuture([]); // a fresh edit invalidates any redo history
+      setFuture([]);
       return { ...prev, [id]: val };
     });
   }, []);
@@ -229,16 +222,64 @@ export default function PrintPreview({
   };
 
   useEffect(() => {
-    if (viewMode !== "print") {
-      setShowPrintOptions(false);
+    syncPageStyleTag();
+  }, [PRINT_W_MM, PRINT_H_MM, marginPreset]);
+
+  useEffect(() => {
+    const outerScroll = scrollAreaRef.current?.closest(".overflow-auto");
+    if (outerScroll) {
+      const prev = outerScroll.style.overflow;
+      outerScroll.style.overflow = "hidden";
+      return () => {
+        outerScroll.style.overflow = prev;
+      };
+    }
+  }, []);
+
+  useEffect(() => {
+    const target = document.querySelector(".hirams-content-row");
+    setPortalTarget(target);
+  }, []);
+
+  useEffect(() => {
+    if (onControlsReady) {
+      onControlsReady({
+        viewMode,
+        setViewMode,
+        panelOpen,
+        setPanelOpen,
+        editingEnabled,
+      });
+    }
+  }, [viewMode, panelOpen, editingEnabled, onControlsReady]);
+
+  useEffect(() => {
+    const onClosePrint = () => setPanelOpen(false);
+    const onOpenNotif = () => setPanelOpen(false);
+    window.addEventListener("close_print_preview_panel", onClosePrint);
+    window.addEventListener("open_notifications_panel", onOpenNotif);
+    return () => {
+      window.removeEventListener("close_print_preview_panel", onClosePrint);
+      window.removeEventListener("open_notifications_panel", onOpenNotif);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === "print") {
+      setPanelOpen(true);
+    } else {
+      setPanelOpen(false);
     }
   }, [viewMode]);
 
-  // Keep it in sync live too, so the tag is always current even before
-  // the user hits Print (harmless if it also updates here).
   useEffect(() => {
-    syncPageStyleTag();
-  }, [PRINT_W_MM, PRINT_H_MM, marginPreset]);
+    if (panelOpen) {
+      window.dispatchEvent(new CustomEvent("open_print_preview_panel"));
+      window.dispatchEvent(new CustomEvent("close_notifications_panel"));
+    } else {
+      window.dispatchEvent(new CustomEvent("close_print_preview_panel"));
+    }
+  }, [panelOpen]);
 
   const handlePrint = useReactToPrint({
     contentRef: printRef,
@@ -264,11 +305,6 @@ export default function PrintPreview({
     },
   });
 
-  // ─── SAVE AS PDF ───
-  // The toolbar button opens a confirm dialog (same machinery as every
-  // other confirm in the app); YES on that dialog renders the hidden print
-  // document to a canvas (html-to-image) and packs it into a real .pdf
-  // file (jsPDF), paginated to the chosen paper size, then downloads it.
   const pdfConfirmStyle = React.useMemo(
     () => resolveConfirmStyle(PRINT_PREVIEW_CONFIRM_STYLES.save_pdf, isDark),
     [isDark],
@@ -276,32 +312,118 @@ export default function PrintPreview({
   const [pdfConfirmOpen, setPdfConfirmOpen] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
 
+  // ── Copy as Image ── captures the full document as a PNG and writes it to
+  // the clipboard (falls back to downloading the .png when the async
+  // clipboard API isn't available).
+  const [copyBusy, setCopyBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef(null);
+
+  const handleCopyImage = useCallback(async () => {
+    if (copyBusy || copied) return;
+    const node = printRef.current;
+    if (!node) return;
+    setCopyBusy(true);
+    try {
+      // The hidden print node has NO padding (printer margins come from
+      // @page), so capturing it directly yields an image cropped flush to
+      // the content. Build a temporary off-screen wrapper padded with the
+      // current margin preset so the copied image has breathing room.
+      // NOTE: the fixed off-screen positioning must live on a HOLDING
+      // parent — html-to-image copies the captured node's own computed
+      // styles into its clone, and a fixed/negative-offset node renders
+      // far outside the capture canvas, producing a blank white image.
+      const marginMm = parseFloat(marginPreset.print) || 12;
+      const holdingBox = document.createElement("div");
+      holdingBox.style.position = "fixed";
+      holdingBox.style.left = "-10000px";
+      holdingBox.style.top = "0";
+      holdingBox.style.width = `${PRINT_W_MM + marginMm * 2}mm`;
+
+      const wrapper = document.createElement("div");
+      wrapper.style.width = "100%";
+      wrapper.style.padding = marginPreset.print;
+      wrapper.style.boxSizing = "border-box";
+      wrapper.style.background = "#ffffff";
+      wrapper.style.color = "#1E293B";
+      Array.from(node.childNodes).forEach((child) =>
+        wrapper.appendChild(child.cloneNode(true)),
+      );
+      holdingBox.appendChild(wrapper);
+      document.body.appendChild(holdingBox);
+
+      let canvas;
+      try {
+        canvas = await toCanvas(wrapper, {
+          pixelRatio: 2,
+          backgroundColor: "#ffffff",
+          fontEmbedCSS: await getFontEmbedCSS(),
+          filter: (domNode) =>
+            !(domNode.tagName === "IMG" && domNode.naturalWidth === 0),
+          onImageErrorHandler: () => undefined,
+        });
+      } finally {
+        holdingBox.remove();
+      }
+      const blob = await new Promise((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (!blob) throw new Error("Failed to encode PNG");
+
+      let copiedToClipboard = false;
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard?.write &&
+        typeof window !== "undefined" &&
+        typeof ClipboardItem !== "undefined"
+      ) {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ "image/png": blob }),
+          ]);
+          copiedToClipboard = true;
+        } catch (clipboardErr) {
+          console.warn(
+            "Clipboard image write failed, falling back to download:",
+            clipboardErr,
+          );
+        }
+      }
+
+      if (!copiedToClipboard) {
+        // Fallback: download the image instead of silently failing.
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${pdfFileName}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      setCopied(true);
+      clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy document as image:", err);
+    } finally {
+      setCopyBusy(false);
+    }
+  }, [copyBusy, copied, pdfFileName, marginPreset, PRINT_W_MM]);
+
   const handleGeneratePdf = useCallback(async () => {
-    // One capture node per PDF page (rendered only while the confirm
-    // dialog is open — see the hidden PDF-pages strip below).
     const nodes = pdfPageRefs.current.slice(0, totalPages).filter(Boolean);
     if (pdfBusy || nodes.length === 0) return;
     setPdfBusy(true);
     try {
       const captureOptions = {
-        pixelRatio: 2, // crisp text, sane file size
+        pixelRatio: 2,
         backgroundColor: "#ffffff",
-        // Skip html-to-image's own font embedding: it reads every
-        // stylesheet, and cross-origin ones (Google Fonts) throw on
-        // cssRules access. Hand it the font CSS pre-embedded instead
-        // (see utils/print/getFontEmbedCSS.js).
         fontEmbedCSS: await getFontEmbedCSS(),
-        // A broken image (e.g. a company logo that 404s) would abort the
-        // whole capture — leave it out of the render instead.
         filter: (domNode) =>
           !(domNode.tagName === "IMG" && domNode.naturalWidth === 0),
-        // html-to-image turns unfetchable images into an empty src,
-        // whose error event rejects the whole capture. Resolve instead —
-        // the image just comes out blank in the PDF.
         onImageErrorHandler: () => undefined,
       };
 
-      // Logos etc. must be fully decoded before the capture.
       const images = nodes.flatMap((n) =>
         Array.from(n.querySelectorAll("img")),
       );
@@ -322,11 +444,6 @@ export default function PrintPreview({
         format: [PRINT_W_MM, PRINT_H_MM],
       });
 
-      // Each PDF page is captured from its own node that mirrors the
-      // print view exactly — margins, repeated header, that page's
-      // slice of the content, and the footer — so the PDF paginates
-      // identically to the print view preview instead of blindly
-      // slicing a continuous canvas mid-row.
       for (let i = 0; i < nodes.length; i++) {
         if (i > 0)
           pdf.addPage([PRINT_W_MM, PRINT_H_MM], isLandscape ? "l" : "p");
@@ -347,14 +464,7 @@ export default function PrintPreview({
     } finally {
       setPdfBusy(false);
     }
-  }, [
-    pdfBusy,
-    totalPages,
-    isLandscape,
-    PRINT_W_MM,
-    PRINT_H_MM,
-    pdfFileName,
-  ]);
+  }, [pdfBusy, totalPages, isLandscape, PRINT_W_MM, PRINT_H_MM, pdfFileName]);
 
   const marginPx = parseFloat(marginPreset.preview) * MM_TO_PX;
   const usablePageHeight = Math.max(
@@ -362,7 +472,6 @@ export default function PrintPreview({
     PAGE_H - marginPx * 2 - headerH - footerH,
   );
 
-  // measure the slim toolbar's height (grows when print options are open)
   useEffect(() => {
     const el = topBarRef.current;
     if (!el) return;
@@ -371,12 +480,8 @@ export default function PrintPreview({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [showPrintOptions, viewMode]);
+  }, [viewMode]);
 
-  // measure header/footer heights (they render in full on every page).
-  // NOTE: these nodes stay mounted across page changes (no more key-based
-  // remount on the print page wrapper), so this observer stays valid for
-  // the lifetime of print view instead of going stale after Next/Prev.
   useEffect(() => {
     if (viewMode !== "print") return;
     const measure = () => {
@@ -412,7 +517,6 @@ export default function PrintPreview({
     return () => observer.disconnect();
   }, [viewMode, usablePageHeight]);
 
-  // reset to page 1 whenever paper settings change, and clamp if pages shrink
   useEffect(() => {
     setCurrentPage(1);
   }, [paperSize, orientation, margin, viewMode]);
@@ -421,8 +525,6 @@ export default function PrintPreview({
     setCurrentPage((p) => Math.min(p, totalPages));
   }, [totalPages]);
 
-  // clear the slide animation flag shortly after triggering it, so the
-  // CSS animation can replay next time without needing a remount/key
   useEffect(() => {
     if (slideDir === 0) return;
     const t = setTimeout(() => setSlideDir(0), 220);
@@ -435,14 +537,13 @@ export default function PrintPreview({
     setCurrentPage(next);
   };
 
-  // ─── WHEEL ZOOM (works in both normal and print view, requires Ctrl/Cmd + scroll) ───
   const scrollAreaRef = useRef(null);
   useEffect(() => {
     const el = scrollAreaRef.current;
     if (!el) return;
 
     const onWheel = (e) => {
-      if (!(e.ctrlKey || e.metaKey)) return; // plain scroll = let it scroll normally
+      if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
       if (e.deltaY < 0) {
         setScale((s) => Math.min(1.5, +(s + 0.05).toFixed(2)));
@@ -455,7 +556,6 @@ export default function PrintPreview({
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
 
-  // ─── CLICK-AND-DRAG PANNING (no scrollbar needed) ───
   const dragState = useRef({
     dragging: false,
     startX: 0,
@@ -529,514 +629,274 @@ export default function PrintPreview({
       <Box
         sx={{
           display: "flex",
-          flexDirection: "column",
+          flexDirection: "row",
           height: "100%",
-          minHeight: "100vh",
+          minHeight: 0,
+          alignItems: "stretch",
+          mx: "-12px",
+          mt: "-12px",
+          mb: 0,
+          overflow: "hidden",
+          position: "relative",
         }}
       >
-        {/* ─── SLIM HEADER ─── */}
         <Box
-          ref={topBarRef}
-          sx={{
-            position: "sticky",
-            top: 0,
-            zIndex: 2,
-            flexShrink: 0,
-            mx: "-12px",
-            mt: "-12px",
-            bgcolor: c.headerBg,
-          }}
-        >
-          {/* ─── THE SLIM BAR ITSELF (same visual style as the sub-footer) ─── */}
-          <Box
-            sx={{
-              position: "relative",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 1,
-              px: 2,
-              py: 0.5,
-              border: `1px dashed ${c.border}`,
-            }}
-          >
-            {/* left corner — back + view toggle + edit mode + undo/redo + reset */}
-            <Box
-              sx={{
-                position: "absolute",
-                left: 16,
-                top: "50%",
-                transform: "translateY(-50%)",
-                display: "flex",
-                alignItems: "center",
-                gap: 0.5,
-                flexWrap: "wrap",
-              }}
-            >
-              <ToolbarButton
-                active={viewMode === "print"}
-                variant="blue"
-                icon={
-                  viewMode === "print" ? (
-                    <ArrowBackOutlined />
-                  ) : (
-                    <PrintOutlined />
-                  )
-                }
-                label={
-                  viewMode === "print"
-                    ? "Go Back Normal View"
-                    : "Go to Print View"
-                }
-                onClick={() =>
-                  setViewMode((v) => (v === "print" ? "normal" : "print"))
-                }
-                disabled={editingEnabled}
-              />
-              <ToolbarButton
-                active={editingEnabled}
-                variant="amber"
-                icon={editingEnabled ? <EditOffOutlined /> : <EditOutlined />}
-                label={editingEnabled ? "Disable Edit" : "Enable Edit Mode"}
-                onClick={() => setEditingEnabled((v) => !v)}
-                disabled={viewMode === "normal"}
-              />
-            </Box>
-
-            {/* center — zoom controls */}
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              <IconButton size="small" onClick={zoomOut} aria-label="Zoom out">
-                <ZoomOutOutlined fontSize="small" />
-              </IconButton>
-              <Box
-                sx={{
-                  fontSize: "0.7rem",
-                  fontWeight: 600,
-                  color: base.gray.textSecondary,
-                  minWidth: 36,
-                  textAlign: "center",
-                }}
-              >
-                {Math.round(scale * 100)}%
-              </Box>
-              <IconButton size="small" onClick={zoomIn} aria-label="Zoom in">
-                <ZoomInOutlined fontSize="small" />
-              </IconButton>
-            </Box>
-
-            {/* right corner — small action buttons */}
-            <Box
-              sx={{
-                position: "absolute",
-                right: 16,
-                top: "50%",
-                transform: "translateY(-50%)",
-                display: "flex",
-                alignItems: "center",
-                gap: 0.25,
-              }}
-            >
-              {!editingEnabled ? (
-                <>
-                  <ToolbarButton
-                    active={showPrintOptions}
-                    variant="purple"
-                    icon={<TuneOutlined />}
-                    label="Print Options"
-                    onClick={() => setShowPrintOptions((v) => !v)}
-                    disabled={viewMode !== "print"}
-                  />
-                  <ToolbarButton
-                    icon={<PrintOutlined />}
-                    label="Print"
-                    onClick={handlePrint}
-                    disabled={viewMode !== "print"}
-                  />
-                  {/* Same print pipeline as Print — the browser's dialog
-                      is opened with the exact page size/margins already
-                      applied, and "Save as PDF" is the destination there. */}
-                  <ToolbarButton
-                    icon={<DownloadOutlined />}
-                    label={pdfBusy ? "Saving…" : "Save as PDF"}
-                    onClick={() => setPdfConfirmOpen(true)}
-                    disabled={viewMode !== "print" || pdfBusy}
-                  />
-                </>
-              ) : (
-                <>
-                  <ToolbarButton
-                    icon={<UndoOutlined />}
-                    label="Undo"
-                    tooltip="Undo"
-                    onClick={handleUndo}
-                    disabled={historyControlsDisabled || past.length === 0}
-                  />
-                  <ToolbarButton
-                    icon={<RedoOutlined />}
-                    label="Redo"
-                    tooltip="Redo"
-                    onClick={handleRedo}
-                    disabled={historyControlsDisabled || future.length === 0}
-                  />
-                  <ToolbarButton
-                    icon={<RestartAltOutlined />}
-                    label="Reset"
-                    tooltip="Reset"
-                    onClick={handleResetPage}
-                    disabled={historyControlsDisabled}
-                  />
-                </>
-              )}
-            </Box>
-          </Box>
-
-          {/* ─── PRINT OPTIONS STRIP — sits below the slim bar, centered ─── */}
-          {showPrintOptions && (
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                px: 2,
-                py: 1.5,
-                border: `1px dashed ${c.border}`,
-              }}
-            >
-              <Grid
-                container
-                spacing={1}
-                justifyContent="center"
-                sx={{ width: "auto" }}
-              >
-                <Grid item>
-                  <FormControl size="small" sx={{ minWidth: 130 }}>
-                    <InputLabel sx={{ fontSize: "0.75rem" }}>
-                      Paper Size
-                    </InputLabel>
-                    <Select
-                      label="Paper Size"
-                      value={paperSize}
-                      onChange={(e) => setPaperSize(e.target.value)}
-                      sx={{ fontSize: "0.75rem" }}
-                    >
-                      {Object.entries(PAPER_SIZES).map(([key, val]) => (
-                        <MenuItem
-                          key={key}
-                          value={key}
-                          sx={{ fontSize: "0.75rem" }}
-                        >
-                          {val.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item>
-                  <FormControl size="small" sx={{ minWidth: 110 }}>
-                    <InputLabel sx={{ fontSize: "0.75rem" }}>
-                      Orientation
-                    </InputLabel>
-                    <Select
-                      label="Orientation"
-                      value={orientation}
-                      onChange={(e) => setOrientation(e.target.value)}
-                      sx={{ fontSize: "0.75rem" }}
-                    >
-                      <MenuItem value="portrait" sx={{ fontSize: "0.75rem" }}>
-                        📄 Portrait
-                      </MenuItem>
-                      <MenuItem value="landscape" sx={{ fontSize: "0.75rem" }}>
-                        📰 Landscape
-                      </MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item>
-                  <FormControl size="small" sx={{ minWidth: 120 }}>
-                    <InputLabel sx={{ fontSize: "0.75rem" }}>
-                      Margins
-                    </InputLabel>
-                    <Select
-                      label="Margins"
-                      value={margin}
-                      onChange={(e) => setMargin(e.target.value)}
-                      sx={{ fontSize: "0.75rem" }}
-                    >
-                      {Object.entries(MARGINS).map(([key, val]) => (
-                        <MenuItem
-                          key={key}
-                          value={key}
-                          sx={{ fontSize: "0.75rem" }}
-                        >
-                          {val.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item>
-                  <FormControl size="small" sx={{ minWidth: 130 }}>
-                    <InputLabel sx={{ fontSize: "0.75rem" }}>
-                      Color Mode
-                    </InputLabel>
-                    <Select
-                      label="Color Mode"
-                      value={colorMode}
-                      onChange={(e) => setColorMode(e.target.value)}
-                      sx={{ fontSize: "0.75rem" }}
-                    >
-                      <MenuItem value="color" sx={{ fontSize: "0.75rem" }}>
-                        🎨 Color
-                      </MenuItem>
-                      <MenuItem value="grayscale" sx={{ fontSize: "0.75rem" }}>
-                        ⬛ Black & White
-                      </MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </Grid>
-            </Box>
-          )}
-        </Box>
-
-        {(() => {
-          const bannerKind = editingEnabled
-            ? "edit"
-            : viewMode === "print"
-              ? "print"
-              : "normal";
-
-          if (dismissedBanner === bannerKind) return null;
-
-          const banner =
-            bannerKind === "edit"
-              ? {
-                  icon: <WarningAmberOutlined sx={{ fontSize: "1rem" }} />,
-                  color: base.amber,
-                  message: (
-                    <>
-                      <strong>Edit Mode</strong> — changes here are temporary
-                      and won't be saved to the database. Use{" "}
-                      <strong>Reset</strong> to restore the page to its original
-                      state, <strong>Undo</strong> to revert your last change,
-                      or <strong>Redo</strong> to reapply it.
-                    </>
-                  ),
-                }
-              : bannerKind === "print"
-                ? {
-                    icon: <PrintOutlined sx={{ fontSize: "1rem" }} />,
-                    color: base.blue,
-                    message: (
-                      <>
-                        <strong>Print View</strong> — this shows exactly how the
-                        document will paginate on paper. Open{" "}
-                        <strong>Print Options</strong> to adjust paper size,
-                        orientation, margins, and color mode, then use{" "}
-                        <strong>Print</strong> or <strong>Export</strong> to
-                        save it as PDF, XLSX, CSV, or DOCX.
-                      </>
-                    ),
-                  }
-                : {
-                    icon: <DescriptionOutlined sx={{ fontSize: "1rem" }} />,
-                    color: base.violet,
-                    message: (
-                      <>
-                        <strong>Normal View</strong> — shows the full document
-                        in one continuous scroll. Switch to{" "}
-                        <strong>Print View</strong> to see how it will paginate.
-                      </>
-                    ),
-                  };
-
-          return (
-            <Box
-              sx={{
-                position: "sticky",
-                top: topBarH,
-                zIndex: 1,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                textAlign: "center",
-                gap: 1,
-                px: 4,
-                py: 0.75,
-                mx: "-12px",
-                flexShrink: 0,
-                bgcolor: c.headerBg,
-                backgroundImage: `linear-gradient(${banner.color.bg}, ${banner.color.bg})`,
-                borderBottom: `1px dashed ${banner.color.border}`,
-              }}
-            >
-              {React.cloneElement(banner.icon, {
-                sx: {
-                  ...banner.icon.props.sx,
-                  color: banner.color.text,
-                  flexShrink: 0,
-                },
-              })}
-              <Box
-                sx={{
-                  fontSize: "0.72rem",
-                  color: banner.color.text,
-                  lineHeight: 1.4,
-                }}
-              >
-                {banner.message}
-              </Box>
-              <IconButton
-                size="small"
-                onClick={() => setDismissedBanner(bannerKind)}
-                aria-label="Dismiss banner"
-                sx={{
-                  position: "absolute",
-                  right: 8,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  p: 0.4,
-                }}
-              >
-                <CloseOutlined
-                  sx={{ fontSize: "0.9rem", color: banner.color.text }}
-                />
-              </IconButton>
-            </Box>
-          );
-        })()}
-        {/* ─── CONTENT AREA — flex:1 fills whatever space header+footer leave ─── */}
-        <Box
-          ref={scrollAreaRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
           sx={{
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
-            py: 3,
-            px: 2,
-            bgcolor: c.innerBg,
-            mx: "-12px",
-            overflow: "auto",
             flex: 1,
+            minWidth: 0,
             minHeight: 0,
-            cursor: dragEnabled
-              ? isDragging
-                ? "grabbing"
-                : "grab"
-              : "default",
-            userSelect: isDragging ? "none" : "auto",
-            scrollbarWidth: "none",
-            "&::-webkit-scrollbar": { display: "none" },
+            height: "100%",
+            overflow: "hidden",
           }}
         >
-          <style>{`
-            @keyframes pageSlideNext { from { transform: translateX(40px); opacity: 0.4; } to { transform: translateX(0); opacity: 1; } }
-            @keyframes pageSlidePrev { from { transform: translateX(-40px); opacity: 0.4; } to { transform: translateX(0); opacity: 1; } }
-            .print-editable-cell:hover .print-editable-add-icon { opacity: 1 !important; }
-          `}</style>
-          {/* ─── NORMAL VIEW — header + full content + footer, no pagination ─── */}
-          {viewMode === "normal" && (
-            <ThemeProvider theme={lightTheme}>
-              <Box
-                sx={{
-                  width: "100%",
-                  maxWidth,
-                  mx: "auto",
-                  bgcolor: "#ffffff",
-                  color: lightBase.print.text,
-                  colorScheme: "light",
-                  border: `1px dashed ${lightBase.slate.totalBorder}`,
-                  boxShadow: `0 2px 8px ${lightBase.shadow.low}`,
-                  p: 3,
-                  boxSizing: "border-box",
-                  transform: `scale(${scale})`,
-                  transformOrigin: "top center",
-                  transition: "transform 0.15s ease",
-                }}
-              >
-                {header}
-                {children}
-                {footer}
-              </Box>
-            </ThemeProvider>
-          )}
+          <Box
+            ref={scrollAreaRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              pt: viewMode === "normal" ? 3 : 0,
+              pb: 3,
+              px: 2,
+              bgcolor: c.innerBg,
+              overflow: "auto",
+              flex: 1,
+              minHeight: 0,
+              cursor: dragEnabled
+                ? isDragging
+                  ? "grabbing"
+                  : "grab"
+                : "default",
+              userSelect: isDragging ? "none" : "auto",
+              scrollbarWidth: "none",
+              "&::-webkit-scrollbar": { display: "none" },
+            }}
+          >
+            <style>{`
+              @keyframes pageSlideNext { from { transform: translateX(40px); opacity: 0.4; } to { transform: translateX(0); opacity: 1; } }
+              @keyframes pageSlidePrev { from { transform: translateX(-40px); opacity: 0.4; } to { transform: translateX(0); opacity: 1; } }
+              .print-editable-cell:hover .print-editable-add-icon { opacity: 1 !important; }
+            `}</style>
 
-          {/* ─── PRINT VIEW — header + paginated items window + footer, repeated per page ───
-               No `key={currentPage}` here anymore: remounting this box on every page
-               change was destroying headerRef/contentRef/footerRef and briefly
-               resetting their measured heights, which fed back into totalPages and
-               clamped currentPage back down — that's what made Next/Prev feel broken.
-               The slide animation is now driven by `slideDir` alone (cleared via a
-               timeout effect above), so the DOM node stays mounted throughout. */}
-          {viewMode === "print" && (
-            <ThemeProvider theme={lightTheme}>
+            {/* Content header (toolbar) — print view only */}
+            {viewMode === "print" && (
               <Box
+                ref={topBarRef}
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
                 sx={{
-                  width: PAGE_W,
-                  minHeight: PAGE_H,
-                  bgcolor: "#ffffff",
-                  color: lightBase.print.text,
-                  colorScheme: "light",
-                  boxShadow: `0 2px 8px ${lightBase.shadow.low}`,
-                  border: `1px solid ${lightBase.slate.totalBorder}`,
-                  transform: `scale(${scale})`,
-                  transformOrigin: "top center",
-                  transition: "transform 0.15s ease",
-                  flexShrink: 0,
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 10,
+                  alignSelf: "stretch",
+                  mx: -2,
+                              height: 67,
                   boxSizing: "border-box",
-                  animation:
-                    slideDir === 1
-                      ? "pageSlideNext 0.2s ease"
-                      : slideDir === -1
-                        ? "pageSlidePrev 0.2s ease"
-                        : "none",
+                  bgcolor: c.headerBg,
+                  borderBottom: `1px solid ${c.border}`,
+                  mb: 3,
+                  cursor: "default",
                 }}
               >
                 <Box
                   sx={{
-                    p: marginPreset.preview,
-                    boxSizing: "border-box",
-                    display: "flex",
-                    flexDirection: "column",
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto 1fr",
+                    alignItems: "center",
+                    gap: 1,
+                    px: 2,
+                    height: "100%",
                   }}
                 >
-                  {/* header — full, repeats every page */}
-                  <Box ref={headerRef}>{header}</Box>
-
+                  {/* LEFT */}
                   <Box
                     sx={{
-                      height: Math.min(
-                        usablePageHeight,
-                        Math.max(
-                          0,
-                          contentTotalHeight -
-                            (currentPage - 1) * usablePageHeight,
-                        ),
-                      ),
-                      overflow: "hidden",
-                      position: "relative",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.5,
+                      justifySelf: "start",
                     }}
                   >
-                    <Box
-                      ref={contentRef}
-                      sx={{
-                        transform: `translateY(-${(currentPage - 1) * usablePageHeight}px)`,
-                      }}
-                    >
-                      {children}
-                    </Box>
+                    {editingEnabled && (
+                      <>
+                        <ToolbarButton
+                          icon={<UndoOutlined />}
+                          label="Undo"
+                          tooltip="Undo"
+                          onClick={handleUndo}
+                          disabled={
+                            historyControlsDisabled || past.length === 0
+                          }
+                        />
+                        <ToolbarButton
+                          icon={<RedoOutlined />}
+                          label="Redo"
+                          tooltip="Redo"
+                          onClick={handleRedo}
+                          disabled={
+                            historyControlsDisabled || future.length === 0
+                          }
+                        />
+                      </>
+                    )}
                   </Box>
 
-                  {/* footer — full, sits directly after the items window, no gap */}
-                  <Box ref={footerRef}>{footer}</Box>
+                  {/* CENTER */}
+                  <Box
+                    sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
+                  >
+                    {viewMode === "print" && (
+                      <>
+                        <BaseButton
+                          icon={<ChevronLeftOutlined fontSize="small" />}
+                          onClick={() => goToPage(currentPage - 1)}
+                          actionColor="default"
+                          tooltip="Previous page"
+                          disabled={currentPage <= 1}
+                        />
+                        <Box
+                          sx={{
+                            fontSize: "0.7rem",
+                            fontWeight: 600,
+                            color: base.gray.textSecondary,
+                            minWidth: 90,
+                            textAlign: "center",
+                          }}
+                        >
+                          Page {currentPage} of {totalPages}
+                        </Box>
+                        <BaseButton
+                          icon={<ChevronRightOutlined fontSize="small" />}
+                          onClick={() => goToPage(currentPage + 1)}
+                          actionColor="default"
+                          tooltip="Next page"
+                          disabled={currentPage >= totalPages}
+                        />
+                      </>
+                    )}
+                  </Box>
+
+                  {/* RIGHT */}
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.5,
+                      justifySelf: "end",
+                    }}
+                  >
+                    {editingEnabled && (
+                      <ToolbarButton
+                        icon={<RestartAltOutlined />}
+                        label="Reset"
+                        tooltip="Reset"
+                        onClick={handleResetPage}
+                        disabled={historyControlsDisabled}
+                      />
+                    )}
+                  </Box>
                 </Box>
               </Box>
-            </ThemeProvider>
-          )}
+            )}
+
+            {viewMode === "normal" && (
+              <ThemeProvider theme={lightTheme}>
+                <Box
+                  sx={{
+                    width: "100%",
+                    maxWidth,
+                    mx: "auto",
+                    bgcolor: "#ffffff",
+                    color: lightBase.print.text,
+                    colorScheme: "light",
+                    border: `1px dashed ${lightBase.slate.totalBorder}`,
+                    boxShadow: `0 2px 8px ${lightBase.shadow.low}`,
+                    p: 3,
+                    boxSizing: "border-box",
+                    transform: `scale(${scale})`,
+                    transformOrigin: "top center",
+                    transition: "transform 0.15s ease",
+                  }}
+                >
+                  {header}
+                  {children}
+                  {footer}
+                  {systemGeneratedStamp}
+                </Box>
+              </ThemeProvider>
+            )}
+
+            {viewMode === "print" && (
+              <ThemeProvider theme={lightTheme}>
+                <Box
+                  sx={{
+                    width: PAGE_W,
+                    minHeight: PAGE_H,
+                    bgcolor: "#ffffff",
+                    color: lightBase.print.text,
+                    colorScheme: "light",
+                    boxShadow: `0 2px 8px ${lightBase.shadow.low}`,
+                    border: `1px solid ${lightBase.slate.totalBorder}`,
+                    transform: `scale(${scale})`,
+                    transformOrigin: "top center",
+                    transition: "transform 0.15s ease",
+                    flexShrink: 0,
+                    boxSizing: "border-box",
+                    animation:
+                      slideDir === 1
+                        ? "pageSlideNext 0.2s ease"
+                        : slideDir === -1
+                          ? "pageSlidePrev 0.2s ease"
+                          : "none",
+                  }}
+                >
+                  <Box
+                    sx={{
+                      p: marginPreset.preview,
+                      boxSizing: "border-box",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <Box ref={headerRef}>{header}</Box>
+
+                    <Box
+                      sx={{
+                        height: Math.min(
+                          usablePageHeight,
+                          Math.max(
+                            0,
+                            contentTotalHeight -
+                              (currentPage - 1) * usablePageHeight,
+                          ),
+                        ),
+                        overflow: "hidden",
+                        position: "relative",
+                      }}
+                    >
+                      <Box
+                        ref={contentRef}
+                        sx={{
+                          transform: `translateY(-${(currentPage - 1) * usablePageHeight}px)`,
+                        }}
+                      >
+                        {children}
+                      </Box>
+                    </Box>
+
+                    <Box ref={footerRef}>{footer}</Box>
+                    {systemGeneratedStamp}
+                  </Box>
+                </Box>
+              </ThemeProvider>
+            )}
+          </Box>
         </Box>
 
         <Box
@@ -1061,14 +921,10 @@ export default function PrintPreview({
               {header}
               {children}
               {footer}
+              {systemGeneratedStamp}
             </div>
           </ThemeProvider>
         </Box>
-        {/* ─── HIDDEN PDF PAGES — one page-sized node per PDF page, each
-             mirroring the print view exactly (margin padding, repeated
-             header, that page's slice of the content, footer). Mounted
-             only while the save-as-PDF confirm dialog is open, since
-             rendering the full content once per page is heavy. ─── */}
         {pdfConfirmOpen && (
           <Box
             sx={{
@@ -1080,352 +936,270 @@ export default function PrintPreview({
           >
             <ThemeProvider theme={lightTheme}>
               {Array.from({ length: totalPages }, (_, i) => i).map((i) => {
-              const sliceH = Math.min(
-                usablePageHeight,
-                Math.max(
-                  0,
-                  contentTotalHeight - i * usablePageHeight,
-                ),
-              );
-              return (
-                <div
-                  key={i}
-                  ref={(el) => {
-                    pdfPageRefs.current[i] = el;
-                  }}
-                  style={{
-                    width: `${PRINT_W_MM}mm`,
-                    height: `${PRINT_H_MM}mm`,
-                    boxSizing: "border-box",
-                    padding: marginPreset.print,
-                    filter:
-                      colorMode === "grayscale" ? "grayscale(1)" : "none",
-                    background: "#ffffff",
-                    color: "#1E293B",
-                    colorScheme: "light",
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
-                  {header}
+                const sliceH = Math.min(
+                  usablePageHeight,
+                  Math.max(0, contentTotalHeight - i * usablePageHeight),
+                );
+                return (
                   <div
+                    key={i}
+                    ref={(el) => {
+                      pdfPageRefs.current[i] = el;
+                    }}
                     style={{
-                      height: sliceH,
-                      overflow: "hidden",
-                      position: "relative",
+                      width: `${PRINT_W_MM}mm`,
+                      height: `${PRINT_H_MM}mm`,
+                      boxSizing: "border-box",
+                      padding: marginPreset.print,
+                      filter:
+                        colorMode === "grayscale" ? "grayscale(1)" : "none",
+                      background: "#ffffff",
+                      color: "#1E293B",
+                      colorScheme: "light",
+                      display: "flex",
+                      flexDirection: "column",
                     }}
                   >
+                    {header}
                     <div
                       style={{
-                        transform: `translateY(-${i * usablePageHeight}px)`,
+                        height: sliceH,
+                        overflow: "hidden",
+                        position: "relative",
                       }}
                     >
-                      {children}
+                      <div
+                        style={{
+                          transform: `translateY(-${i * usablePageHeight}px)`,
+                        }}
+                      >
+                        {children}
+                      </div>
                     </div>
+                    {footer}
+                    {showSystemGenerated && (
+                      <div
+                        style={{
+                          marginTop: 4,
+                          width: "100%",
+                          textAlign: "center",
+                          fontSize: "8.5px",
+                          fontWeight: 300,
+                          fontStyle: "italic",
+                          color: "#64748B",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        System Generated at {generatedAt}
+                      </div>
+                    )}
                   </div>
-                  {footer}
-                </div>
-              );
-            })}
+                );
+              })}
             </ThemeProvider>
           </Box>
         )}
-        {/* ─── SUBFOOTER (pagination + zoom, print view only) ─── */}
+      </Box>
 
-        <Box
-          sx={{
-            position: "sticky",
-            bottom: 0,
-            zIndex: 2,
-            flexShrink: 0,
-            mx: "-12px",
-            mb: "-12px",
-            bgcolor: c.headerBg,
-            borderBottomLeftRadius: 12,
-            overflow: "hidden",
+      {(() => {
+        const panel = (
+          <PrintPreviewRightPanel
+            open={panelOpen}
+            onClose={() => {
+              setPanelOpen(false);
+              setViewMode("normal");
+            }}
+            paperSize={paperSize}
+            setPaperSize={setPaperSize}
+            paperSizes={PAPER_SIZES}
+            orientation={orientation}
+            setOrientation={setOrientation}
+            margin={margin}
+            setMargin={setMargin}
+            margins={MARGINS}
+            colorMode={colorMode}
+            setColorMode={setColorMode}
+            dragEnabled={dragEnabled}
+            onToggleDrag={() => setDragEnabled((v) => !v)}
+            onPrint={() => {
+              if (viewMode !== "print") setViewMode("print");
+              handlePrint();
+            }}
+            onSavePdf={() => {
+              if (viewMode !== "print") setViewMode("print");
+              setPdfConfirmOpen(true);
+            }}
+            pdfBusy={pdfBusy}
+            onCopyImage={handleCopyImage}
+            copyBusy={copyBusy}
+            copied={copied}
+            scale={scale}
+            onZoomChange={setScale}
+            onZoomIn={zoomIn}
+            onZoomOut={zoomOut}
+          />
+        );
+        return portalTarget ? createPortal(panel, portalTarget) : panel;
+      })()}
+
+      {pdfConfirmOpen && pdfConfirmStyle && (
+        <ModalContainer
+          open={pdfConfirmOpen}
+          handleClose={() => {
+            if (!pdfBusy) setPdfConfirmOpen(false);
           }}
+          contentOnly
+          disableBackdropClick
+          width={{ xs: "90%", sm: 480 }}
         >
           <Box
             sx={{
-              position: "relative",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 1,
-              px: 2,
-              py: 2.75,
-              border: `1px dashed ${c.border}`,
+              borderRadius: 3,
+              overflow: "hidden",
+              bgcolor: base.slate.outerBg,
+              border: `1px solid ${base.slate.border}`,
             }}
           >
-            {/* left corner — drag toggle */}
             <Box
               sx={{
-                position: "absolute",
-                left: 16,
-                top: "50%",
-                transform: "translateY(-50%)",
                 display: "flex",
+                flexDirection: "column",
                 alignItems: "center",
-                gap: 0.5,
+                justifyContent: "center",
+                background: pdfConfirmStyle.bg,
+                px: 3,
+                py: 4,
+                gap: 2,
+                animation: "fadeSlideIn 0.18s ease",
+                "@keyframes fadeSlideIn": {
+                  from: { opacity: 0, transform: "scale(0.97)" },
+                  to: { opacity: 1, transform: "scale(1)" },
+                },
               }}
             >
-              <ToolbarButton
-                icon={<ArrowBackOutlined />}
-                label="Back"
-                onClick={() => navigate(-1)}
-              />
-              <ToolbarButton
-                active={dragEnabled}
-                variant="green"
-                icon={dragEnabled ? <PanToolOutlined /> : <BackHandOutlined />}
-                label={"Draggable Content"}
-                onClick={() => setDragEnabled((v) => !v)}
-              />
-            </Box>
-
-            {/* center — pagination */}
-            {viewMode === "print" && (
-              <>
-                {" "}
-                <BaseButton
-                  icon={<ChevronLeftOutlined fontSize="small" />}
-                  onClick={() => goToPage(currentPage - 1)}
-                  actionColor="default"
-                  tooltip="Previous page"
-                  disabled={currentPage <= 1}
-                />
-                <Box
-                  sx={{
-                    fontSize: "0.7rem",
-                    fontWeight: 600,
-                    color: base.gray.textSecondary,
-                    minWidth: 90,
-                    textAlign: "center",
-                  }}
-                >
-                  Page {currentPage} of {totalPages}
-                </Box>
-                <BaseButton
-                  icon={<ChevronRightOutlined fontSize="small" />}
-                  onClick={() => goToPage(currentPage + 1)}
-                  actionColor="default"
-                  tooltip="Next page"
-                  disabled={currentPage >= totalPages}
-                />
-              </>
-            )}
-            {/* right corner — Word-style zoom slider */}
-            <Box
-              sx={{
-                position: "absolute",
-                right: 16,
-                top: "50%",
-                transform: "translateY(-50%)",
-                display: "flex",
-                alignItems: "center",
-                gap: 0.75,
-              }}
-            >
-              <IconButton size="small" onClick={zoomOut} aria-label="Zoom out">
-                <ZoomOutOutlined sx={{ fontSize: "0.9rem" }} />
-              </IconButton>
-              <Slider
-                value={scale}
-                onChange={(e, val) =>
-                  setScale(Array.isArray(val) ? val[0] : val)
-                }
-                min={0.4}
-                max={1.5}
-                step={0.05}
-                size="small"
-                sx={{
-                  width: 90,
-                  color: base.gray.textSecondary,
-                  "& .MuiSlider-thumb": { width: 12, height: 12 },
-                }}
-                aria-label="Zoom level"
-              />
-              <IconButton size="small" onClick={zoomIn} aria-label="Zoom in">
-                <ZoomInOutlined sx={{ fontSize: "0.9rem" }} />
-              </IconButton>
               <Box
                 sx={{
-                  fontSize: "0.7rem",
-                  fontWeight: 600,
-                  color: base.gray.textSecondary,
-                  minWidth: 34,
-                  textAlign: "right",
+                  width: 56,
+                  height: 56,
+                  borderRadius: "16px",
+                  background: base.slate.outerBg,
+                  border: `1.5px solid ${pdfConfirmStyle.border}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: `0 4px 16px ${pdfConfirmStyle.dotColor}22`,
                 }}
               >
-                {Math.round(scale * 100)}%
+                <pdfConfirmStyle.Icon
+                  sx={{ fontSize: "1.4rem", color: pdfConfirmStyle.iconColor }}
+                />
               </Box>
-            </Box>
-          </Box>
-        </Box>
 
-        {/* ─── SAVE AS PDF CONFIRM — YES generates and downloads the .pdf ─── */}
-        {pdfConfirmOpen && pdfConfirmStyle && (
-          <ModalContainer
-            open={pdfConfirmOpen}
-            handleClose={() => {
-              if (!pdfBusy) setPdfConfirmOpen(false);
-            }}
-            contentOnly
-            disableBackdropClick
-            width={{ xs: "90%", sm: 480 }}
-          >
-            <Box
-              sx={{
-                borderRadius: 3,
-                overflow: "hidden",
-                bgcolor: base.slate.outerBg,
-                border: `1px solid ${base.slate.border}`,
-              }}
-            >
+              <Box sx={{ textAlign: "center" }}>
+                <Typography
+                  sx={{
+                    fontSize: "0.95rem",
+                    fontWeight: 800,
+                    color: pdfConfirmStyle.color,
+                    lineHeight: 1.3,
+                    mb: 0.75,
+                  }}
+                >
+                  {pdfConfirmStyle.title}
+                </Typography>
+                <Typography
+                  sx={{
+                    fontSize: "0.7rem",
+                    color: base.gray.textSecondary,
+                    lineHeight: 1.6,
+                    maxWidth: 260,
+                    mx: "auto",
+                  }}
+                >
+                  {pdfConfirmStyle.desc}
+                </Typography>
+              </Box>
+
               <Box
                 sx={{
                   display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  background: pdfConfirmStyle.bg,
-                  px: 3,
-                  py: 4,
-                  gap: 2,
-                  animation: "fadeSlideIn 0.18s ease",
-                  "@keyframes fadeSlideIn": {
-                    from: { opacity: 0, transform: "scale(0.97)" },
-                    to: { opacity: 1, transform: "scale(1)" },
-                  },
+                  gap: 1,
+                  width: "100%",
+                  maxWidth: 320,
                 }}
               >
-                {/* Icon */}
                 <Box
+                  onClick={handleGeneratePdf}
                   sx={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: "16px",
-                    background: base.slate.outerBg,
-                    border: `1.5px solid ${pdfConfirmStyle.border}`,
+                    flex: 1,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    boxShadow: `0 4px 16px ${pdfConfirmStyle.dotColor}22`,
+                    py: 0.875,
+                    borderRadius: "8px",
+                    background: pdfConfirmStyle.confirmBg,
+                    cursor: pdfBusy ? "wait" : "pointer",
+                    opacity: pdfBusy ? 0.7 : 1,
+                    transition: "all 0.15s ease",
+                    boxShadow: `0 2px 8px ${pdfConfirmStyle.dotColor}44`,
+                    "&:hover": {
+                      opacity: pdfBusy ? 0.7 : 0.9,
+                      transform: pdfBusy ? "none" : "translateY(-0.5px)",
+                    },
+                    "&:active": {
+                      opacity: pdfBusy ? 0.7 : 0.85,
+                      transform: "translateY(0)",
+                    },
                   }}
                 >
-                  <pdfConfirmStyle.Icon
-                    sx={{ fontSize: "1.4rem", color: pdfConfirmStyle.iconColor }}
-                  />
-                </Box>
-
-                {/* Title + description */}
-                <Box sx={{ textAlign: "center" }}>
                   <Typography
                     sx={{
-                      fontSize: "0.95rem",
-                      fontWeight: 800,
-                      color: pdfConfirmStyle.color,
-                      lineHeight: 1.3,
-                      mb: 0.75,
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      color: base.gray.textOnFill,
                     }}
                   >
-                    {pdfConfirmStyle.title}
-                  </Typography>
-                  <Typography
-                    sx={{
-                      fontSize: "0.7rem",
-                      color: base.gray.textSecondary,
-                      lineHeight: 1.6,
-                      maxWidth: 260,
-                      mx: "auto",
-                    }}
-                  >
-                    {pdfConfirmStyle.desc}
+                    {pdfBusy ? "Generating…" : pdfConfirmStyle.confirmLabel}
                   </Typography>
                 </Box>
 
-                {/* Actions — Yes = generate + download; No = dismiss */}
                 <Box
+                  onClick={() => {
+                    if (!pdfBusy) setPdfConfirmOpen(false);
+                  }}
                   sx={{
+                    flex: 1,
                     display: "flex",
-                    gap: 1,
-                    width: "100%",
-                    maxWidth: 320,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    py: 0.875,
+                    borderRadius: "8px",
+                    background: base.slate.btnBg,
+                    border: `0.5px solid ${base.slate.btnBorder}`,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    "&:hover": {
+                      background: base.slate.btnHoverBg,
+                      borderColor: base.slate.border,
+                    },
+                    "&:active": { opacity: 0.8 },
                   }}
                 >
-                  <Box
-                    onClick={handleGeneratePdf}
+                  <Typography
                     sx={{
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      py: 0.875,
-                      borderRadius: "8px",
-                      background: pdfConfirmStyle.confirmBg,
-                      cursor: pdfBusy ? "wait" : "pointer",
-                      opacity: pdfBusy ? 0.7 : 1,
-                      transition: "all 0.15s",
-                      boxShadow: `0 2px 8px ${pdfConfirmStyle.dotColor}44`,
-                      "&:hover": {
-                        opacity: pdfBusy ? 0.7 : 0.9,
-                        transform: pdfBusy ? "none" : "translateY(-0.5px)",
-                      },
-                      "&:active": {
-                        opacity: pdfBusy ? 0.7 : 0.85,
-                        transform: "translateY(0)",
-                      },
+                      fontSize: "0.72rem",
+                      fontWeight: 700,
+                      color: base.slate.btnText,
                     }}
                   >
-                    <Typography
-                      sx={{
-                        fontSize: "0.72rem",
-                        fontWeight: 700,
-                        color: base.gray.textOnFill,
-                      }}
-                    >
-                      {pdfBusy ? "Generating…" : pdfConfirmStyle.confirmLabel}
-                    </Typography>
-                  </Box>
-
-                  <Box
-                    onClick={() => {
-                      if (!pdfBusy) setPdfConfirmOpen(false);
-                    }}
-                    sx={{
-                      flex: 1,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      py: 0.875,
-                      borderRadius: "8px",
-                      background: base.slate.btnBg,
-                      border: `0.5px solid ${base.slate.btnBorder}`,
-                      cursor: "pointer",
-                      transition: "all 0.15s",
-                      "&:hover": {
-                        background: base.slate.btnHoverBg,
-                        borderColor: base.slate.border,
-                      },
-                      "&:active": { opacity: 0.8 },
-                    }}
-                  >
-                    <Typography
-                      sx={{
-                        fontSize: "0.72rem",
-                        fontWeight: 700,
-                        color: base.slate.btnText,
-                      }}
-                    >
-                      No, cancel
-                    </Typography>
-                  </Box>
+                    No, cancel
+                  </Typography>
                 </Box>
               </Box>
             </Box>
-          </ModalContainer>
-        )}
-      </Box>
+          </Box>
+        </ModalContainer>
+      )}
     </PrintEditableContext.Provider>
   );
 }

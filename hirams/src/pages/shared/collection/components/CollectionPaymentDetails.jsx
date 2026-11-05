@@ -2,9 +2,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Box, Typography, Divider, useTheme } from "@mui/material";
 import { numberToWords } from "../../../../utils/helpers/numberToWords";
-import DirectCostOptionAPI from "../../../../api/endpoints/direct-cost-option.api.js";
-import DirectCostAPI from "../../../../api/endpoints/direct-cost.api.js";
-import PricingAPI from "../../../../api/endpoints/pricing.api.js";
 import { fmtDate, fmtPHP } from "../../../../utils/formatters/formatter.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 
@@ -100,84 +97,17 @@ export default function CollectionPaymentDetails({
   const [retentionAmount, setRetentionAmount] = useState(0);
   const [deductionsLoading, setDeductionsLoading] = useState(false);
 
+  // EWT / TAX / Retention deliberately stay at ZERO for now — no fetching.
+  // The "Less:" rows below still render (as muted dashes when 0). When the
+  // amounts go live again, restore the fetches here:
+  //   EWT + Retention → DirectCostAPI.getDirectCosts({ nTransactionID,
+  //   withEWT: 1 }), TAX → PricingAPI.getPricingSets + getItemPricings.
   useEffect(() => {
     if (!nTransactionId) return;
-    let active = true;
-    setDeductionsLoading(true);
-
-    const getCachedOptions = async () => {
-      const cached = sessionStorage.getItem("direct_cost_options_cache");
-      if (cached) return JSON.parse(cached);
-      const res = await DirectCostOptionAPI.getDirectCostOptions();
-      const opts = res.data || res || [];
-      sessionStorage.setItem("direct_cost_options_cache", JSON.stringify(opts));
-      return opts;
-    };
-
-    const fetchEwtAndRetention = async () => {
-      try {
-        const [options, costsRes] = await Promise.all([
-          getCachedOptions(),
-          DirectCostAPI.getDirectCosts({
-            nTransactionID: nTransactionId,
-            withEWT: 1,
-          }),
-        ]);
-        if (!active) return;
-
-        const getOptionName = (optionId) => {
-          const found = options.find(
-            (o) => (o.nDirectCostOptionID || o.id) === optionId,
-          );
-          return (found?.strName || found?.name || "").toLowerCase();
-        };
-
-        const directCosts =
-          costsRes.directCosts || costsRes.data || costsRes || [];
-        const totalEWT = Number(costsRes.totalEWT) || 0;
-
-        let ewt = 0,
-          ewtRecordFound = false,
-          retention = 0;
-        directCosts.forEach((cost) => {
-          const name = getOptionName(cost.nDirectCostOptionID);
-          const amount = Number(cost.dAmount || 0);
-          if (name === "ewt") {
-            ewt += amount;
-            ewtRecordFound = true;
-          } else if (name.startsWith("ret")) retention += amount;
-        });
-        setEwtAmount(ewtRecordFound && ewt > 0 ? ewt : totalEWT);
-        setRetentionAmount(retention);
-      } catch (err) {
-        console.error("Error fetching EWT/Retention:", err);
-      }
-    };
-
-    const fetchTax = async () => {
-      try {
-        const setsRes = await PricingAPI.getPricingSets(nTransactionId);
-        const sets = setsRes.data ?? setsRes ?? [];
-        const chosen = sets.find((s) => s.bChosen === 1);
-        const pricingSetId = chosen?.nPricingSetId ?? chosen?.id;
-        if (!pricingSetId) return;
-        const pricingsRes = await PricingAPI.getItemPricings(pricingSetId);
-        const total = (pricingsRes.itemPricings || []).reduce(
-          (sum, p) => sum + Number(p.tax || 0),
-          0,
-        );
-        if (active) setTaxAmount(total);
-      } catch (err) {
-        console.error("Error fetching Tax:", err);
-      }
-    };
-
-    Promise.all([fetchEwtAndRetention(), fetchTax()]).finally(() => {
-      if (active) setDeductionsLoading(false);
-    });
-    return () => {
-      active = false;
-    };
+    setEwtAmount(0);
+    setTaxAmount(0);
+    setRetentionAmount(0);
+    setDeductionsLoading(false);
   }, [nTransactionId]);
 
   const netAmount =
@@ -283,7 +213,7 @@ export default function CollectionPaymentDetails({
               letterSpacing: "-0.02em",
             }}
           >
-            {deductionsLoading ? "…" : `₱ ${fmtPHP(netAmount)}`}
+            {deductionsLoading ? "…" : `${fmtPHP(netAmount)}`}
           </Typography>
           <Typography
             sx={{
@@ -310,14 +240,14 @@ export default function CollectionPaymentDetails({
             }}
           >
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <Field label="Amount" value={`₱ ${fmtPHP(collectibleAmount)}`} />
+              <Field label="Amount" value={`${fmtPHP(collectibleAmount)}`} />
               <Field
                 label="Less: EWT"
                 value={
                   deductionsLoading
                     ? "…"
                     : ewtAmount > 0
-                      ? `₱ ${fmtPHP(ewtAmount)}`
+                      ? `${fmtPHP(ewtAmount)}`
                       : "₱ 00.00"
                 }
                 valueSx={{
@@ -331,7 +261,7 @@ export default function CollectionPaymentDetails({
                   deductionsLoading
                     ? "…"
                     : taxAmount > 0
-                      ? `₱ ${fmtPHP(taxAmount)}`
+                      ? `${fmtPHP(taxAmount)}`
                       : "₱ 00.00"
                 }
                 valueSx={{
@@ -345,7 +275,7 @@ export default function CollectionPaymentDetails({
                   deductionsLoading
                     ? "…"
                     : retentionAmount > 0
-                      ? `₱ ${fmtPHP(retentionAmount)}`
+                      ? `${fmtPHP(retentionAmount)}`
                       : "₱ 00.00"
                 }
                 valueSx={{
@@ -357,7 +287,7 @@ export default function CollectionPaymentDetails({
               />
               <Field
                 label="Net Amount"
-                value={deductionsLoading ? "…" : `₱ ${fmtPHP(netAmount)}`}
+                value={deductionsLoading ? "…" : `${fmtPHP(netAmount)}`}
                 valueSx={{ color: colors.green.paid, fontWeight: 800 }}
               />
             </Box>

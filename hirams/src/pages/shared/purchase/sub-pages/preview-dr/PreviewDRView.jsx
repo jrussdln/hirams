@@ -1,7 +1,11 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { fmtQty } from "../../../../../utils/formatters/formatter.js";
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
+import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
+import icons from "../../../../../utils/style/iconFormatStyles.jsx";
 import PrintPreview from "../../../../../components/ui/print-preview/PrintPreview.jsx";
+import PrintPreviewPageFooter from "../../../../../components/ui/print-preview/PrintPreviewPageFooter.jsx";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
 
 // Body ink of the printed document. Read once at module scope: it is PAPER,
@@ -138,13 +142,37 @@ export default function PreviewDRView({
   code,
   items,
 }) {
+  const navigate = useNavigate();
+  const [printControls, setPrintControls] = React.useState(null);
+
+  const footerLActions = (
+    <BaseButton
+      label="Back"
+      icon={icons.back}
+      onClick={() => navigate(-1)}
+      actionColor="back"
+    />
+  );
+
   return (
     <PageLayout
       title="Delivery Receipt Preview"
       subtitle="Quick overview"
       upDownIndicator={false}
+      footerLActions={
+        printControls?.viewMode === "print" ? (
+          <PrintPreviewPageFooter printControls={printControls} side="left" />
+        ) : (
+          footerLActions
+        )
+      }
+      footerRActions={<PrintPreviewPageFooter printControls={printControls} />}
     >
-      <PrintPreview onExport={() => console.log("wire up export")}>
+      <PrintPreview
+        onExport={() => console.log("wire up export")}
+        onControlsReady={setPrintControls}
+        hideHeaderControls={true}
+      >
         <div style={{ padding: "24px 32px", boxSizing: "border-box" }}>
           <table style={TABLE_STYLE}>
             {COLGROUP}

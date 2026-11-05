@@ -26,6 +26,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
 import HelpOutlineIcon from "@mui/icons-material/HelpOutline";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import FullscreenIcon from "@mui/icons-material/Fullscreen";
 import FullscreenExitIcon from "@mui/icons-material/FullscreenExit";
 import { useNavigate } from "react-router-dom";
@@ -37,6 +38,7 @@ import useKeysLabels from "../../../../../hooks/useKeysLabels";
 import { useThemeMode } from "../../../../../hooks/useThemeMode";
 import getThemeColors from "../../../../../utils/style/getThemeColors";
 import BaseButton from "../../../../../components/ui/form/BaseButton";
+import CookieNotice from "../../../../../components/ui/auth/CookieNotice";
 import AIChatbotWidget from "../../../../../components/ui/widget/AIChatBotWidget";
 import NotificationSidePanel from "../../../../../pages/utility/panel/NotificationsSidePanel";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
@@ -166,10 +168,6 @@ const Layout2 = ({
   const navigate = useNavigate();
 
   // ── Header icons: help + full screen ──────────────────────────────────
-  // Full screen covers the WHOLE browser window (documentElement), not just
-  // the page card. The button mirrors document.fullscreenchange instead of
-  // flipping its own state, so Esc — which the browser owns — puts the icon
-  // back to "enter full screen" on its own.
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   useEffect(() => {
@@ -185,8 +183,6 @@ const Layout2 = ({
       if (document.fullscreenElement) await document.exitFullscreen();
       else await document.documentElement.requestFullscreen();
     } catch (err) {
-      // Rejected (unsupported browser, or the page is not allowed to go
-      // fullscreen) — leave the header as it was rather than throw.
       console.error("Full screen toggle failed:", err);
     }
   }, []);
@@ -216,9 +212,6 @@ const Layout2 = ({
     setProfileOpen((prev) => !prev);
   };
 
-  // Shared look for the header's utility icons — same bare, bordered-free
-  // button the notification bell uses, with a theme-aware hover wash so it
-  // does not flash white in dark mode.
   const headerIconButton = (title, onClick, Icon, active = false) => (
     <Tooltip title={title} key={title}>
       <IconButton
@@ -244,7 +237,7 @@ const Layout2 = ({
 
   return (
     <div
-      className="flex flex-col max-h-[calc(100vh-1rem)] min-h-[calc(100vh-1rem)] rounded-tl-xl rounded-bl-xl overflow-hidden relative ml-0 border"
+      className="flex flex-col h-full rounded-tl-xl rounded-bl-xl overflow-hidden relative ml-0 border"
       style={{
         scrollbarWidth: "none",
         msOverflowStyle: "none",
@@ -271,9 +264,6 @@ const Layout2 = ({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 pl-1 sm:pl-2.5 min-w-0 flex-1">
-            {/* MOBILE ONLY — the icon-rail sidebar is gone below lg, so the
-                header opens the full sidebar as an overlay instead. Sits
-                right before the blue vertical line. */}
             <div className="lg:hidden flex-shrink-0">
               <Tooltip title="Open sidebar">
                 <IconButton
@@ -288,7 +278,6 @@ const Layout2 = ({
                     "&:hover": { bgcolor: colors.hoverSubtle },
                   }}
                 >
-                  {/* The menu glyph. */}
                   <MenuIcon
                     sx={{
                       fontSize: 22,
@@ -299,8 +288,6 @@ const Layout2 = ({
                 </IconButton>
               </Tooltip>
             </div>
-            {/* Blue accent line — desktop only; on mobile the menu button
-                takes its place before the title. */}
             <div
               className="w-1 h-6 rounded-full flex-shrink-0 hidden lg:block"
               style={{ backgroundColor: colors.blueText }}
@@ -328,22 +315,8 @@ const Layout2 = ({
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
-            {headerRight && (
-              <>
-                <div>{headerRight}</div>
-                <div
-                  className="w-px h-6 mx-1 sm:mx-2 flex-shrink-0"
-                  style={{ backgroundColor: colors.borderColor }}
-                />
-              </>
-            )}
+            {headerRight && <div>{headerRight}</div>}
 
-            {/* Help → /help · Full screen → whole browser window */}
-            {headerIconButton(
-              "Help & Support",
-              () => navigate("/help"),
-              HelpOutlineIcon,
-            )}
             {headerIconButton(
               isFullscreen ? "Exit full screen" : "Full screen",
               toggleFullscreen,
@@ -351,6 +324,33 @@ const Layout2 = ({
               isFullscreen,
             )}
             <NotificationMenu />
+
+            {/* AI assistant — left of the theme toggle, in the same
+                bordered-circle treatment. The panel itself slides in
+                beside the page content; this button only opens it (see
+                AIChatbotWidget's toggle_ai_chatbot contract). */}
+            {aiChatBotEnabled && (
+              <Tooltip title="Ask AI">
+                <IconButton
+                  onClick={() =>
+                    window.dispatchEvent(new CustomEvent("toggle_ai_chatbot"))
+                  }
+                  size="small"
+                  aria-label="Ask AI"
+                  sx={{
+                    "&:hover": { bgcolor: colors.hoverSubtle },
+                  }}
+                >
+                  <AutoAwesomeIcon
+                    sx={{
+                      fontSize: 18,
+                      color: colors.blueText,
+                      transition: "color 0.2s",
+                    }}
+                  />
+                </IconButton>
+              </Tooltip>
+            )}
 
             {darkModeEnabled && (
               <>
@@ -365,8 +365,7 @@ const Layout2 = ({
                     onClick={toggleMode}
                     size="small"
                     sx={{
-                      border: `1px solid ${colors.borderColor}`,
-                      borderRadius: "30px",
+                      "&:hover": { bgcolor: colors.hoverSubtle },
                     }}
                   >
                     {mode === "dark" ? (
@@ -376,47 +375,42 @@ const Layout2 = ({
                     )}
                   </IconButton>
                 </Tooltip>
-
-                <div
-                  className="w-px h-6 mx-1 sm:mx-2 flex-shrink-0"
-                  style={{ backgroundColor: colors.borderColor }}
-                />
               </>
             )}
 
+            <Divider
+              orientation="vertical"
+              variant="middle"
+              sx={{
+                display: { xs: "none", lg: "flex" },
+                height: 20,
+                maxHeight: 20,
+                minHeight: 20,
+                borderColor: colors.divider,
+                borderWidth: 1,
+                ml: 1.5,
+                mr: 1.5,
+                my: "auto",
+              }}
+            />
+
             <ClickAwayListener onClickAway={() => setProfileOpen(false)}>
               <div
-                className="relative flex items-center gap-2 cursor-pointer"
+                className="relative flex items-center mr-2 cursor-pointer"
                 onClick={handleProfileClick}
               >
-                {/* Avatar + name */}
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-8 h-8 rounded-full overflow-hidden ring-2 ring-transparent transition-all duration-200 flex-shrink-0"
-                    style={{ "&:hover": { outlineColor: colors.blueRing } }}
-                  >
-                    <img
-                      src={profileImage}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <div className="hidden sm:flex flex-col leading-tight mr-3 min-w-0">
-                    <span
-                      className="text-xs font-semibold truncate"
-                      style={{ color: colors.textPrimary }}
-                    >
-                      {nickName}
-                    </span>
-                    {role && (
-                      <span
-                        className="text-[0.7em] font-normal truncate"
-                        style={{ color: colors.textSecondary }}
-                      >
-                        {role}
-                      </span>
-                    )}
-                  </div>
+                <div
+                  className="w-8 h-8 rounded-full overflow-hidden transition-all duration-200 flex-shrink-0"
+                  style={{
+                    border: `2px solid ${colors.blueRing}`,
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <img
+                    src={profileImage}
+                    alt="Profile"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
 
                 <Popper
@@ -426,7 +420,6 @@ const Layout2 = ({
                   transition
                   style={{ zIndex: 1300 }}
                   modifiers={[
-                    { name: "offset", options: { offset: [0, 10] } },
                     {
                       name: "preventOverflow",
                       options: { padding: 8 },
@@ -435,36 +428,38 @@ const Layout2 = ({
                 >
                   {({ TransitionProps }) => (
                     <Fade {...TransitionProps} timeout={180}>
-                      <div>
-                        {/* ▲ caret pointing up at the avatar */}
+                      <div style={{ position: "relative", marginTop: 8 }}>
+                        {/* Caret arrow — flush with the paper, same trick
+                            as the notification dropdown: a triangle that
+                            spans the entire 8px offset gap, tip touching
+                            the avatar, base meeting the popup edge. Filled
+                            with the SAME background token as the Paper
+                            below, so it never blends with the page (which
+                            made it invisible in dark mode). */}
                         <div
                           style={{
                             position: "absolute",
-                            top: -6,
+                            top: -7,
                             right: 16,
-                            width: 12,
-                            height: 12,
-                            transform: "rotate(45deg)",
-                            backgroundColor: colors.surfaceBg,
-                            borderTopLeftRadius: 3,
+                            width: 0,
+                            height: 0,
+                            borderLeft: "7px solid transparent",
+                            borderRight: "7px solid transparent",
+                            borderBottom: `7px solid ${theme.palette.background.paper}`,
                             zIndex: 1,
                           }}
                         />
                         <Paper
                           elevation={8}
                           sx={{
-                            mt: 1.5,
                             p: 0.75,
                             minWidth: 216,
                             borderRadius: 2,
                             border: `1px solid ${colors.borderColor}`,
                             boxShadow: `0 8px 28px ${colors.shadowColor}`,
+                            bgcolor: "background.paper",
                           }}
                         >
-                          {/* ── Identity header ─────────────────────── */}
-                          {/* Clicking it opens Settings on the profile
-                              (My Account) tab, like the name/role would
-                              suggest. */}
                           <Box
                             component="button"
                             type="button"
@@ -551,7 +546,6 @@ const Layout2 = ({
                             sx={{ mb: 0.75, borderColor: colors.borderColor }}
                           />
 
-                          {/* ── Actions ─────────────────────────────── */}
                           <Box
                             component="button"
                             type="button"
@@ -638,7 +632,7 @@ const Layout2 = ({
       </header>
 
       <div
-        className="flex-1 relative overflow-hidden mx-1 flex min-h-0"
+        className="flex-1 relative overflow-hidden mx-1 flex min-h-0 hirams-content-row"
         style={{ alignItems: "stretch" }}
       >
         <div
@@ -663,7 +657,11 @@ const Layout2 = ({
           )}
         </div>
         <NotificationSidePanel />
-        {aiChatBotEnabled && <AIChatbotWidget accentColor={colors.blueText} />}
+        {/* The AI panel is a flex sibling of this row — its trigger lives
+            in the page header ("Ask AI", left of the theme toggle). */}
+        {aiChatBotEnabled && (
+          <AIChatbotWidget showFloatingTrigger={false} />
+        )}
       </div>
       {/* FOOTER */}
       {(footer || footerLActions || footerRActions) && (
@@ -671,21 +669,18 @@ const Layout2 = ({
           className="sticky bottom-0 z-20 px-3 py-2 mx-1 mb-1 rounded-b-lg border-t"
           style={{ borderColor: colors.borderColor }}
         >
-          {loading ? (
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 1,
-              }}
-            >
-              <Skeleton
-                variant="rounded"
-                width={90}
-                height={28}
-                sx={{ borderRadius: "999px" }}
-              />
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 1,
+            }}
+          >
+            {footerLActions}
+
+            {loading ? (
               <Box sx={{ display: "flex", gap: 0.75 }}>
                 <Skeleton
                   variant="rounded"
@@ -700,22 +695,10 @@ const Layout2 = ({
                   sx={{ borderRadius: "999px" }}
                 />
               </Box>
-            </Box>
-          ) : footer ? (
-            footer
-          ) : (
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 1,
-              }}
-            >
-              {footerLActions}
-
-              {footerRActions && (
+            ) : footer ? (
+              footer
+            ) : (
+              footerRActions && (
                 <>
                   <Box
                     sx={{
@@ -829,11 +812,13 @@ const Layout2 = ({
                     </ClickAwayListener>
                   </Box>
                 </>
-              )}
-            </Box>
-          )}
+              )
+            )}
+          </Box>
         </footer>
       )}
+      {/* Cookie notice scoped to this content container. */}
+      <CookieNotice contained />
     </div>
   );
 };

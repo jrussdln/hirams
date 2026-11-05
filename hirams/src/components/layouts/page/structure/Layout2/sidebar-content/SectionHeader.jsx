@@ -43,7 +43,7 @@ const SectionHeader = ({
 
   return (
     <div
-      className="flex items-center gap-1.5 mt-1 mb-0.5 px-0.5 select-none"
+      className="flex items-center gap-1.5 w-full px-2 py-1.5 select-none transition-colors"
       style={{
         cursor: canToggle ? "pointer" : "default",
         borderRadius: 6,

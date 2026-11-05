@@ -8,7 +8,7 @@ import { clearMappings } from "../storage/mappingCache.js";
  */
 export const clearClientState = async () => {
   clearAll();
-  sessionStorage.clear();
+  // localStorage.clearAll(); // Kept user data for persistence
   clearMappings();
 
   try {

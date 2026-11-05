@@ -76,7 +76,11 @@ export const TIME_PERIOD_LABELS = {
 export default function useItemPurchasing() {
   const navigate = useNavigate();
   const [itemsLoading, setItemsLoading] = useState(false);
-  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState(() =>
+    // A cache entry can never seed null — a busted cache stores nothing,
+    // but a stale "null" left by an older build must not crash the filter.
+    getItem(CACHE_KEYS.purchaseOrders, []) ?? [],
+  );
   const [search, setSearch] = useState("");
   const [allCollapsed, setAllCollapsed] = useState(true);
   // The time-period sections (Today / This Week / …):
@@ -85,11 +89,19 @@ export default function useItemPurchasing() {
   //   false → every group is closed
   // The Expand / Collapse All button drives this together with the cards.
   const [sectionsExpanded, setSectionsExpanded] = useState(null);
-  const [vouchersByPO, setVouchersByPO] = useState({});
-  const [aoGmDirectory, setAoGmDirectory] = useState({
-    checkByOtherAOName: "—",
-    generalManagerName: "—",
-  });
+  const [vouchersByPO, setVouchersByPO] = useState(
+    () => getItem(CACHE_KEYS.vouchersByPO, {}) ?? {},
+  );
+  const [aoGmDirectory, setAoGmDirectory] = useState(
+    () =>
+      getItem(CACHE_KEYS.aoGmDirectory, {
+        checkByOtherAOName: "—",
+        generalManagerName: "—",
+      }) ?? {
+        checkByOtherAOName: "—",
+        generalManagerName: "—",
+      },
+  );
   const aoGmFetchedRef = useRef(false);
   const user = useMemo(() => getItem("user", {}), []);
   const currentUserId = user?.nUserId;

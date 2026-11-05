@@ -203,7 +203,7 @@ function ItemRow({ item, index }) {
             flexShrink: 0,
           }}
         >
-          ₱{fmtPHP(item.unitPrice)}
+          {fmtPHP(item.unitPrice)}
         </Typography>
         <Typography
           sx={{
@@ -215,7 +215,7 @@ function ItemRow({ item, index }) {
             flexShrink: 0,
           }}
         >
-          ₱{fmtPHP(item.totalPrice)}
+          {fmtPHP(item.totalPrice)}
         </Typography>
         {hasSpecs ? (
           <Box
@@ -528,7 +528,7 @@ export default function PrintSalesInvoiceModal({
                     color: c.priceText,
                   }}
                 >
-                  ₱{fmtPHP(grandTotal)}
+                  {fmtPHP(grandTotal)}
                 </Typography>
               </Box>
             </Box>

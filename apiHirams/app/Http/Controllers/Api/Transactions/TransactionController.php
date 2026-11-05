@@ -1809,6 +1809,8 @@ class TransactionController extends ApiController
                     'cJEVLinkType' => 'C',
                     'dtOccur'      => now(),
                     'cStatus'      => 'P',
+                    // Who raised the journal — the Created column's "BY: …".
+                    'nUserId'      => auth()->id(),
                 ]);
 
                 $txn->nJEVId = $new->nJEVId;

@@ -346,7 +346,7 @@ const LookUpTransactions = ({ query = "", searchBy = "Default", onSelect }) => {
                 ? "…"
                 : amount === null
                   ? "—"
-                  : `₱ ${fmtPHP(amount)}`}
+                  : `${fmtPHP(amount)}`}
             </Typography>
           </Box>
 

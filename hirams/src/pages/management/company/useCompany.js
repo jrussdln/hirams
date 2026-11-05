@@ -1,14 +1,23 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import CompanyAPI from "../../../api/endpoints/company.api";
 import useKeysLabels from "../../../hooks/useKeysLabels";
+import { getItem, setItem, hasItem } from "../../../utils/storage/localStorage";
+
+// Server-side search → the cache is per search term, so returning to the
+// same filtered view renders instantly.
+const companiesCacheKey = (search) =>
+  `companies_cache_${(search || "").trim().toLowerCase()}`;
+
 export default function useCompany() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
   const [openModal, setOpenModal] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
-  const [companies, setCompanies] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [companies, setCompanies] = useState(() =>
+    getItem(companiesCacheKey(""), []),
+  );
+  const [loading, setLoading] = useState(() => !hasItem(companiesCacheKey("")));
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [entityToDelete, setEntityToDelete] = useState(null);
   const [openTransferModal, setOpenTransferModal] = useState(false);
@@ -59,6 +68,7 @@ export default function useCompany() {
           vouchersCount: Number(item.vouchers_count ?? 0),
         }));
         setCompanies(formatted);
+        setItem(companiesCacheKey(searchRef.current), formatted);
         isFetchedRef.current = true;
       } catch (error) {
         console.error("Error fetching companies:", error.message);
@@ -75,9 +85,13 @@ export default function useCompany() {
     fetchRef.current = fetchCompanies;
   }, [fetchCompanies]);
 
-  // ✅ Initial fetch — runs ONCE when mappings ready or search changes
+  // ✅ Initial fetch — cache hit → silent refresh (no skeleton);
+  // miss → visible load. Re-evaluates on search change.
   useEffect(() => {
-    if (!mappingLoading) {
+    if (mappingLoading) return;
+    if (hasItem(companiesCacheKey(search))) {
+      fetchCompanies(true);
+    } else {
       fetchCompanies(false);
     }
   }, [search, mappingLoading, fetchCompanies]);
@@ -88,7 +102,11 @@ export default function useCompany() {
     const onDeleted = (e) => {
       const companyId = e.detail?.companyId;
       if (!companyId) return;
-      setCompanies((prev) => prev.filter((c) => c.id !== companyId));
+      setCompanies((prev) => {
+        const next = prev.filter((c) => c.id !== companyId);
+        setItem(companiesCacheKey(searchRef.current), next);
+        return next;
+      });
     };
 
     window.addEventListener("company_data_updated", onUpdated);
@@ -122,7 +140,11 @@ export default function useCompany() {
 
   const handleDeleteSuccess = useCallback(() => {
     if (!entityToDelete?.data) return;
-    setCompanies((prev) => prev.filter((c) => c.id !== entityToDelete.data.id));
+    setCompanies((prev) => {
+      const next = prev.filter((c) => c.id !== entityToDelete.data.id);
+      setItem(companiesCacheKey(searchRef.current), next);
+      return next;
+    });
   }, [entityToDelete]);
 
   // Transfer — the stand-in for Delete on a company that still carries

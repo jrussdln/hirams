@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+﻿import React, { useMemo } from "react";
 import { useTheme } from "@mui/material";
 import {
   Add,
@@ -10,6 +10,7 @@ import {
   PersonOff,
   PersonAdd,
   DriveFileMoveOutlined,
+  Link as LinkIcon,
 } from "@mui/icons-material";
 import PageLayout from "../../../components/layouts/page/content-page";
 import CustomTable from "../../../components/ui/form/Table";
@@ -17,8 +18,7 @@ import CustomSearchField from "../../../components/ui/form/SearchField";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
 import SupplierAEModal from "./modal/SupplierAEModal";
-import ContactModal from "./modal/ContactModal";
-import BankModal from "./modal/BankModal";
+
 import InfoSupplierModal from "./modal/InfoSupplierModal";
 import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
@@ -33,9 +33,6 @@ import {
   NO_TAX_EWT,
 } from "../../../constants/tableDataFallbacks";
 
-// ─────────────────────────────────────────────────────────────────────
-// LOCAL COLOR MAP — pulls ONLY tokens THIS component actually uses
-// ─────────────────────────────────────────────────────────────────────
 const useColors = (c) => ({
   activeBg: c.green.bg,
   activeText: c.green.textDark,
@@ -122,16 +119,14 @@ export default function SupplierView({
                   {NO_NAME}
                 </span>
               )}
-              <span className="flex items-center gap-1 min-w-0">
+              <span className="flex items-center gap-1.5 min-w-0">
                 <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
                   {hasNickname ? row.supplierNickName : NO_NICKNAME}
                 </span>
-                {/* How many purchase options still name this supplier — the
-                    same count that decides whether Delete or Transfer is
-                    offered. */}
                 {optionCount > 0 && (
-                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
-                    · {optionCount} item{optionCount === 1 ? "" : "s"}
+                  <span className="inline-flex items-center gap-0.5 text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+                    <LinkIcon sx={{ fontSize: "0.7rem" }} />
+                    {optionCount} item{optionCount === 1 ? "" : "s"}
                   </span>
                 )}
               </span>
@@ -300,16 +295,17 @@ export default function SupplierView({
                 }}
               />
             ),
-            isManagement && row.optionsCount > 0 && (
+            isManagement && (
               // A supplier that still carries purchase options cannot be
-              // deleted — the options would be left pointing at nothing.
+              // deleted â€” the options would be left pointing at nothing.
               // Transfer moves them to another supplier instead.
               <BaseButton
                 key="transfer"
                 icon={<DriveFileMoveOutlined fontSize="small" />}
-                tooltip={`Transfer Options (${row.optionsCount})`}
+                tooltip={`Transfer Options${row.optionsCount > 0 ? ` (${row.optionsCount})` : " (no items)"}`}
                 actionColor="reassign"
                 size="small"
+                disabled={row.optionsCount === 0}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleTransferClick(row);
@@ -410,23 +406,7 @@ export default function SupplierView({
         vatLabel={vatLabel}
         ewtLabel={ewtLabel}
       />
-      <ContactModal
-        open={openContactModal}
-        handleClose={handleCloseContactModal}
-        supplier={selectedSupplier}
-        supplierId={selectedSupplier?.nSupplierId || null}
-        isManagement={isManagement}
-        isFinanceOfficer={isFinanceOfficer}
-        isAccountOfficer={isAccountOfficer}
-      />
-      <BankModal
-        open={openBankModal}
-        handleClose={handleCloseBankModal}
-        supplier={selectedSupplier}
-        isManagement={isManagement}
-        isFinanceOfficer={isFinanceOfficer}
-        isAccountOfficer={isAccountOfficer}
-      />
+
       <InfoSupplierModal
         open={openInfoModal}
         handleClose={handleCloseInfoModal}

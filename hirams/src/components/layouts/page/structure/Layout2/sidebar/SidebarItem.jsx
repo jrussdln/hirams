@@ -7,6 +7,7 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
 import SidebarSearchRow from "./SidebarSearchRow";
 import { preloadRoute } from "../../../../../../routes/pageLoaders";
+import * as localStorage from "../../../../../../utils/storage/localStorage";
 
 const ITEM_HEIGHT = "min-h-[28px]";
 
@@ -81,14 +82,14 @@ const SidebarItem = ({
   const storageKey = hasChildren ? `sidebar_open_${label}` : null;
   const [open, setOpen] = useState(() => {
     if (!storageKey) return false;
-    const saved = sessionStorage.getItem(storageKey);
-    return saved === null ? defaultOpen : saved === "true";
+    const saved = localStorage.getItem(storageKey, null);
+    return saved === null ? defaultOpen : saved === true;
   });
 
   const setOpenPersisted = (valOrFn) => {
     setOpen((prev) => {
       const next = typeof valOrFn === "function" ? valOrFn(prev) : valOrFn;
-      if (storageKey) sessionStorage.setItem(storageKey, String(next));
+      if (storageKey) localStorage.setItem(storageKey, next);
       return next;
     });
   };

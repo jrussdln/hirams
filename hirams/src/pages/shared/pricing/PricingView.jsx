@@ -305,8 +305,8 @@ export default function PricingView(props) {
           }
           abcValue={
             transactionHasABC
-              ? `₱ ${fmtPHP(transaction.dTotalABC)}`
-              : `₱ ${fmtPHP(totals.totalABCAll)}`
+              ? `${fmtPHP(transaction.dTotalABC)}`
+              : `${fmtPHP(totals.totalABCAll)}`
           }
           totalCanvas={totals.totalPurchaseAll}
           totalABC={totals.totalABCAll}

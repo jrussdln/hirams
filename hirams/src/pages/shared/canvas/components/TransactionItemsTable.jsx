@@ -287,7 +287,7 @@ function PurchaseCircularProgress({ value, balance, colors }) {
             whiteSpace: "nowrap",
           }}
         >
-          {balance === 0 ? "₱ 00.00" : `₱ ${fmtPHP(balance)}`}
+          {balance === 0 ? "₱ 00.00" : `${fmtPHP(balance)}`}
         </Typography>
         <Box
           sx={{
@@ -382,7 +382,7 @@ function CollectibleValue({ value, colors }) {
           whiteSpace: "nowrap",
         }}
       >
-        ₱ {fmtPHP(value)}
+        {fmtPHP(value)}
       </Typography>
     </Box>
   );
@@ -707,40 +707,7 @@ function TransactionItemsTable({
                 );
               return (
                 <Typography sx={{ fontSize: ".7rem", lineHeight: 1.2 }}>
-                  ₱ {fmtPHP(tot)}
-                </Typography>
-              );
-            },
-          },
-        ]
-      : []),
-    ...(anyItemHasABC
-      ? [
-          {
-            key: "abc",
-            label: "ABC",
-            xs: showPurchaseOptions ? 2 : 3,
-            align: "right",
-            render: (item) => {
-              const tot = item.purchaseOptions
-                .filter((o) => o.bIncluded)
-                .reduce(
-                  (s, o) =>
-                    s + Number(o.nQuantity || 0) * Number(o.dUnitPrice || 0),
-                  0,
-                );
-              const effectiveABC = getEffectiveABC(item);
-              const isOver = tot > effectiveABC && effectiveABC > 0;
-              return (
-                <Typography
-                  sx={{
-                    fontSize: ".7rem",
-                    lineHeight: 1.2,
-                    color: isOver ? colors.dangerMain : "inherit",
-                    fontWeight: isOver ? 700 : 400,
-                  }}
-                >
-                  ₱ {fmtPHP(item.abc)}
+                  {fmtPHP(tot)}
                 </Typography>
               );
             },
@@ -773,7 +740,40 @@ function TransactionItemsTable({
                     fontWeight: isNegative ? 700 : 400,
                   }}
                 >
-                  ₱ {fmtPHP(balance)}
+                  {fmtPHP(balance)}
+                </Typography>
+              );
+            },
+          },
+        ]
+      : []),
+    ...(anyItemHasABC
+      ? [
+          {
+            key: "abc",
+            label: "ABC",
+            xs: showPurchaseOptions ? 2 : 3,
+            align: "right",
+            render: (item) => {
+              const tot = item.purchaseOptions
+                .filter((o) => o.bIncluded)
+                .reduce(
+                  (s, o) =>
+                    s + Number(o.nQuantity || 0) * Number(o.dUnitPrice || 0),
+                  0,
+                );
+              const effectiveABC = getEffectiveABC(item);
+              const isOver = tot > effectiveABC && effectiveABC > 0;
+              return (
+                <Typography
+                  sx={{
+                    fontSize: ".7rem",
+                    lineHeight: 1.2,
+                    color: isOver ? colors.dangerMain : "inherit",
+                    fontWeight: isOver ? 700 : 400,
+                  }}
+                >
+                  {fmtPHP(item.abc)}
                 </Typography>
               );
             },
@@ -884,7 +884,7 @@ function TransactionItemsTable({
     {
       key: "progress",
       label: "Progress",
-      xs: 4,
+      xs: items.some((i) => Number(i.abc || 0) > 0) ? 2 : 4,
       align: "center",
       render: (item) => <ProgressBar value={getItemProgress(item)} />,
     },
@@ -928,11 +928,32 @@ function TransactionItemsTable({
               textAlign: "center",
             }}
           >
-            {unpaid === 0 ? "₱ 00.00" : `₱ ${fmtPHP(unpaid)}`}
+            {unpaid === 0 ? "₱ 00.00" : `${fmtPHP(unpaid)}`}
           </Typography>
         );
       },
     },
+    ...(items.some((i) => Number(i.abc || 0) > 0)
+      ? [
+          {
+            key: "abc",
+            label: "ABC",
+            xs: 2,
+            align: "right",
+            render: (item) => (
+              <Typography
+                sx={{
+                  fontSize: "0.72rem",
+                  fontWeight: 400,
+                  textAlign: "center",
+                }}
+              >
+                {Number(item.abc || 0) > 0 ? fmtPHP(item.abc) : ""}
+              </Typography>
+            ),
+          },
+        ]
+      : []),
     {
       key: "action",
       label: "Action",
@@ -1733,11 +1754,11 @@ function TransactionItemsTable({
                   {showPurchaseOptions && (
                     <CardStructure
                       label="Total Canvas"
-                      value={`₱ ${fmtPHP(totalCanvas)}`}
+                      value={`${fmtPHP(totalCanvas)}`}
                       sub={
                         transactionHasABC ||
                         items.some((i) => Number(i.abc) > 0)
-                          ? `Balance: ₱ ${fmtPHP(totalABC - totalCanvas)}`
+                          ? `Balance: ${fmtPHP(totalABC - totalCanvas)}`
                           : null
                       }
                       variant={abcValidation ? "danger" : "default"}

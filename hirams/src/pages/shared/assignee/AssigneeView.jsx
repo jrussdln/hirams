@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import PageLayout from "../../../components/layouts/page/content-page";
 import CustomTable from "../../../components/ui/form/Table";
 import CustomSearchField from "../../../components/ui/form/SearchField";
@@ -16,6 +16,7 @@ import {
   PersonAdd,
   HowToReg,
   DriveFileMoveOutlined,
+  Link as LinkIcon,
 } from "@mui/icons-material";
 import {
   NO_NAME,
@@ -86,15 +87,17 @@ export default function AssigneeView({
                   {NO_NAME}
                 </span>
               )}
-              <span className="flex items-center gap-1 min-w-0">
+              <span className="flex items-center gap-1.5 min-w-0">
                 <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
                   {hasNickname ? row.nickname : NO_NICKNAME}
                 </span>
                 {/* How many vouchers still name this assignee — the same
                     count that decides whether Delete or Transfer is offered. */}
                 {voucherCount > 0 && (
-                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
-                    · {voucherCount} voucher{voucherCount === 1 ? "" : "s"}
+                  <span className="inline-flex items-center gap-0.5 text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+                    <LinkIcon sx={{ fontSize: "0.7rem" }} />
+                    {voucherCount} voucher
+                    {voucherCount === 1 ? "" : "s"}
                   </span>
                 )}
               </span>
@@ -180,17 +183,23 @@ export default function AssigneeView({
                   }}
                 />
               )}
-              {row.vouchersCount > 0 && (
+              {(isActive || row.vouchersCount > 0) && (
                 // An assignee that still carries vouchers cannot be deleted
                 // — the voucher lines would be left pointing at nothing.
                 // Transfer moves them to another assignee instead.
                 <BaseButton
                   icon={<DriveFileMoveOutlined fontSize="small" />}
-                  tooltip={`Transfer Vouchers (${row.vouchersCount})`}
+                  tooltip={
+                    row.vouchersCount > 0
+                      ? `Transfer Vouchers (${row.vouchersCount})`
+                      : "No vouchers to transfer"
+                  }
                   actionColor="reassign"
+                  size="small"
+                  disabled={row.vouchersCount === 0}
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleTransferClick(row);
+                    if (row.vouchersCount > 0) handleTransferClick(row);
                   }}
                 />
               )}
@@ -310,3 +319,4 @@ export default function AssigneeView({
     </PageLayout>
   );
 }
+

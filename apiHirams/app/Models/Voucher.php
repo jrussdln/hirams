@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Voucher extends Model
 {
@@ -17,8 +18,16 @@ class Voucher extends Model
         'nTypeId',
         'strNumber',
         'cStatus',
-        'dtCreated'
+        'dtCreated',
+        // The user who created the disbursement (Created column's "BY: …").
+        'nUserId',
     ];
+
+    /** The user who created this voucher (Created column). */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'nUserId', 'nUserId');
+    }
 
     // nTypeId = nSupplierId when cType = 'S'
     public function supplier()

@@ -121,7 +121,7 @@ export default function EwtTypeField({
   const amountText =
     amount === null || amount === undefined || amount === ""
       ? "—"
-      : `₱ ${fmtPHP(amount)}`;
+      : `${fmtPHP(amount)}`;
 
   // The input's own box is what decides the height of the whole field:
   // MUI's small outlined input is 23px of content + 8.5px of padding on

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Jev extends Model
@@ -17,9 +18,17 @@ class Jev extends Model
         'cJEVLinkType',
         'dtOccur',
         'cStatus',
+        // The user who created the journal (tblusers.strNickName names the
+        // "BY: …" line over the date in the Created column).
+        'nUserId',
     ];
 
     // ── Relationships ──────────────────────────────────────
+    /** The user who created this journal (Created column). */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'nUserId', 'nUserId');
+    }
     public function entries(): HasMany
     {
         return $this->hasMany(JevEntries::class, 'nJEVId', 'nJEVId');

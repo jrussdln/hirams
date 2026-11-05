@@ -3,9 +3,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import TransactionAPI from "../../../api/endpoints/transaction.api.js";
 import PricingAPI from "../../../api/endpoints/pricing.api.js";
 import DirectCostOptionAPI from "../../../api/endpoints/direct-cost-option.api.js";
-import DirectCostAPI from "../../../api/endpoints/direct-cost.api.js";
 import { fmtDateTime, fmtDate } from "../../../utils/helpers/timeZone";
-import { getItem, setItem } from "../../../utils/storage/localStorage";
+import { getItem, setItem, hasItem } from "../../../utils/storage/localStorage";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 import {
   getOptionStep,
@@ -20,9 +19,11 @@ export default function useTransaction() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [transactions, setTransactions] = useState(() =>
+    getItem("transactions_cache", []),
+  );
+  const [loading, setLoading] = useState(() => !getItem("transactions_cache", null));
+  const [initialLoading, setInitialLoading] = useState(() => !getItem("transactions_cache", null));
   const [filterLoading, setFilterLoading] = useState(false);
   const prevFilterStatus = useRef("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -218,10 +219,9 @@ export default function useTransaction() {
 
   /**
    * For Collection rows: the chosen pricing set's total selling price — the
-   * figure the collection page calls "Collectible Amount" — plus the three
-   * deductions printed under it (EWT, TAX, Retention). Every figure and every
-   * derivation is copied from usePurchase.js / CollectionPaymentDetails.jsx
-   * so the list and the collection page can never disagree.
+   * figure the collection page calls "Collectible Amount". EWT / TAX /
+   * Retention are deliberately NOT fetched — the column shows the one
+   * figure; the deductions stay out of the transaction list.
    *
    * Deliberately separate from fetchTxnProgress: that one returns early when
    * no For Purchase rows are on screen, and For Collection is its own status,
@@ -237,26 +237,6 @@ export default function useTransaction() {
       if (!collectionTxns.length) return;
 
       try {
-        // Direct-cost option names are shared by every row — fetched (and
-        // cached) once rather than per transaction.
-        let options;
-        const cached = sessionStorage.getItem("direct_cost_options_cache");
-        if (cached) {
-          options = JSON.parse(cached);
-        } else {
-          const r = await DirectCostOptionAPI.getDirectCostOptions();
-          options = r.data || r || [];
-          sessionStorage.setItem(
-            "direct_cost_options_cache",
-            JSON.stringify(options),
-          );
-        }
-
-        const nameOf = (id) => {
-          const f = options.find((o) => (o.nDirectCostOptionID || o.id) === id);
-          return (f?.strName || f?.name || "").toLowerCase();
-        };
-
         const collectibleMap = {};
         await Promise.all(
           collectionTxns.map(async (t) => {
@@ -265,53 +245,11 @@ export default function useTransaction() {
               const chosen = (setsRes.data ?? []).find(
                 (s) => s.bChosen === 1 || s.bChosen === true,
               );
-              const collectible = Number(chosen?.totalSellingPrice ?? 0);
-
-              // TAX — sum of the chosen set's item pricings.
-              let tax = 0;
-              const pricingSetId = chosen?.nPricingSetId ?? chosen?.id;
-              if (pricingSetId) {
-                const pricingsRes = await PricingAPI.getItemPricings(
-                  pricingSetId,
-                );
-                (pricingsRes.itemPricings || []).forEach((p) => {
-                  tax += Number(p.tax || 0);
-                });
-              }
-
-              // EWT + Retention — from the transaction's direct costs.
-              let ewt = 0;
-              let ewtFound = false;
-              let retention = 0;
-              const costsRes = await DirectCostAPI.getDirectCosts({
-                nTransactionID: t.id,
-                withEWT: 1,
-              });
-              const costs =
-                costsRes.directCosts || costsRes.data || costsRes || [];
-              const totalEWT = Number(costsRes.totalEWT) || 0;
-              costs.forEach((c) => {
-                const name = nameOf(c.nDirectCostOptionID);
-                const amt = Number(c.dAmount || 0);
-                if (name === "ewt") {
-                  ewt += amt;
-                  ewtFound = true;
-                } else if (name.startsWith("ret")) retention += amt;
-              });
-
               collectibleMap[t.id] = {
-                collectible,
-                ewt: ewtFound && ewt > 0 ? ewt : totalEWT,
-                tax,
-                retention,
+                collectible: Number(chosen?.totalSellingPrice ?? 0),
               };
             } catch {
-              collectibleMap[t.id] = {
-                collectible: 0,
-                ewt: 0,
-                tax: 0,
-                retention: 0,
-              };
+              collectibleMap[t.id] = { collectible: 0 };
             }
           }),
         );
@@ -431,7 +369,10 @@ export default function useTransaction() {
   // ── Fetch ─────────────────────────────────────────────────────────────────
   const fetchTransactions = useCallback(
     async ({ silent = false } = {}) => {
-      if (!silent) setLoading(true);
+      const hasCache = hasItem("transactions_cache");
+      const isSilent = silent || hasCache;
+
+      if (!isSilent) setLoading(true);
       try {
         let list = [];
         if (isManagement)
@@ -492,12 +433,13 @@ export default function useTransaction() {
         });
 
         setTransactions(formatted);
+        setItem("transactions_cache", formatted);
         fetchTxnProgress(formatted);
         fetchTxnCollectible(formatted);
       } catch (err) {
         console.error("Error fetching transactions:", err);
       } finally {
-        if (!silent) setLoading(false);
+        if (!isSilent) setLoading(false);
         setInitialLoading(false);
       }
     },
@@ -531,11 +473,13 @@ export default function useTransaction() {
     transactionsRef.current = transactions;
   }, [transactions]);
 
-  const hasFetched = useRef(false);
+  const hasFetched = useRef(hasItem("transactions_cache"));
   useEffect(() => {
     if (!mappingLoading && !hasFetched.current) {
       hasFetched.current = true;
-      fetchTransactions();
+      fetchTransactions({ silent: hasItem("transactions_cache") });
+    } else if (!mappingLoading && hasFetched.current) {
+      fetchTransactions({ silent: true });
     }
   }, [mappingLoading, fetchTransactions]);
 

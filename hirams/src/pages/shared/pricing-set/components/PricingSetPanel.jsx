@@ -35,6 +35,7 @@ import echo from "../../../../lib/echo.js";
 import DirectCostModal from "../../transactions/modal/DirectCostModal.jsx";
 import AlertStructure from "../../../../components/ui/structure/AlertStructure.jsx";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import { getItem, setItem, hasItem } from "../../../../utils/storage/localStorage.js";
 import icons from "../../../../utils/style/iconFormatStyles.jsx";
 // ── PROMPT 1 — inline color map, only tokens this component uses ──
 const useColors = (c) => ({
@@ -97,9 +98,17 @@ function PricingSetPanel({
   const priceSettingKey =
     priceSettingKeyProp || (isManagement ? forPricingKey : "");
 
+  const setsCacheKey = transaction?.nTransactionId ? `pricing_sets_${transaction.nTransactionId}` : null;
+
   const [loading, setLoading] = useState(false);
-  const [setsLoading, setSetsLoading] = useState(false);
-  const [pricingSets, setPricingSets] = useState([]);
+  const [setsLoading, setSetsLoading] = useState(() => {
+    if (!setsCacheKey) return false;
+    return !hasItem(setsCacheKey);
+  });
+  const [pricingSets, setPricingSets] = useState(() => {
+    if (!setsCacheKey) return [];
+    return getItem(setsCacheKey, []);
+  });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
@@ -200,7 +209,7 @@ function PricingSetPanel({
       setActionModalOpen(false);
       setActionType(null);
       if (newStatusCode) {
-        sessionStorage.setItem("selectedStatusCode", newStatusCode);
+        setItem("selectedStatusCode", newStatusCode);
       }
       onStatusChanged?.(newStatusCode);
     },
@@ -216,9 +225,12 @@ function PricingSetPanel({
     }
   }, []);
 
-  const fetchPricingSets = useCallback(async () => {
+  const fetchPricingSets = useCallback(async ({ silent = false } = {}) => {
     if (!transaction?.nTransactionId) return;
-    setSetsLoading(true);
+    const cacheKey = `pricing_sets_${transaction.nTransactionId}`;
+    if (!silent && !hasItem(cacheKey)) {
+      setSetsLoading(true);
+    }
     try {
       const res = await PricingAPI.getPricingSets(transaction.nTransactionId);
       const formatted = (res.data ?? []).map((s) => ({
@@ -233,18 +245,25 @@ function PricingSetPanel({
         raw: s,
       }));
       setPricingSets(formatted);
+      setItem(cacheKey, formatted);
     } catch (err) {
       console.error(err);
     } finally {
-      setSetsLoading(false);
+      if (!silent) setSetsLoading(false);
     }
   }, [transaction?.nTransactionId]);
 
   /* ── Load on mount ── */
   useEffect(() => {
     fetchProcurementUsers();
-    fetchPricingSets();
-  }, [fetchProcurementUsers, fetchPricingSets]);
+    const cacheKey = transaction?.nTransactionId ? `pricing_sets_${transaction.nTransactionId}` : null;
+    const hasCache = cacheKey ? hasItem(cacheKey) : false;
+    if (!hasCache) {
+      fetchPricingSets({ silent: false });
+    } else {
+      fetchPricingSets({ silent: true });
+    }
+  }, [fetchProcurementUsers, fetchPricingSets, transaction?.nTransactionId]);
 
   /* ── Realtime ── */
   useEffect(() => {
@@ -416,13 +435,13 @@ function PricingSetPanel({
             withEWT: 1,
           }),
           (async () => {
-            const cached = sessionStorage.getItem("direct_cost_options_cache");
-            if (cached) return JSON.parse(cached);
+            const cached = getItem("direct_cost_options_cache", null);
+            if (cached) return cached;
             const res = await DirectCostOptionAPI.getDirectCostOptions();
             const opts = res.data || res || [];
-            sessionStorage.setItem(
+            setItem(
               "direct_cost_options_cache",
-              JSON.stringify(opts),
+              opts,
             );
             return opts;
           })(),

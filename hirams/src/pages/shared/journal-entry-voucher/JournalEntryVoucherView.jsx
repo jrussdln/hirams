@@ -14,7 +14,30 @@ import { NO_TYPE_CODE } from "./useJournalEntryVoucher";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 import { JEV_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
 import icons from "../../../utils/style/iconFormatStyles";
-import { NO_JEV_NO } from "../../../constants/tableDataFallbacks";
+import { NO_CREATOR, NO_JEV_NO, OPEN_DATE } from "../../../constants/tableDataFallbacks";
+import { Tooltip } from "@mui/material";
+import PersonIcon from "@mui/icons-material/PersonOutline";
+import EventIcon from "@mui/icons-material/Event";
+
+// ── Created-column helper — mirrors TransactionView's Account Officer style
+// Tiny icons stand in for the row labels ("BY:", the date) — the full value
+// rides in the tooltip and the shared grid keeps rows aligned down the column.
+const OFFICER_GRID_CLASS =
+  "grid w-fit max-w-full min-w-0 grid-cols-[auto_minmax(0,9.5rem)] items-baseline gap-x-1";
+
+const LabelIcon = (props) => {
+  const { icon: Icon, title, className = "" } = props;
+  return (
+    <Tooltip title={title} arrow placement="top">
+      <span
+        className={`inline-flex items-center justify-center text-gray-500 dark:text-gray-400 ${className}`}
+        style={{ lineHeight: 0 }}
+      >
+        <Icon sx={{ fontSize: "0.7rem" }} />
+      </span>
+    </Tooltip>
+  );
+};
 
 // Named `makeColors`, not `useColors`, so calling it inside useMemo
 // doesn't trip react-hooks/rules-of-hooks.
@@ -109,15 +132,17 @@ export default function JournalEntryVoucherView({
     [colors, jevActiveKey, jevPendingKey, jevCancelledKey],
   );
 
-  // Active / Cancelled / Pending — straight from the jev_status mapping.
-  const statusOptions = useMemo(
-    () =>
-      Object.entries(jev_status || {}).map(([value, label]) => ({
-        value,
-        label,
-      })),
-    [jev_status],
-  );
+  // Pending → Active → Cancelled — straight from the jev_status mapping.
+  const statusOptions = useMemo(() => {
+    const order = {
+      [jevPendingKey]: 0,
+      [jevActiveKey]: 1,
+      [jevCancelledKey]: 2,
+    };
+    return Object.entries(jev_status || {})
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => (order[a.value] ?? 9) - (order[b.value] ?? 9));
+  }, [jev_status, jevPendingKey, jevActiveKey, jevCancelledKey]);
 
   // Add belongs to the No Type list alone — every other type is written by
   // the voucher, purchase or inventory flow that owns it — and only for the
@@ -185,7 +210,49 @@ export default function JournalEntryVoucherView({
         align: "right",
         render: (val) => val,
       },
-      { key: "dtOccur", label: "Created", align: "right" },
+      {
+        key: "dtOccur",
+        label: "Created",
+        align: "right",
+        render: (_, row) => {
+          // Same icon-label grid style as TransactionView's Account Officer
+          // column: tiny label icons, uppercase small values, ONE shared
+          // grid so rows line up down the column. Missing nicknames
+          // (pre-existing rows) read the shared dash.
+          const hasName = Boolean(row.strCreatedByName?.trim());
+          const hasDate = Boolean(row.dtOccur);
+          const lineClass =
+            "truncate uppercase tracking-wide text-[0.625rem] font-medium leading-tight";
+          const valueClass = "text-left truncate";
+
+          if (!hasName && !hasDate) {
+            return (
+              <span
+                className="text-xs font-light italic"
+                style={{ color: colors.textMuted }}
+              >
+                {NO_CREATOR}
+              </span>
+            );
+          }
+
+          return (
+            <div className="flex min-w-0 justify-end">
+              <div className={`${OFFICER_GRID_CLASS} ${lineClass}`}>
+                <LabelIcon icon={PersonIcon} title="Created by" />
+                <span className={valueClass}>
+                  {hasName ? row.strCreatedByName : NO_CREATOR}
+                </span>
+                <LabelIcon icon={EventIcon} title="Created at" className="-mt-0.5" />
+                <span className={`${valueClass} -mt-0.5`}>
+                  {hasDate ? row.dtOccur : OPEN_DATE}
+                </span>
+              </div>
+            </div>
+          );
+        },
+        title: (row) => row.dtOccur,
+      },
       {
         key: "actions",
         label: "Actions",

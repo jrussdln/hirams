@@ -1175,7 +1175,7 @@ const PurchaseOptionRow = ({
               // A small tag ABOVE the price — always there. The REQUESTED
               // price is in its tooltip: the price on the row never moves.
               <Tooltip
-                title={`Requested price: ₱ ${fmtPHP(pendingPrice)}`}
+                title={`Requested price: ${fmtPHP(pendingPrice)}`}
                 placement="top"
                 arrow
               >
@@ -1203,7 +1203,7 @@ const PurchaseOptionRow = ({
               }}
             >
               <Typography sx={{ fontSize: "0.7rem", lineHeight: 1.15 }}>
-                ₱ {fmtPHP(
+                {fmtPHP(
                   adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
                     ? adoptedSync.dUnitPrice
                     : option.dUnitPrice,
@@ -1252,7 +1252,7 @@ const PurchaseOptionRow = ({
                   the request and the price that counts switch together,
                   so the row never shows a unit price that does not add
                   up. */}
-              ₱ {fmtPHP(
+              {fmtPHP(
                 option.nQuantity *
                   (adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
                     ? adoptedSync.dUnitPrice
@@ -1275,7 +1275,7 @@ const PurchaseOptionRow = ({
             }}
           >
             <Typography sx={{ fontSize: "0.7rem", lineHeight: 1.15 }}>
-              ₱ {fmtPHP(
+              {fmtPHP(
                 ewtOfOption({
                   ...option,
                   dUnitPrice:

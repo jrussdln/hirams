@@ -32,7 +32,7 @@ const SectionGroup = ({ label, collapsed, forceExpanded, children }) => {
   const titleVisible = !(collapsed && !forceExpanded);
 
   return (
-    <div className="flex flex-col w-full mb-1">
+    <div className="flex flex-col w-full">
       <SectionHeader
         label={label}
         open={open}

@@ -217,7 +217,7 @@ export default function RoutePermission() {
             animation: "shimmer 3s linear infinite",
           }}
         >
-          Error 403 Â· Access Denied
+          Error 403 · Access Denied
         </div>
 
         {/* Title */}

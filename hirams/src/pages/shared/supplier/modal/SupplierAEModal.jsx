@@ -9,6 +9,7 @@ import {
 } from "../../../../utils/formatters/formatter.js";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer.jsx";
 import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
+import { removeItem } from "../../../../utils/storage/localStorage.js";
 
 function SupplierAEModal({
   open,
@@ -104,7 +105,7 @@ function SupplierAEModal({
 
       // Invalidate the shared dropdown cache used by the canvas & purchase
       // hooks, so the new/updated supplier shows up immediately.
-      sessionStorage.removeItem("suppliers_cache");
+      removeItem("suppliers_cache");
 
       await showSwal("SUCCESS", {}, { entity, action });
 

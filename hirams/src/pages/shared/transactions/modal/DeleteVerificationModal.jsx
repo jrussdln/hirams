@@ -7,6 +7,8 @@ import PurchaseOptionAPI from "../../../../api/endpoints/purchase-option.api.js"
 import UserAPI from "../../../../api/endpoints/user.api.js";
 import CompanyAPI from "../../../../api/endpoints/company.api.js";
 import SupplierAPI from "../../../../api/endpoints/supplier.api.js";
+import SupplierContactAPI from "../../../../api/endpoints/supplier-contact.api.js";
+import SupplierBankAPI from "../../../../api/endpoints/supplier-bank.api.js";
 import ClientAPI from "../../../../api/endpoints/client.api.js";
 import TransactionAPI from "../../../../api/endpoints/transaction.api.js";
 import DirectCostOptionAPI from "../../../../api/endpoints/direct-cost-option.api.js";
@@ -51,7 +53,11 @@ function DeleteVerificationModal({ open, onClose, entityToDelete, onSuccess }) {
                       ? data?.name
                       : type === "jev"
                         ? data?.name
-                        : data?.supplierName || data?.strSupplierName) ?? "",
+                        : type === "supplier-contact"
+                          ? data?.strName || data?.name
+                          : type === "supplier-bank"
+                            ? data?.strBankName || data?.name
+                            : data?.supplierName || data?.strSupplierName) ?? "",
   ).trim();
   const handleConfirm = async () => {
     if (!entityName) return;
@@ -82,6 +88,10 @@ function DeleteVerificationModal({ open, onClose, entityToDelete, onSuccess }) {
           await CompanyAPI.deleteCompany(data.id);
         } else if (type === "supplier") {
           await SupplierAPI.delete(data.id);
+        } else if (type === "supplier-contact") {
+          await SupplierContactAPI.deleteContact(data.id);
+        } else if (type === "supplier-bank") {
+          await SupplierBankAPI.deleteBank(data.id);
         } else if (type === "client") {
           await ClientAPI.deleteClient(data.id);
         } else if (type === "transaction") {

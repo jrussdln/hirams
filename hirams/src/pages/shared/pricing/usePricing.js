@@ -6,6 +6,7 @@ import { subscribeDynamicChannel } from "../../../realtime/dynamicChannel.js";
 import { showSwal, withSpinner } from "../../../utils/helpers/swal";
 import uiMessages from "../../../utils/helpers/uiMessages";
 import { fmtPHP } from "../../../utils/formatters/formatter.js";
+import * as localStorage from "../../../utils/storage/localStorage.js";
 
 const isItemDirty = (id, unitSellingPrices, savedPrices) => {
   const toNum = (map) =>
@@ -30,15 +31,63 @@ export default function usePricing() {
     statusTransaction,
   } = state || {};
 
-  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsLoading, setItemsLoading] = useState(() => {
+    const txnId = state?.transaction?.nTransactionId;
+    const setId = state?.selectedSet?.id;
+    if (!txnId || !setId) return true;
+    const itemsCacheKey = `pricing_items_${txnId}`;
+    const pricingCacheKey = `pricing_pricings_${setId}`;
+    return !localStorage.hasItem(itemsCacheKey) || !localStorage.hasItem(pricingCacheKey);
+  });
   const [saving, setSaving] = useState(false);
-  const [items, setItems] = useState([]);
-  const [unitSellingPrices, setUnitSellingPrices] = useState({});
-  const [savedPrices, setSavedPrices] = useState({});
-  const [existingPricings, setExistingPricings] = useState({});
-  const [lockedPricings, setLockedPricings] = useState({});
-  const [serverTax, setServerTax] = useState({});
-  const [serverSuggestive, setServerSuggestive] = useState({});
+  const [items, setItems] = useState(() => {
+    const txnId = state?.transaction?.nTransactionId;
+    if (!txnId) return [];
+    const cacheKey = `pricing_items_${txnId}`;
+    return localStorage.getItem(cacheKey, []);
+  });
+  const [unitSellingPrices, setUnitSellingPrices] = useState(() => {
+    const setId = state?.selectedSet?.id;
+    if (!setId) return {};
+    const cacheKey = `pricing_pricings_${setId}`;
+    const cached = localStorage.getItem(cacheKey, {});
+    return cached?.unitSellingPrices || {};
+  });
+  const [savedPrices, setSavedPrices] = useState(() => {
+    const setId = state?.selectedSet?.id;
+    if (!setId) return {};
+    const cacheKey = `pricing_pricings_${setId}`;
+    const cached = localStorage.getItem(cacheKey, {});
+    return cached?.savedPrices || {};
+  });
+  const [existingPricings, setExistingPricings] = useState(() => {
+    const setId = state?.selectedSet?.id;
+    if (!setId) return {};
+    const cacheKey = `pricing_pricings_${setId}`;
+    const cached = localStorage.getItem(cacheKey, {});
+    return cached?.existingPricings || {};
+  });
+  const [lockedPricings, setLockedPricings] = useState(() => {
+    const setId = state?.selectedSet?.id;
+    if (!setId) return {};
+    const cacheKey = `pricing_pricings_${setId}`;
+    const cached = localStorage.getItem(cacheKey, {});
+    return cached?.lockedPricings || {};
+  });
+  const [serverTax, setServerTax] = useState(() => {
+    const setId = state?.selectedSet?.id;
+    if (!setId) return {};
+    const cacheKey = `pricing_pricings_${setId}`;
+    const cached = localStorage.getItem(cacheKey, {});
+    return cached?.serverTax || {};
+  });
+  const [serverSuggestive, setServerSuggestive] = useState(() => {
+    const setId = state?.selectedSet?.id;
+    if (!setId) return {};
+    const cacheKey = `pricing_pricings_${setId}`;
+    const cached = localStorage.getItem(cacheKey, {});
+    return cached?.serverSuggestive || {};
+  });
   const [statusChangedAlert, setStatusChangedAlert] = useState(false);
   const [countdown, setCountdown] = useState(null);
   const [activeTab, setActiveTab] = useState("pricing");
@@ -164,30 +213,31 @@ export default function usePricing() {
     if (!transaction?.nTransactionId) return;
     try {
       const res = await TransactionAPI.getItems(transaction.nTransactionId);
-      setItems(
-        (res.items || []).map((item) => ({
-          ...item,
-          purchaseOptions: (item.purchaseOptions || []).map((o) => ({
-            id: o.id,
-            nPurchaseItemId: o.nPurchaseItemId,
-            nSupplierId: o.nSupplierId,
-            supplierName: o.supplierName || o.strSupplierName,
-            supplierNickName: o.supplierNickName || o.strSupplierNickName,
-            nQuantity: o.nQuantity,
-            strUOM: o.strUOM,
-            strBrand: o.strBrand,
-            strModel: o.strModel,
-            dUnitPrice: o.dUnitPrice,
-            strSpecs: o.strSpecs,
-            dEWT: o.dEWT,
-            bIncluded: o.bIncluded,
-            bAddOn: o.bAddOn,
-            dSuggestivePrice: o.dSuggestivePrice,
-          })),
-          optionsLoaded: true,
-          optionsLoading: false,
+      const formattedItems = (res.items || []).map((item) => ({
+        ...item,
+        purchaseOptions: (item.purchaseOptions || []).map((o) => ({
+          id: o.id,
+          nPurchaseItemId: o.nPurchaseItemId,
+          nSupplierId: o.nSupplierId,
+          supplierName: o.supplierName || o.strSupplierName,
+          supplierNickName: o.supplierNickName || o.strSupplierNickName,
+          nQuantity: o.nQuantity,
+          strUOM: o.strUOM,
+          strBrand: o.strBrand,
+          strModel: o.strModel,
+          dUnitPrice: o.dUnitPrice,
+          strSpecs: o.strSpecs,
+          dEWT: o.dEWT,
+          bIncluded: o.bIncluded,
+          bAddOn: o.bAddOn,
+          dSuggestivePrice: o.dSuggestivePrice,
         })),
-      );
+        optionsLoaded: true,
+        optionsLoading: false,
+      }));
+      setItems(formattedItems);
+      const cacheKey = `pricing_items_${transaction.nTransactionId}`;
+      localStorage.setItem(cacheKey, formattedItems);
     } catch (err) {
       console.error("fetchTransactionItems error:", err);
     }
@@ -220,6 +270,14 @@ export default function usePricing() {
         setServerTax(taxMap);
         setServerSuggestive(suggestiveMap);
         setLockedPricings(lockedMap);
+        localStorage.setItem(`pricing_pricings_${pricingSetId}`, {
+          unitSellingPrices: pricesMap,
+          savedPrices: pricesMap,
+          existingPricings: existingMap,
+          lockedPricings: lockedMap,
+          serverTax: taxMap,
+          serverSuggestive: suggestiveMap,
+        });
       } catch (err) {
         console.error("fetchItemPricings error:", err);
       } finally {
@@ -352,13 +410,27 @@ export default function usePricing() {
 
   // Initial load
   useEffect(() => {
-    if (!selectedSet?.id) return;
-    setItemsLoading(true);
-    Promise.all([
-      fetchTransactionItems(),
-      fetchItemPricings(selectedSet.id),
-    ]).finally(() => setItemsLoading(false));
-  }, [selectedSet?.id, fetchTransactionItems, fetchItemPricings]);
+    if (!selectedSet?.id || !transaction?.nTransactionId) return;
+    const itemsCacheKey = `pricing_items_${transaction.nTransactionId}`;
+    const pricingCacheKey = `pricing_pricings_${selectedSet.id}`;
+    const hasCache =
+      localStorage.hasItem(itemsCacheKey) &&
+      localStorage.hasItem(pricingCacheKey);
+
+    if (!hasCache) {
+      setItemsLoading(true);
+      Promise.all([
+        fetchTransactionItems(),
+        fetchItemPricings(selectedSet.id, { showLoading: false }),
+      ]).finally(() => setItemsLoading(false));
+    } else {
+      // Silent background fetch if cache exists
+      Promise.all([
+        fetchTransactionItems(),
+        fetchItemPricings(selectedSet.id, { showLoading: false }),
+      ]);
+    }
+  }, [selectedSet?.id, transaction?.nTransactionId, fetchTransactionItems, fetchItemPricings]);
 
   // ── Real-time: item-pricing / pricing-set updates for this pricing set ──
   useEffect(() => {

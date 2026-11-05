@@ -47,13 +47,14 @@ export const mapInventoryItems = (items = []) =>
       i.strAONickName ??
       txnItemOf(i)?.transaction?.user?.strNickName ??
       "—",
-    // The PO the batch was bought on — the items header card prints it
-    // (received side) and every row prints it above its brand · model.
+    // The PO the batch was bought on — every row prints it above its
+    // brand · model, as the link into Item Purchasing.
     strPurchaseOrderNo: i.strPurchaseOrderNo ?? "—",
     // …and its id — the PO code is a link to the PO in Item Purchasing.
     nPurchaseOrderId: i.nPurchaseOrderId ?? null,
-    // The TRANSACTION the batch was sold on — what the items header card
-    // prints on the delivered (client) side.
+    // The TRANSACTION the batch belongs to — what the items header card
+    // prints on BOTH sides (a received batch was bought for it, a
+    // delivered batch left on it).
     strTransactionCode: txnItemOf(i)?.transaction?.strCode ?? "—",
   }));
 

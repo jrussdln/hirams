@@ -193,52 +193,15 @@ export default function ArchiveView() {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
                 });
-              // A zero deduction is noise — dropping the line keeps the
-              // rows even instead of staggering on every transaction.
-              const deductions = [
-                ["Less EWT:", data.ewt],
-                ["Less TAX:", data.tax],
-                ["Less Retention:", data.retention],
-              ].filter(([, v]) => Number(v ?? 0) !== 0);
 
-              // Money lines read best with the figures on a common
-              // right edge; the label sits left of each one.
-              const labelClass =
-                "text-left text-gray-500 dark:text-gray-400 whitespace-nowrap";
-              const valueClass = "text-right whitespace-nowrap";
-              const lineClass =
-                "grid grid-cols-[auto_1fr] items-baseline gap-x-3 text-[0.5625rem] font-light italic leading-tight";
-              const netLineClass =
-                "grid grid-cols-[auto_1fr] items-baseline gap-x-3 text-[0.625rem] font-semibold leading-tight";
-
-              // Same derivation as CollectionPaymentDetails.jsx's
-              // netAmount: collectible less the three deductions.
-              const net =
-                Number(data.collectible ?? 0) -
-                Number(data.ewt ?? 0) -
-                Number(data.tax ?? 0) -
-                Number(data.retention ?? 0);
-
+              // One clean figure — the collectible amount itself, same
+              // style as the transactions page's For Collection column:
+              // no Less-EWT/TAX/Retention lines, no NET.
               return (
-                <div className="flex min-w-0 justify-center">
-                  <div className="min-w-0">
-                    <div className={netLineClass}>
-                      <span className={labelClass}>Amount:</span>
-                      <span className={valueClass}>
-                        ₱ {peso(data.collectible)}
-                      </span>
-                    </div>
-                    {deductions.map(([label, v]) => (
-                      <div key={label} className={lineClass}>
-                        <span className={labelClass}>{label}</span>
-                        <span className={valueClass}>₱ {peso(v)}</span>
-                      </div>
-                    ))}
-                    <div className={netLineClass}>
-                      <span className="whitespace-nowrap">NET:</span>
-                      <span className={valueClass}>₱ {peso(net)}</span>
-                    </div>
-                  </div>
+                <div className="flex min-w-0 justify-end">
+                  <span className="text-[0.75rem] font-semibold leading-tight whitespace-nowrap">
+                    ₱ {peso(data.collectible)}
+                  </span>
                 </div>
               );
             },
@@ -247,7 +210,7 @@ export default function ArchiveView() {
       : [
           {
             key: "createdBy",
-            label: "Account / Procurement Officer",
+            label: "AO / PO",
             align: "left",
             xs: 1.5,
             render: (_, row) => {
@@ -320,7 +283,7 @@ export default function ArchiveView() {
                 <div className="flex min-w-0 justify-start">
                   <OfficerBlock>
                     <OfficerLine
-                      icon={Storefront}
+                      icon={PersonOutline}
                       title="PO"
                       value={hasName ? row.createdBy : "—"}
                     />

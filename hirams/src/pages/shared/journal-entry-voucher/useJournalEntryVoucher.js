@@ -4,7 +4,7 @@ import JevAPI from "../../../api/endpoints/jev.api.js";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 import { fmtPHP } from "../../../utils/formatters/formatter.js";
 import { fmtDateTime } from "../../../utils/helpers/timeZone.js";
-import { getItem, setItem } from "../../../utils/storage/localStorage.js";
+import { getItem, setItem, hasItem } from "../../../utils/storage/localStorage.js";
 import { withSpinner } from "../../../utils/helpers/swal.jsx";
 
 // The sidebar owns the picked JEV type: JevNav writes it here and announces
@@ -18,6 +18,23 @@ const SESSION_KEY = "selectedJevTypeCode";
 // apiHirams/config/mappings.php; JevNav picks the entry up from the same
 // mapping, so the sidebar sub-item and this list always agree.
 export const NO_TYPE_CODE = "N";
+
+// ── LOCAL STORAGE CACHE ──────────────────────────────────────────────
+// The cached copy is SLIM: a JEV row carries its entries array AND its
+// voucher relations, which is far too heavy for the 5MB store. Only
+// `entries` is dropped — replaced by the precomputed debit total the list
+// actually displays. /jev-update fetches the full record itself.
+const JEV_CACHE_KEY = "jevs_cache";
+const slimRows = (rows) =>
+  (rows || []).map(({ entries, ...rest }) => ({
+    ...rest,
+    dEntriesTotal: entries
+      ? entries.reduce(
+          (sum, e) => sum + (Number(e.dAmount) > 0 ? Number(e.dAmount) : 0),
+          0,
+        )
+      : Number(rest.dEntriesTotal) || 0,
+  }));
 
 // Listing of the JEVs of ONE type — the type is chosen in the sidebar's
 // "Journal Entry Voucher" section, not by a filter on the page.
@@ -41,8 +58,11 @@ export default function useJournalEntryVoucher() {
     loading: mappingLoading,
   } = useKeysLabels();
 
-  const [jevs, setJevs] = useState([]);
-  const [itemsLoading, setItemsLoading] = useState(true);
+  // Seeded from cache — instant render on revisit, silent refresh follows.
+  const [jevs, setJevs] = useState(() => getItem(JEV_CACHE_KEY, []));
+  const [itemsLoading, setItemsLoading] = useState(() =>
+    !hasItem(JEV_CACHE_KEY),
+  );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
@@ -75,14 +95,14 @@ export default function useJournalEntryVoucher() {
   const firstCode = typeCodes[0] ?? "";
 
   // ── Fetch ────────────────────────────────────────────────────────────
-  // No localStorage payload cache: a JEV row carries its entries AND its
-  // voucher relations, which is far too heavy for the 5MB store.
+  // Persists a slim copy (entries stripped) — see slimRows above.
   const fetchJevs = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setItemsLoading(true);
     try {
       const res = await JevAPI.getAll();
       const data = Array.isArray(res) ? res : res?.data || [];
       setJevs(data);
+      setItem(JEV_CACHE_KEY, slimRows(data));
     } catch (err) {
       console.error("Failed to fetch JEVs:", err);
     } finally {
@@ -90,8 +110,17 @@ export default function useJournalEntryVoucher() {
     }
   }, []);
 
+  // Initial load — cache hit → silent refresh (no skeleton);
+  // miss → visible load. Runs exactly once per visit.
+  const initialLoadRef = useRef(false);
   useEffect(() => {
-    if (!mappingLoading) fetchJevs();
+    if (mappingLoading || initialLoadRef.current) return;
+    initialLoadRef.current = true;
+    if (hasItem(JEV_CACHE_KEY)) {
+      fetchJevs({ silent: true });
+    } else {
+      fetchJevs();
+    }
   }, [mappingLoading, fetchJevs]);
 
   // Rows can go stale from another tab / user too: JevController broadcasts
@@ -101,11 +130,22 @@ export default function useJournalEntryVoucher() {
   // really gone server-side (the filter above already dropped it).
   useEffect(() => {
     const refresh = () => fetchJevs({ silent: true });
+    const onDeleted = (e) => {
+      const id =
+        e.detail?.jevId ?? e.detail?.id ?? e.detail?.data?.nJEVId ?? null;
+      if (id) {
+        setJevs((prev) => {
+          const next = prev.filter((j) => String(j.nJEVId) !== String(id));
+          setItem(JEV_CACHE_KEY, slimRows(next));
+          return next;
+        });
+      } else refresh();
+    };
     window.addEventListener("jev_data_updated", refresh);
-    window.addEventListener("jev_data_deleted", refresh);
+    window.addEventListener("jev_data_deleted", onDeleted);
     return () => {
       window.removeEventListener("jev_data_updated", refresh);
-      window.removeEventListener("jev_data_deleted", refresh);
+      window.removeEventListener("jev_data_deleted", onDeleted);
     };
   }, [fetchJevs]);
 
@@ -144,12 +184,12 @@ export default function useJournalEntryVoucher() {
         (statusFilter === "all" || String(j.cStatus) === String(statusFilter)),
     );
 
-    // Status first (Active → Pending → Cancelled), then newest first within
+    // Status first (Pending → Active → Cancelled), then newest first within
     // each status — dtOccur is "YYYY-MM-DD HH:mm:ss", so a plain string
     // compare already sorts correctly.
     const statusRank = {
-      [jevActiveKey]: 0,
-      [jevPendingKey]: 1,
+      [jevPendingKey]: 0,
+      [jevActiveKey]: 1,
       [jevCancelledKey]: 2,
     };
     const rankOf = (j) => statusRank[j.cStatus] ?? 3;
@@ -191,11 +231,15 @@ export default function useJournalEntryVoucher() {
       filteredJevs.map((j) => {
         const entries = j.entries ?? [];
         // Debits are stored positive and credits negative (they net to 0),
-        // so the JEV's gross total is the sum of the positive side.
-        const total = entries.reduce(
-          (sum, e) => sum + (Number(e.dAmount) > 0 ? Number(e.dAmount) : 0),
-          0,
-        );
+        // so the JEV's gross total is the sum of the positive side. A row
+        // seeded from the slim cache carries no entries — its total was
+        // precomputed at fetch time (dEntriesTotal).
+        const total = entries.length
+          ? entries.reduce(
+              (sum, e) => sum + (Number(e.dAmount) > 0 ? Number(e.dAmount) : 0),
+              0,
+            )
+          : Number(j.dEntriesTotal) || 0;
 
         return {
           _raw: j,
@@ -218,6 +262,13 @@ export default function useJournalEntryVoucher() {
           // the Add button keys off.
           cJEVLinkType: j.cJEVLinkType ?? "",
           dtOccur: fmtDateTime(j.dtOccur),
+          // Who created the journal — "BY: <nickname>" over the date in the
+          // Created column (tbljevs.nUserId → tblusers.strNickName, shipped
+          // by the API as strCreatedBy). A dash from the API (or a null for
+          // a pre-column row) means "no creator" — blank so the view can
+          // print the NO_CREATOR placeholder.
+          strCreatedByName:
+            j.strCreatedBy && j.strCreatedBy !== "—" ? j.strCreatedBy : "",
           // Whether this row may be deleted, and why not when it may not.
           // The API decides (a paid voucher, a live Purchase Order, a
           // completed transaction all keep their journal), so the button
@@ -368,7 +419,11 @@ export default function useJournalEntryVoucher() {
   // doesn't flicker, then tell the sidebar its per-type badge is stale.
   const handleDeleteSuccess = useCallback(() => {
     if (!entityToDelete?.data) return;
-    setJevs((prev) => prev.filter((j) => j.nJEVId !== entityToDelete.data.id));
+    setJevs((prev) => {
+      const next = prev.filter((j) => j.nJEVId !== entityToDelete.data.id);
+      setItem(JEV_CACHE_KEY, slimRows(next));
+      return next;
+    });
     window.dispatchEvent(new CustomEvent("jev_data_deleted"));
   }, [entityToDelete]);
 

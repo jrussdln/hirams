@@ -1,7 +1,11 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
+import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
+import icons from "../../../../../utils/style/iconFormatStyles.jsx";
 import { fmtPHP, fmtQty } from "../../../../../utils/formatters/formatter.js";
 import PrintPreview from "../../../../../components/ui/print-preview/PrintPreview.jsx";
+import PrintPreviewPageFooter from "../../../../../components/ui/print-preview/PrintPreviewPageFooter.jsx";
 import EditableCell, {
   PrintEditableContext,
 } from "../../../../../components/ui/print-preview/EditableCell.jsx";
@@ -898,15 +902,36 @@ export default function PreviewVoucherView({
   otherPaymentTermLabel,
 }) {
   const subtotal = items.reduce((s, i) => s + i.qty * i.unitPrice, 0);
+  const navigate = useNavigate();
+  const [printControls, setPrintControls] = React.useState(null);
+
+  const footerLActions = (
+    <BaseButton
+      label="Back"
+      icon={icons.back}
+      onClick={() => navigate(-1)}
+      actionColor="back"
+    />
+  );
 
   return (
     <PageLayout
       title="Voucher Preview"
       subtitle="Quick overview"
       upDownIndicator={false}
+      footerLActions={
+        printControls?.viewMode === "print" ? (
+          <PrintPreviewPageFooter printControls={printControls} side="left" />
+        ) : (
+          footerLActions
+        )
+      }
+      footerRActions={<PrintPreviewPageFooter printControls={printControls} />}
     >
       <PrintPreview
         onExport={() => console.log("wire up export")}
+        onControlsReady={setPrintControls}
+        hideHeaderControls={true}
         header={
           <VoucherHeaderTable
             voucherNo={voucherNo}

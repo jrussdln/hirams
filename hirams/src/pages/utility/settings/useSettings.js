@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 
-const VALID_TABS = ["general", "account", "users", "audit", "preferences"];
+const VALID_TABS = ["general", "account", "users", "audit", "preferences", "storage"];
 
 export default function useSettings() {
   const [searchParams] = useSearchParams();

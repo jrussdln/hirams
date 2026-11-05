@@ -221,7 +221,7 @@ export default function PageNotFound() {
             animation: "shimmer 3s linear infinite",
           }}
         >
-          Error 404 Â· Page Not Found
+          Error 404 · Page Not Found
         </div>
 
         {/* Title */}

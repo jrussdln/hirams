@@ -1,0 +1,17 @@
+RewriteEngine On
+
+# Redirect www → non-www
+RewriteCond %{HTTP_HOST} ^www\.lgu\.net\.ph$ [NC]
+RewriteRule ^ https://lgu.net.ph%{REQUEST_URI} [R=301,L]
+
+# Never rewrite Adminer (adjust the folder/file name to yours)
+RewriteRule ^(adminer|adminer\.php) - [L]
+
+# Don't rewrite existing files or directories
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Don't rewrite error pages or loop if index.html is missing
+RewriteCond %{DOCUMENT_ROOT}/index.html -f
+RewriteRule ^ index.html [L]

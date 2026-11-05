@@ -39,6 +39,7 @@ function PageRightPanel({ open, width, children }) {
       sx={{
         flexShrink: 0,
         alignSelf: "stretch",
+        height: "100%",
         width: open ? width : 0,
         overflow: "hidden",
         transition: "width 0.25s ease",

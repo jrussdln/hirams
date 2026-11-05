@@ -887,14 +887,15 @@ function LedgerPanel({
   const collapseAll = () => setCollapsedIds(new Set(flat.map(rowKeyOf)));
   const expandAll = () => setCollapsedIds(new Set());
 
-  // Compact pills in the list header (Collapse all / Expand all)
+  // The header's Collapse all / Expand all pill — same height as the search
+  // box and the date-range chip next to it (both height: 32).
   const headerBtnSx = {
     display: "inline-flex",
     alignItems: "center",
     gap: 0.2,
-    px: 0.7,
-    py: 0.3,
-    borderRadius: "999px",
+    px: 0.9,
+    height: 32,
+    borderRadius: "7px",
     border: `1px solid ${colors.border}`,
     background: "transparent",
     color: colors.gray.sec,

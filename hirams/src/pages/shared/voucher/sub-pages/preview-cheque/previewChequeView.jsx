@@ -1,7 +1,11 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
+import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
+import icons from "../../../../../utils/style/iconFormatStyles.jsx";
 import { fmtPHP } from "../../../../../utils/formatters/formatter.js";
 import PrintPreview from "../../../../../components/ui/print-preview/PrintPreview.jsx";
+import PrintPreviewPageFooter from "../../../../../components/ui/print-preview/PrintPreviewPageFooter.jsx";
 import EditableCell from "../../../../../components/ui/print-preview/EditableCell.jsx";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
 
@@ -119,14 +123,47 @@ export default function PreviewChequeView({
   amountInWords = DEFAULTS.amountInWords,
 }) {
   const rows = Array.from({ length: TOTAL_ROWS }, (_, i) => i + 1);
+  const navigate = useNavigate();
+  const [printControls, setPrintControls] = React.useState(null);
+
+  // Saved-PDF title: "PayeeName MMDDYYYY" (e.g. "John Smith 11042026").
+  // Strips characters that are illegal in file names, so a payee like
+  // "ABC, Inc." stays valid on disk.
+  const pdfFileName = `${payeeName} ${date}`
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const footerLActions = (
+    <BaseButton
+      label="Back"
+      icon={icons.back}
+      onClick={() => navigate(-1)}
+      actionColor="back"
+    />
+  );
 
   return (
     <PageLayout
       title="Cheque Preview"
       subtitle="Quick overview"
       upDownIndicator={false}
+      footerLActions={
+        printControls?.viewMode === "print" ? (
+          <PrintPreviewPageFooter printControls={printControls} side="left" />
+        ) : (
+          footerLActions
+        )
+      }
+      footerRActions={<PrintPreviewPageFooter printControls={printControls} />}
     >
-      <PrintPreview onExport={() => console.log("wire up export")}>
+      <PrintPreview
+        onExport={() => console.log("wire up export")}
+        onControlsReady={setPrintControls}
+        hideHeaderControls={true}
+        showSystemGenerated={false}
+        pdfFileName={pdfFileName}
+      >
         <div
           style={{
             marginTop: CONTENT_MARGIN.top,

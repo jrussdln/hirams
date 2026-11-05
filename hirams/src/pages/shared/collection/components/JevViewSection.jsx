@@ -66,7 +66,7 @@ export default function JevViewSection({
             icon={<MonetizationOnOutlined />}
             label={c.label}
             variant={c.variant}
-            value={`₱ ${fmtPHP(c.value)}`}
+            value={`${fmtPHP(c.value)}`}
           />
         ))}
       </Box>

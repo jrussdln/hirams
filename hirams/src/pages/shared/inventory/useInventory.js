@@ -8,10 +8,19 @@ import { computeJevBalance } from "../../../hooks/useJEVBalance.js";
 import { showSwal, withSpinner } from "../../../utils/helpers/swal.jsx";
 import { rowTransactionId } from "./itemRows.js";
 
-import { getItem, removeItem } from "../../../utils/storage/localStorage";
+import {
+  getItem,
+  setItem,
+  removeItem,
+  hasItem,
+} from "../../../utils/storage/localStorage";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
+
+const INVENTORY_CACHE_KEY = "inventory_items_cache";
 export default function useInventory() {
-  const [itemsLoading, setItemsLoading] = useState(false);
+  const [itemsLoading, setItemsLoading] = useState(() =>
+    !hasItem(INVENTORY_CACHE_KEY),
+  );
   const {
     inventoryStatus,
     loading: mappingLoading, //Keys
@@ -31,7 +40,8 @@ export default function useInventory() {
     isAO,
     isAOTL,
   } = useKeysLabels();
-  const [items, setItems] = useState([]);
+  // Seeded from cache — instant render on revisit, silent refresh follows.
+  const [items, setItems] = useState(() => getItem(INVENTORY_CACHE_KEY, []));
   const [companies, setCompanies] = useState([]);
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
@@ -85,6 +95,7 @@ export default function useInventory() {
       const response = await InventoryAPI.getInventory();
       const data = response.inventories || [];
       setItems(data);
+      setItem(INVENTORY_CACHE_KEY, data);
     } catch (err) {
       console.error("Failed to fetch inventory", err);
     } finally {
@@ -97,8 +108,17 @@ export default function useInventory() {
     fetchRef.current = fetchItems;
   }, [fetchItems]);
 
+  // Initial load — cache hit → silent refresh (no skeleton);
+  // miss → visible load.
+  const initialLoadRef = useRef(false);
   useEffect(() => {
-    if (!mappingLoading) fetchItems();
+    if (mappingLoading || initialLoadRef.current) return;
+    initialLoadRef.current = true;
+    if (hasItem(INVENTORY_CACHE_KEY)) {
+      fetchRef.current({ silent: true });
+    } else {
+      fetchItems();
+    }
   }, [mappingLoading, fetchItems]);
 
   useEffect(() => {

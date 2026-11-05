@@ -20,7 +20,7 @@ import ChartStructure from "../../../../components/ui/structure/ChartStructure";
 import { fmtDate } from "../../../../utils/helpers/timeZone";
 import { getDueDateColor } from "../../../../utils/helpers/dueDateColor";
 import useKeysLabels from "../../../../hooks/useKeysLabels";
-import { setItem } from "../../../../utils/storage/localStorage";
+import { getItem, setItem, hasItem } from "../../../../utils/storage/localStorage";
 import { cardSx, cardVariants } from "./overviewStyles";
 import {
   XAxis,
@@ -954,56 +954,91 @@ export default function ManagementView() {
   const navigate = useNavigate();
   const { transacstatus, loading: mappingLoading } = useKeysLabels();
 
-  const [metrics, setMetrics] = useState([
-    {
-      title: "Users",
-      value: 0,
-      change: "Total",
-      color: colors.metricUsers.color,
-      bg: colors.metricUsers.bg,
-      icon: People,
-    },
-    {
-      title: "Company",
-      value: 0,
-      change: "Total",
-      color: colors.metricCompany.color,
-      bg: colors.metricCompany.bg,
-      icon: Business,
-    },
-    {
-      title: "Clients",
-      value: 0,
-      change: "Total",
-      color: colors.metricClients.color,
-      bg: colors.metricClients.bg,
-      icon: Group,
-    },
-    {
-      title: "Suppliers",
-      value: 0,
-      change: "Total",
-      color: colors.metricSuppliers.color,
-      bg: colors.metricSuppliers.bg,
-      icon: LocalShipping,
-    },
-  ]);
-  const [ongoingTxns, setOngoingTxns] = useState([]);
-  const [allTxns, setAllTxns] = useState([]);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [profitData, setProfitData] = useState(
-    MONTH_LABELS.map((m) => ({ month: m, revenue: 0, expenses: 0, profit: 0 })),
+  // ── LOCAL STORAGE CACHE ─────────────────────────────────────────────
+  // Each widget seeds from its cache so a revisit renders instantly and
+  // the fetches below silently refresh the numbers.
+  const cacheKey = {
+    metrics: "overview_metrics_cache",
+    ongoingTxns: "overview_ongoing_txns_cache",
+    employee: (year) => `overview_employee_performance_${year}`,
+    profit: (year) => `overview_profit_${year}`,
+  };
+  const currentYear = new Date().getFullYear();
+
+  const [metrics, setMetrics] = useState(() => {
+    const base = [
+      {
+        title: "Users",
+        value: 0,
+        change: "Total",
+        color: colors.metricUsers.color,
+        bg: colors.metricUsers.bg,
+        icon: People,
+      },
+      {
+        title: "Company",
+        value: 0,
+        change: "Total",
+        color: colors.metricCompany.color,
+        bg: colors.metricCompany.bg,
+        icon: Business,
+      },
+      {
+        title: "Clients",
+        value: 0,
+        change: "Total",
+        color: colors.metricClients.color,
+        bg: colors.metricClients.bg,
+        icon: Group,
+      },
+      {
+        title: "Suppliers",
+        value: 0,
+        change: "Total",
+        color: colors.metricSuppliers.color,
+        bg: colors.metricSuppliers.bg,
+        icon: LocalShipping,
+      },
+    ];
+    const cached = getItem(cacheKey.metrics, null);
+    return Array.isArray(cached)
+      ? base.map((m, i) => ({ ...m, value: Number(cached[i]) || 0 }))
+      : base;
+  });
+  // Seeded caches, no skeleton on revisit:
+  const [ongoingTxns, setOngoingTxns] = useState(() =>
+    getItem(cacheKey.ongoingTxns, []),
   );
-  const [profitYear, setProfitYear] = useState(new Date().getFullYear());
-  const [profitLoading, setProfitLoading] = useState(false);
-  const [employeeData, setEmployeeData] = useState([]);
-  const [employeeYear, setEmployeeYear] = useState(new Date().getFullYear());
+  const [allTxns, setAllTxns] = useState(() =>
+    getItem(cacheKey.ongoingTxns, []),
+  );
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [profitData, setProfitData] = useState(() =>
+    getItem(
+      cacheKey.profit(currentYear),
+      MONTH_LABELS.map((m) => ({ month: m, revenue: 0, expenses: 0, profit: 0 })),
+    ),
+  );
+  const [profitYear, setProfitYear] = useState(currentYear);
+  const [profitLoading, setProfitLoading] = useState(
+    () => !hasItem(cacheKey.profit(currentYear)),
+  );
+  const [employeeData, setEmployeeData] = useState(() =>
+    getItem(cacheKey.employee(currentYear), []),
+  );
+  const [employeeYear, setEmployeeYear] = useState(currentYear);
 
   useEffect(() => {
     let mounted = true;
     OverviewAPI.getTotalMetrics()
       .then((res) => {
         const data = res?.totals ?? {};
+        setItem(cacheKey.metrics, [
+          Number(data.users) || 0,
+          Number(data.companies) || 0,
+          Number(data.clients) || 0,
+          Number(data.suppliers) || 0,
+        ]);
         if (!mounted) return;
         setMetrics((prev) => [
           { ...prev[0], value: Number(data.users) || 0 },
@@ -1022,8 +1057,10 @@ export default function ManagementView() {
     let mounted = true;
     OverviewAPI.getEmployeePerformance(employeeYear)
       .then((res) => {
+        const data = res.employees || [];
+        setItem(cacheKey.employee(employeeYear), data);
         if (!mounted) return;
-        setEmployeeData(res.employees || []);
+        setEmployeeData(data);
       })
       .catch((err) =>
         console.error("Failed to load employee performance", err),
@@ -1050,6 +1087,7 @@ export default function ManagementView() {
         }));
         setOngoingTxns(formatted);
         setAllTxns(formatted);
+        setItem(cacheKey.ongoingTxns, formatted);
       })
       .catch((err) =>
         console.error("Failed to load ongoing transactions", err),
@@ -1100,11 +1138,17 @@ export default function ManagementView() {
 
   useEffect(() => {
     let mounted = true;
-    setProfitLoading(true);
+    const key = cacheKey.profit(profitYear);
+    // Cached for this year → paint instantly, refresh silently;
+    // else the skeleton shows while the chart loads.
+    if (hasItem(key)) setProfitData(getItem(key, profitData));
+    else setProfitLoading(true);
     OverviewAPI.getProfitByMonth(profitYear)
       .then((res) => {
         if (!mounted) return;
-        setProfitData(res.monthly || []);
+        const data = res.monthly || [];
+        setProfitData(data);
+        setItem(key, data);
       })
       .catch((err) => console.error("Failed to load profit chart", err))
       .finally(() => mounted && setProfitLoading(false));

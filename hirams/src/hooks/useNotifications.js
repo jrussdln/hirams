@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getItem } from "../utils/storage/localStorage";
+import { getItem, setItem, hasItem } from "../utils/storage/localStorage";
 import NotificationAPI from "../api/endpoints/notification.api";
 
 /* ── Module-level shared feed ─────────────────────────────────────
@@ -8,14 +8,24 @@ import NotificationAPI from "../api/endpoints/notification.api";
  * writes go through `commit`, so marking a row read in the panel
  * instantly drops the badge in the header — no second fetch needed.
  * Requests are de-duped with one in-flight promise shared by all.
+ *
+ * The feed persists per user (notifications_cache_<userId>) so a reload
+ * or revisit renders instantly from cache — the mount fetch silently
+ * refreshes it.
  */
-let sharedRows = [];
+const cacheKey = () => {
+  const me = getItem("user", {}) || {};
+  return `notifications_cache_${me?.nUserId ?? "anon"}`;
+};
+
+let sharedRows = getItem(cacheKey(), []);
 let inFlight = null;
 
 const subscribers = new Set();
 
 const commit = (rows) => {
   sharedRows = rows;
+  setItem(cacheKey(), rows);
   subscribers.forEach((sync) => sync());
 };
 
@@ -43,7 +53,11 @@ const fetchAll = async () => {
  */
 export default function useNotifications({ fetchOnMount = true } = {}) {
   const [rows, setRows] = useState(sharedRows);
-  const [loading, setLoading] = useState(fetchOnMount);
+  // Seeded from cache → no skeleton flash; the mount refresh below is
+  // then silent. No cache → normal visible load.
+  const [loading, setLoading] = useState(
+    () => fetchOnMount && !hasItem(cacheKey()),
+  );
 
   useEffect(() => {
     const sync = () => setRows([...sharedRows]);
@@ -52,14 +66,14 @@ export default function useNotifications({ fetchOnMount = true } = {}) {
     return () => subscribers.delete(sync);
   }, []);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setLoading(true);
     await fetchAll();
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (fetchOnMount) refresh();
+    if (fetchOnMount) refresh({ silent: hasItem(cacheKey()) });
   }, [fetchOnMount, refresh]);
 
   /* Live sync — the backend broadcasts notification.updated on every

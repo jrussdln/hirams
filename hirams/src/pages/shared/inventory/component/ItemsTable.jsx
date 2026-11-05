@@ -34,14 +34,17 @@ import PickableValue from "../../../../components/ui/form/AmountPick.jsx";
 //                                       block never comes up empty.
 //
 // Self-contained: it paints its own theme colours, so a host only hands
-// over `rows` + `total` (+ `sellingPrices` on the DELIVERED side, which
-// adds UNIT SELLING PRICE and TOTAL SELLING PRICE — a price only means
-// something once the batch has gone out, so a received table stays as it
-// was).
+// over `rows` + `total` (+ `sellingPrices` on the DELIVERED side). The
+// DELIVERED side stacks PURCHASE / SELLING under each PRICE / TOTAL PRICE
+// cell — a selling price only means something once the batch has gone
+// out, until then that line prints a dash. The FOR DELIVERY side stays
+// compact: PURCHASE PRICE / TOTAL PURCHASE columns with a single amount.
+// The header card always carries the TRANSACTION code(s); the PO each
+// row was bought on paints on the row itself, as the link to that PO.
 // ─────────────────────────────────────────────────────────────────────
 
 // Cell geometry is SHARED by the column header and the item rows so every
-// title sits exactly above its own data column. QTY / UNIT PRICE / TOTAL /
+// title sits exactly above its own data column. QTY / PRICE / TOTAL PRICE /
 // ACTIONS all use ONE width so the columns line up evenly.
 const COL_W = 90;
 
@@ -75,7 +78,7 @@ const makeColors = (c) => ({
   textOnFill: c.gray.textOnFill,
 });
 
-// `wrap` lets the longer selling-price titles break onto a second line
+// `wrap` lets the longer price cell titles break onto a second line
 // instead of punching through a column that is only COL_W wide — the
 // header cell keeps the exact width of the cell it labels either way.
 const HeaderCell = ({
@@ -107,6 +110,41 @@ const HeaderCell = ({
     >
       {label}
     </Typography>
+  </Box>
+);
+
+// One line of a PRICE / TOTAL PRICE cell: the amount's lifecycle label
+// (PURCHASE = bought at, SELLING = went out at) sits over its own value,
+// both flushed to the column's right edge.
+//
+// Line boxes are FIXED-PIXEL (label 10px, amount 14px) because the QTY
+// column reuses the very same measures — a 10px invisible spacer above
+// its value — so the amount rows line up exactly across all columns.
+const LABEL_LINE_PX = 10;
+const VALUE_LINE_PX = 14;
+
+const StackedAmountLine = ({ label, colors, children }) => (
+  <Box
+    sx={{
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "flex-end",
+    }}
+  >
+    <Typography
+      sx={{
+        fontSize: "0.42rem",
+        fontWeight: 700,
+        letterSpacing: "0.03em",
+        color: colors.gray.textMuted,
+        height: LABEL_LINE_PX,
+        lineHeight: `${LABEL_LINE_PX}px`,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </Typography>
+    {children}
   </Box>
 );
 
@@ -456,9 +494,9 @@ export default function ItemsTable({
   // The brand · model becomes a LINK when this is set: it opens the
   // transaction the batch was bought on. The callback receives the row.
   onBrandClick = null,
-  // The PO code (header card + delivered rows) is a LINK while this is
-  // true — false renders every PO code as plain text. The JEV viewer
-  // turns it off for finance; on the PO itself management keeps the jump.
+  // The PO code (the item rows) is a LINK while this is true — false
+  // renders every PO code as plain text. The JEV viewer turns it off for
+  // finance; on the PO itself management keeps the jump.
   poNavigable = true,
 }) {
   const theme = useTheme();
@@ -489,10 +527,9 @@ export default function ItemsTable({
   const [open, setOpen] = useState(true);
 
   // WHICH SIDE is this table about? A batch on its way OUT belongs to the
-  // client — its header carries the TRANSACTION code and the client's name;
-  // a batch on its way IN belongs to the supplier — its header carries the
-  // PO number and the supplier's name. A host that KNOWS its side says so;
-  // otherwise the rows themselves decide (the majority direction wins).
+  // client, one on its way IN to the supplier — and a host that KNOWS its
+  // side says so; otherwise the rows themselves decide (majority wins).
+  // The side only chooses the COUNTERPARTY name under the header card.
   const clientSide = useMemo(() => {
     if (showSellingOverride === false) return false;
     if (showSellingOverride === true) return true;
@@ -501,24 +538,18 @@ export default function ItemsTable({
     return delivered * 2 > rows.length;
   }, [rows, showSellingOverride]);
 
-  // What the header card shows: the code on top, the counterparty under it.
-  // The received side's code IS a PO number — it carries the PO's id, so it
-  // opens that PO in Item Purchasing. The delivered side's code is a
-  // transaction code: nothing to open.
+  // What the header card shows: the TRANSACTION code(s) on top — both
+  // sides alike (on the way IN the batch was bought for that client's
+  // transaction; on the way OUT it left on it), unique per table and
+  // never a link. The PO code the rows were bought on lives on the item
+  // ROWS now, where it is also the link into Item Purchasing.
   const headerCodes = useMemo(() => {
-    if (clientSide) {
-      return [
-        ...new Set(rows.map((r) => r.strTransactionCode).filter((v) => v && v !== "—")),
-      ].map((label) => ({ label, poId: null }));
-    }
-    const byCode = new Map();
-    rows.forEach((r) => {
-      const label = r.strPurchaseOrderNo;
-      if (!label || label === "—") return;
-      if (!byCode.has(label)) byCode.set(label, r.nPurchaseOrderId ?? null);
-    });
-    return [...byCode.entries()].map(([label, poId]) => ({ label, poId }));
-  }, [rows, clientSide]);
+    return [
+      ...new Set(
+        rows.map((r) => r.strTransactionCode).filter((v) => v && v !== "—"),
+      ),
+    ].map((label) => ({ label, poId: null }));
+  }, [rows]);
 
   const headerName = useMemo(() => {
     const field = clientSide ? "strClientNickName" : "strSupplierNickName";
@@ -585,6 +616,10 @@ export default function ItemsTable({
     fontSize: "0.66rem",
     fontWeight: 700,
     color: colors.gray.textSecondary,
+    // Fixed line box — matches VALUE_LINE_PX so the stacked PRICE /
+    // TOTAL PRICE cells align row-for-row with the QTY cell.
+    height: VALUE_LINE_PX,
+    lineHeight: `${VALUE_LINE_PX}px`,
   };
   const actionBtnSx = {
     width: 20,
@@ -653,32 +688,37 @@ export default function ItemsTable({
             width={COL_W}
             align="center"
           />
-          <HeaderCell
-            label="PURCHASE PRICE"
-            colors={colors}
-            width={COL_W}
-            align="right"
-            wrap
-          />
-          {showSelling && (
+          {/* PRICE / TOTAL PRICE — the DELIVERED side stacks PURCHASE and
+              SELLING under each header; the FOR DELIVERY side stays as the
+              compact single-amount PURCHASE PRICE / TOTAL PURCHASE. */}
+          {showSelling ? (
             <HeaderCell
-              label="SELLING PRICE"
+              label="PRICE"
+              colors={colors}
+              width={COL_W}
+              align="right"
+              wrap
+            />
+          ) : (
+            <HeaderCell
+              label="PURCHASE PRICE"
               colors={colors}
               width={COL_W}
               align="right"
               wrap
             />
           )}
-          <HeaderCell
-            label="TOTAL PURCHASE"
-            colors={colors}
-            width={COL_W}
-            align="right"
-            wrap
-          />
-          {showSelling && (
+          {showSelling ? (
             <HeaderCell
-              label="TOTAL SELLING"
+              label="TOTAL PRICE"
+              colors={colors}
+              width={COL_W}
+              align="right"
+              wrap
+            />
+          ) : (
+            <HeaderCell
+              label="TOTAL PURCHASE"
               colors={colors}
               width={COL_W}
               align="right"
@@ -748,14 +788,12 @@ export default function ItemsTable({
                   </Typography>
                 </Box>
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  {/* The PO this batch was bought on — right on top of the
-                      brand · model it belongs to. Only on the DELIVERED
-                      side: there the header carries the transaction code,
-                      so the PO is what tells the rows apart. On the For
-                      Delivery side the header already shows the PO. */}
-                  {isDeliveredRow(row) &&
-                    row.strPurchaseOrderNo &&
-                    row.strPurchaseOrderNo !== "—" && (
+                  {/* Every row paints its own PO — the batch's PO number
+                      the header card no longer carries (it shows the
+                      transaction codes now). It stays a LINK: it opens
+                      that PO in Item Purchasing. */}
+                  {(row.strPurchaseOrderNo &&
+                    row.strPurchaseOrderNo !== "—") && (
                     <Typography
                       component="button"
                       onClick={(e) => {
@@ -768,10 +806,12 @@ export default function ItemsTable({
                           : undefined
                       }
                       sx={{
-                        // The box hugs the text — otherwise the whole column
-                        // width is a link and clicking the empty space opens
-                        // the PO.
-                        display: "inline-block",
+                        // Block + fit-content: hugs the text like an
+                        // inline-block would, but without the anonymous
+                        // line-box strut (the row container's inherited
+                        // ~1rem/1.43 line) that used to open up a big
+                        // gap between the PO code and the brand · model.
+                        display: "block",
                         width: "fit-content",
                         maxWidth: "100%",
                         textAlign: "left",
@@ -789,7 +829,6 @@ export default function ItemsTable({
                             : colors.gray.textSecondary,
                         textTransform: "uppercase",
                         lineHeight: 1,
-                        mb: 0.15,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -822,6 +861,10 @@ export default function ItemsTable({
                         : colors.gray.textPrimary,
                       fontStyle: "italic",
                       lineHeight: 1,
+                      // Same spacing as the header card: the gap between
+                      // the code line and the big text lives on the BIG
+                      // text (mirrors the transaction-code → client gap).
+                      mt: 0.15,
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
@@ -850,7 +893,10 @@ export default function ItemsTable({
                 </Box>
               </Box>
 
-              {/* QTY | PURCHASE PRICE | SELLING PRICE | TOTAL PURCHASE | TOTAL SELLING | ACTIONS */}
+              {/* QTY | PRICE | TOTAL PRICE | ACTIONS — the delivered side
+                  stacks PURCHASE / SELLING (QTY rides on the purchased
+                  value line); the for-delivery side keeps the compact
+                  single-amount purchase columns. */}
               <Box
                 sx={{
                   display: "flex",
@@ -859,8 +905,24 @@ export default function ItemsTable({
                   flexShrink: 0,
                 }}
               >
-                {/* QTY */}
-                <Box sx={cellSx(COL_W, "center")}>
+                {/* QTY — on the stacked side, aligned to the row's
+                    PURCHASE value line so `qty × purchased total` reads
+                    across as one line: the invisible cover mirrors the
+                    stacked cells' label line, flex-start pins it top. */}
+                {showSelling ? (
+                <Box
+                  sx={{
+                    ...cellSx(COL_W, "center"),
+                    alignSelf: "flex-start",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                  }}
+                >
+                  <Box
+                    sx={{ height: LABEL_LINE_PX, flexShrink: 0 }}
+                    aria-hidden="true"
+                  />
                   <Typography sx={valueSx}>
                     {fmtQty(row.nQuantity)}{" "}
                     <Typography
@@ -871,46 +933,97 @@ export default function ItemsTable({
                     </Typography>
                   </Typography>
                 </Box>
+                ) : (
+                  /* Compact QTY — single line, centred like the plain
+                     purchase cells beside it. */
+                  <Box sx={cellSx(COL_W, "center")}>
+                    <Typography sx={valueSx}>
+                      {fmtQty(row.nQuantity)}{" "}
+                      <Typography
+                        component="span"
+                        sx={{ fontSize: "0.5rem", color: valueSx.color }}
+                      >
+                        {row.strUOM}
+                      </Typography>
+                    </Typography>
+                  </Box>
+                )}
 
-                {/* PURCHASE PRICE */}
-                <Box sx={cellSx(COL_W, "right")}>
-                  <PickableValue
-                    value={Number(
-                      row._raw?.purchaseOption?.dUnitPrice ?? 0,
-                    )}
-                    sx={valueSx}
+                {/* PRICE — DELIVERED: the unit amount under its lifecycle
+                    label, PURCHASE on top, SELLING under it (a dash until
+                    prices arrive). FOR DELIVERY: the plain single
+                    purchase amount. */}
+                {showSelling ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      rowGap: 0.35,
+                    }}
                   >
-                    {fmtPHP(Number(row._raw?.purchaseOption?.dUnitPrice ?? 0))}
-                  </PickableValue>
-                </Box>
-
-                {/* SELLING PRICE — delivered rows only */}
-                {showSelling && (
+                    <StackedAmountLine label="PURCHASE" colors={colors}>
+                      <PickableValue
+                        value={Number(
+                          row._raw?.purchaseOption?.dUnitPrice ?? 0,
+                        )}
+                        sx={valueSx}
+                      >
+                        {fmtPHP(Number(row._raw?.purchaseOption?.dUnitPrice ?? 0))}
+                      </PickableValue>
+                    </StackedAmountLine>
+                    <StackedAmountLine label="SELLING" colors={colors}>
+                      <PickableValue
+                        value={unitSellingPriceOf(row, sellingPrices)}
+                        sx={valueSx}
+                      >
+                        {fmtSelling(unitSellingPriceOf(row, sellingPrices))}
+                      </PickableValue>
+                    </StackedAmountLine>
+                  </Box>
+                ) : (
                   <Box sx={cellSx(COL_W, "right")}>
                     <PickableValue
-                      value={unitSellingPriceOf(row, sellingPrices)}
+                      value={Number(
+                        row._raw?.purchaseOption?.dUnitPrice ?? 0,
+                      )}
                       sx={valueSx}
                     >
-                      {fmtSelling(unitSellingPriceOf(row, sellingPrices))}
+                      {fmtPHP(Number(row._raw?.purchaseOption?.dUnitPrice ?? 0))}
                     </PickableValue>
                   </Box>
                 )}
 
-                {/* TOTAL PURCHASE PRICE */}
-                <Box sx={cellSx(COL_W, "right")}>
-                  <PickableValue value={itemTotal(row)} sx={valueSx}>
-                    {fmtPHP(itemTotal(row))}
-                  </PickableValue>
-                </Box>
-
-                {/* TOTAL SELLING PRICE — delivered rows only */}
-                {showSelling && (
+                {/* TOTAL PRICE — DELIVERED: same stacking, PURCHASE = qty ×
+                    bought-at, SELLING = qty × selling. FOR DELIVERY: the
+                    plain single purchase total. */}
+                {showSelling ? (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "flex-end",
+                      rowGap: 0.35,
+                    }}
+                  >
+                    <StackedAmountLine label="PURCHASE" colors={colors}>
+                      <PickableValue value={itemTotal(row)} sx={valueSx}>
+                        {fmtPHP(itemTotal(row))}
+                      </PickableValue>
+                    </StackedAmountLine>
+                    <StackedAmountLine label="SELLING" colors={colors}>
+                      <PickableValue
+                        value={rowSellingTotal(row, sellingPrices)}
+                        sx={valueSx}
+                      >
+                        {fmtSelling(rowSellingTotal(row, sellingPrices))}
+                      </PickableValue>
+                    </StackedAmountLine>
+                  </Box>
+                ) : (
                   <Box sx={cellSx(COL_W, "right")}>
-                    <PickableValue
-                      value={rowSellingTotal(row, sellingPrices)}
-                      sx={valueSx}
-                    >
-                      {fmtSelling(rowSellingTotal(row, sellingPrices))}
+                    <PickableValue value={itemTotal(row)} sx={valueSx}>
+                      {fmtPHP(itemTotal(row))}
                     </PickableValue>
                   </Box>
                 )}

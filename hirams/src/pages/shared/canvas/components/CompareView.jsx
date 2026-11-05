@@ -200,7 +200,7 @@ function ItemPanel({ compareData, onSpecsChange, forCanvasKey }) {
         <InfoRow
           icon={MonetizationOnOutlined}
           label="ABC"
-          value={compareData.abc ? `₱ ${fmtPHP(compareData.abc)}` : "—"}
+          value={compareData.abc ? `${fmtPHP(compareData.abc)}` : "—"}
           highlight={!!compareData.abc}
           colors={colors}
         />
@@ -334,14 +334,14 @@ function OptionPanel({ option, onOptionSpecsChange, forCanvasKey }) {
           <InfoRow
             icon={LocalOfferOutlined}
             label="Unit Price"
-            value={`₱ ${fmtPHP(option.unitPrice)}`}
+            value={`${fmtPHP(option.unitPrice)}`}
             highlight
             colors={colors}
           />
           <InfoRow
             icon={MonetizationOnOutlined}
             label="Total Price"
-            value={`₱ ${fmtPHP(totalPrice)}`}
+            value={`${fmtPHP(totalPrice)}`}
             highlight
             colors={colors}
           />
@@ -349,7 +349,7 @@ function OptionPanel({ option, onOptionSpecsChange, forCanvasKey }) {
             <InfoRow
               icon={ReceiptLongOutlined}
               label="EWT"
-              value={`₱ ${fmtPHP(option.ewt)}`}
+              value={`${fmtPHP(option.ewt)}`}
               colors={colors}
             />
           )}

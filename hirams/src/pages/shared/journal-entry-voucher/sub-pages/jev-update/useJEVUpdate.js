@@ -17,7 +17,7 @@ import useJEVBalance, {
 import useSellingPrices from "../../../inventory/useSellingPrices.js";
 import useKeysLabels from "../../../../../hooks/useKeysLabels.js";
 import { openForPurchase } from "../../../../../utils/helpers/openForPurchase.js";
-import { getItem } from "../../../../../utils/storage/localStorage.js";
+import { getItem, setItem } from "../../../../../utils/storage/localStorage.js";
 
 // jev_status codes straight from config/mappings.php. Only these two
 // matter here: an ACTIVE JEV left unbalanced by its own entries is put
@@ -107,47 +107,62 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
   // ── The JEV itself ───────────────────────────────────────────────────
   // Rebuilt WITHOUT `entries` → JevViewPanel fetches them fresh with
   // their journal_account data (same trick the viewer modal and
-  // LedgerPanel use).
-  const [jev, setJev] = useState(null);
-  const [loadingJev, setLoadingJev] = useState(true);
+  // LedgerPanel use). The stripped shape is tiny, so the whole record is
+  // cached per JEV (jev_<id>) — instant render on revisit, silent
+  // refresh keeps status / title / date accurate.
+  const initialJev = jevId ? getItem(`jev_${jevId}`, null) : null;
+  const [jev, setJev] = useState(initialJev);
+  const [loadingJev, setLoadingJev] = useState(
+    () => Boolean(jevId) && !initialJev,
+  );
 
-  const fetchJev = useCallback(async () => {
-    if (!jevId) {
-      setLoadingJev(false);
-      return;
-    }
-    setLoadingJev(true);
-    try {
-      // 25s — a page must never hang on one endpoint for the axios-wide
-      // 120s; past it this reads as a failed load, not an eternal spin.
-      const res = await JevAPI.getById(jevId, { timeout: 25000 });
-      const data = Array.isArray(res) ? res[0] : (res?.data ?? res);
-      // Rebuilt WITHOUT `entries` — the panel fetches those itself.
-      if (data?.nJEVId) {
-        setJev({
-          nJEVId: data.nJEVId,
-          strJEVNumber: data.strJEVNumber ?? "",
-          // Only a No Type JEV carries one; the panel's header edits it
-          // in place — dropping this and its title never renders.
-          strTitle: data.strTitle ?? "",
-          dtOccur: data.dtOccur ?? "",
-          cStatus: data.cStatus ?? "",
-          cJEVLinkType: data.cJEVLinkType ?? "",
-        });
-      } else {
-        setJev(null);
+  const fetchJev = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!jevId) {
+        setLoadingJev(false);
+        return;
       }
-    } catch (err) {
-      console.error("Failed to fetch the JEV:", err);
-      setJev(null);
-    } finally {
-      setLoadingJev(false);
-    }
-  }, [jevId]);
+      if (!silent) setLoadingJev(true);
+      try {
+        // 25s — a page must never hang on one endpoint for the axios-wide
+        // 120s; past it this reads as a failed load, not an eternal spin.
+        const res = await JevAPI.getById(jevId, { timeout: 25000 });
+        const data = Array.isArray(res) ? res[0] : (res?.data ?? res);
+        // Rebuilt WITHOUT `entries` — the panel fetches those itself.
+        if (data?.nJEVId) {
+          const stripped = {
+            nJEVId: data.nJEVId,
+            strJEVNumber: data.strJEVNumber ?? "",
+            // Only a No Type JEV carries one; the panel's header edits it
+            // in place — dropping this and its title never renders.
+            strTitle: data.strTitle ?? "",
+            dtOccur: data.dtOccur ?? "",
+            cStatus: data.cStatus ?? "",
+            cJEVLinkType: data.cJEVLinkType ?? "",
+          };
+          setJev(stripped);
+          setItem(`jev_${jevId}`, stripped);
+        } else {
+          setJev(null);
+        }
+      } catch (err) {
+        console.error("Failed to fetch the JEV:", err);
+        setJev(null);
+      } finally {
+        if (!silent) setLoadingJev(false);
+      }
+    },
+    [jevId],
+  );
 
+  // Initial load — cache hit (record seeded from jev_<id>) → silent
+  // refresh, no skeleton; miss → visible load.
+  const loadedForRef = useRef(null);
   useEffect(() => {
-    fetchJev();
-  }, [fetchJev]);
+    if (!jevId || loadedForRef.current === jevId) return;
+    loadedForRef.current = jevId;
+    fetchJev({ silent: Boolean(initialJev) });
+  }, [fetchJev, jevId]);
 
   // ── Roles ────────────────────────────────────────────────────────────
   // The viewer's entry CRUD gate — Management / Finance Officer, PLUS the

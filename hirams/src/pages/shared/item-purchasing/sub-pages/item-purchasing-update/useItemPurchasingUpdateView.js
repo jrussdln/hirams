@@ -8,7 +8,7 @@ import VoucherAPI from "../../../../../api/endpoints/voucher.api.js";
 import UserAPI from "../../../../../api/endpoints/user.api.js";
 import useKeysLabels from "../../../../../hooks/useKeysLabels.js";
 import { buildRoleGroups } from "../../../../../hooks/useRoleBuilder.js";
-import { getItem, setItem } from "../../../../../utils/storage/localStorage.js";
+import { getItem, setItem, removeItem } from "../../../../../utils/storage/localStorage.js";
 import { showSwal, withSpinner } from "../../../../../utils/helpers/swal.jsx";
 import { printRoute } from "../../../../../utils/helpers/printRoute.js";
 import InventoryAPI from "../../../../../api/endpoints/inventory.api.js"; // adjust name/path
@@ -30,9 +30,11 @@ const hasShippingText = (html) =>
   Boolean(
     (html || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim(),
   );
+// A cache entry is POPPED, not nulled — a stored "null" reads back as null
+// and crashed the list's purchaseOrders.filter on mount.
 const bustPOCache = () => {
-  setItem("cart_cache_purchaseOrders", null);
-  setItem("cart_cache_vouchersByPO", null);
+  removeItem("cart_cache_purchaseOrders");
+  removeItem("cart_cache_vouchersByPO");
 };
 
 // ── Line corrections ─────────────────────────────────────────────────
@@ -241,11 +243,21 @@ export default function useItemPurchasingUpdateView() {
   } = useKeysLabels();
 
   // ── PO data ───────────────────────────────────────────────────────────
-  const [po, setPo] = useState(null);
+  // Seed from the list page's cache (cart_cache_purchaseOrders) so the PO
+  // renders instantly on revisit — silent refresh keeps it accurate.
+  const cachedPOs = getItem("cart_cache_purchaseOrders", null);
+  const initialPO =
+    poId && Array.isArray(cachedPOs)
+      ? cachedPOs.find((p) => String(p.nPurchaseOrderId) === String(poId)) ||
+        null
+      : null;
+  const [po, setPo] = useState(initialPO);
   // Every PO the user can see — needed to rebuild an item's transaction-wide
   // qty (the card merges one item across all of its POs).
-  const [allPOs, setAllPOs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [allPOs, setAllPOs] = useState(() =>
+    Array.isArray(cachedPOs) ? cachedPOs : [],
+  );
+  const [loading, setLoading] = useState(!initialPO);
   const [poVoucherStatus, setPoVoucherStatus] = useState(null);
   // ?status= carries the tab the card was opened from — a partially received
   // PO is listed under For Delivery while its own status is still Pending
@@ -301,12 +313,12 @@ export default function useItemPurchasingUpdateView() {
               }),
         )
       : "";
-  const fetchPO = useCallback(async () => {
+  const fetchPO = useCallback(async ({ silent = false } = {}) => {
     if (!poId) {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       let found = null;
       let list = [];
@@ -490,10 +502,23 @@ export default function useItemPurchasingUpdateView() {
     }
   }, [poId]);
 
+  // Initial load — cache hit (PO seeded from the list page's cache)
+  // → silent refresh, no skeleton; miss → visible load.
+  const loadedForRef = useRef(null);
   useEffect(() => {
-    fetchPO();
+    if (!poId || loadedForRef.current === poId) return;
+    loadedForRef.current = poId;
+    const cachedList = getItem("cart_cache_purchaseOrders", null);
+    const hadPO =
+      Array.isArray(cachedList) &&
+      cachedList.some((p) => String(p.nPurchaseOrderId) === String(poId));
+    if (hadPO) {
+      fetchPO({ silent: true });
+    } else {
+      fetchPO();
+    }
     fetchVoucherStatus();
-  }, [fetchPO, fetchVoucherStatus]);
+  }, [fetchPO, fetchVoucherStatus, poId]);
 
   const notifyUpdated = useCallback((detail) => {
     window.dispatchEvent(
@@ -983,9 +1008,9 @@ export default function useItemPurchasingUpdateView() {
 
     try {
       if (action === "print_po") {
-        sessionStorage.setItem(
+        setItem(
           "printPO_data",
-          JSON.stringify({
+          {
             po,
             options,
             assignedAOName,
@@ -994,7 +1019,7 @@ export default function useItemPurchasingUpdateView() {
             checkByOtherAOName,
             generalManagerName,
             ewtAmount,
-          }),
+          },
         );
         printRoute("/print-po");
         return;

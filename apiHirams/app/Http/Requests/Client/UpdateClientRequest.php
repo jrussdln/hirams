@@ -12,7 +12,7 @@ class UpdateClientRequest extends ApiRequest
     public function rules(): array
     {
         return [
-            'id' => 'required|integer|exists:tblusers,nUserId',
+            'id' => 'required|integer|exists:tblclients,nClientId',
             'strClientName' => 'sometimes|required|string|max:100',
             'strClientNickName' => 'sometimes|nullable|string|max:25',
             'strTIN' => 'sometimes|nullable|string|max:17',

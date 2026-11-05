@@ -19,8 +19,8 @@ const STORAGE_KEY = "cookieNoticeAccepted";
 
 // A semi-transparent blue bar (70% alpha) with white text, the same in light
 // and dark mode.
-const BAR_BG = "rgba(31, 111, 197, 0.7)";
-const SUBMIT_BG = "#2e9e7a";
+const BAR_BG = "rgba(30, 64, 175, 0.95)";
+const SUBMIT_BG = "#ffffff";
 
 /**
  * "Important Notice" bar shown after a successful login.
@@ -30,7 +30,7 @@ const SUBMIT_BG = "#2e9e7a";
  * is then remembered. Turn it off with COOKIE_NOTICE_ENABLED in
  * dataPrivacyText.js.
  */
-export default function CookieNotice() {
+export default function CookieNotice({ contained = false }) {
   const [accepted, setAccepted] = React.useState(
     () => !COOKIE_NOTICE_ENABLED || getItem(STORAGE_KEY) === true,
   );
@@ -50,25 +50,29 @@ export default function CookieNotice() {
       role="region"
       aria-label="Important notice"
       sx={{
-        position: "fixed",
+        position: contained ? "absolute" : "fixed",
         left: 0,
         right: 0,
         bottom: 0,
         zIndex: (t) => t.zIndex.snackbar,
         bgcolor: BAR_BG,
         color: "#fff",
+        borderTop: "1px solid rgba(255, 255, 255, 0.15)",
         px: { xs: 2, sm: 3 },
-        pt: { xs: 2, sm: 2.5 },
-        pb: { xs: 2, sm: 2.5 },
-        paddingBottom: "max(16px, env(safe-area-inset-bottom))",
+        pt: { xs: 1.5, sm: 2 },
+        pb: { xs: 1.5, sm: 2 },
+        paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+        boxShadow: "0 -4px 24px rgba(0, 0, 0, 0.18)",
       }}
     >
       <Typography
         sx={{
-          fontWeight: 800,
-          fontSize: { xs: "0.85rem", sm: "0.95rem" },
-          letterSpacing: "0.02em",
-          mb: 1.25,
+          fontWeight: 600,
+          fontSize: { xs: "0.8rem", sm: "0.88rem" },
+          letterSpacing: "0.06em",
+          textTransform: "uppercase",
+          mb: 0.75,
+          color: "#fff",
         }}
       >
         {cookieNotice.heading}
@@ -76,9 +80,11 @@ export default function CookieNotice() {
 
       <Typography
         sx={{
-          fontSize: { xs: "0.82rem", sm: "0.92rem" },
-          lineHeight: 1.7,
-          mb: 1.5,
+          fontSize: { xs: "0.78rem", sm: "0.85rem" },
+          fontWeight: 400,
+          lineHeight: 1.6,
+          mb: 1.25,
+          color: "rgba(255, 255, 255, 0.92)",
         }}
       >
         {cookieNotice.before}
@@ -125,7 +131,7 @@ export default function CookieNotice() {
             />
           }
           label={
-            <Typography sx={{ fontSize: { xs: "0.85rem", sm: "0.95rem" } }}>
+            <Typography sx={{ fontSize: { xs: "0.8rem", sm: "0.85rem" }, fontWeight: 500 }}>
               {cookieNotice.button}
             </Typography>
           }
@@ -137,15 +143,17 @@ export default function CookieNotice() {
           variant="contained"
           disableElevation
           sx={{
-            bgcolor: SUBMIT_BG,
-            color: "#fff",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-            px: 3,
-            py: 1,
-            borderRadius: 1,
-            "&:hover": { bgcolor: "#258566" },
+            bgcolor: "#fff",
+            color: "#1e40af",
+            fontWeight: 600,
+            textTransform: "none",
+            letterSpacing: "0.02em",
+            fontSize: "0.85rem",
+            px: 2.5,
+            py: 0.75,
+            borderRadius: 1.5,
+            boxShadow: "none",
+            "&:hover": { bgcolor: "#eff6ff", boxShadow: "none" },
             "&.Mui-disabled": {
               bgcolor: "rgba(255, 255, 255, 0.22)",
               color: "rgba(255, 255, 255, 0.7)",

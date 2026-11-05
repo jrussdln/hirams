@@ -298,12 +298,18 @@ export default function PendingInventory({
                   {isReceived
                     ? inventoryReceivedLabel
                     : inventoryDeliveredLabel}
-                  {row.aoNick && row.aoNick !== "—" ? ` - ${row.aoNick}` : ""}
                 </span>
               </div>
               <span className="block truncate italic tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
                 {val || "—"}
               </span>
+              {/* WHO the batches were assigned to — under the counterparty
+                  nickname now, instead of riding on the status badge. */}
+              {row.aoNick && row.aoNick !== "—" ? (
+                <span className="block truncate uppercase text-[0.625rem] font-medium tracking-wide leading-tight -mt-0.5 text-gray-500 dark:text-gray-400">
+                  AO: {row.aoNick}
+                </span>
+              ) : null}
             </div>
           );
         },

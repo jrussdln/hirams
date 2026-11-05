@@ -25,6 +25,7 @@ import {
 import useKeysLabels from "./useKeysLabels.js";
 import { getDueDateColor } from "../utils/helpers/dueDateColor";
 import { fmtPHP, fmtDate } from "../utils/formatters/formatter.js";
+import * as localStorage from "../utils/storage/localStorage.js";
 const mapSuppliers = (suppliers) =>
   suppliers.map((s) => ({
     label: s.strSupplierNickName || s.strSupplierName,
@@ -132,7 +133,33 @@ export default function useTransactionWorkspace() {
    * value is kept as an override for callers that pass their own.
    */
   const forCollectionKey = stateForCollectionKey || keysForCollectionKey || "";
-  const [items, setItems] = useState([]);
+  const procNonCanvasStatus =
+    (isProcurement || isManagement) &&
+    (draftKey.includes(selectedStatusCode) ||
+      finalizeKey?.includes(selectedStatusCode) ||
+      finalizeVerificationKey?.includes(selectedStatusCode) ||
+      priceApprovedKey?.includes(selectedStatusCode) ||
+      procPriceApprovedKey?.includes(selectedStatusCode));
+
+  // ── LOCAL STORAGE CACHE — items of THIS transaction ─────────────────
+  const itemsCacheKey = transaction?.nTransactionId
+    ? `transaction_items_cache_${transaction.nTransactionId}`
+    : null;
+  const cachedItemsPayload = itemsCacheKey
+    ? localStorage.getItem(itemsCacheKey, null)
+    : null;
+  const seededFromCache = Boolean(cachedItemsPayload) && !procNonCanvasStatus;
+
+  const [items, setItems] = useState(() =>
+    seededFromCache && Array.isArray(cachedItemsPayload?.items)
+      ? cachedItemsPayload.items.map((item) => ({
+          ...item,
+          purchaseOptions: item.purchaseOptions || [],
+          optionsLoaded: true,
+          optionsLoading: false,
+        }))
+      : [],
+  );
   const optionStatuses = useMemo(() => {
     const map = {};
     items.forEach((item) => {
@@ -165,10 +192,26 @@ export default function useTransactionWorkspace() {
   const [activeTab, setActiveTab] = useState("purchase"); // was "canvas"
   const [statusChangedAlert, setStatusChangedAlert] = useState(false);
   const [countdown, setCountdown] = useState(null);
-  const [itemsLoading, setItemsLoading] = useState(true);
+  // Cache hit → no skeleton; the mount fetch below is then silent.
+  const [itemsLoading, setItemsLoading] = useState(
+    () => !seededFromCache,
+  );
 
   const [suppliers, setSuppliers] = useState([]);
-  const [cItemType, setCItemType] = useState(null);
+  const [cItemType, setCItemType] = useState(
+    () =>
+      (seededFromCache &&
+        (cachedItemsPayload?.cItemType &&
+        typeof cachedItemsPayload.cItemType === "object"
+          ? Object.keys(cachedItemsPayload.cItemType)[0]
+          : cachedItemsPayload.cItemType)) ||
+      null,
+  );
+  // Mirror for realtime handlers that persist outside fetchItems.
+  const cItemTypeRef = useRef(null);
+  useEffect(() => {
+    cItemTypeRef.current = cItemType;
+  }, [cItemType]);
   const [expandedRows, setExpandedRows] = useState({});
   const [expandedOptions, setExpandedOptions] = useState({});
   const [addingNewItem, setAddingNewItem] = useState(false);
@@ -225,14 +268,6 @@ export default function useTransactionWorkspace() {
 
   const assignedAONo = transaction?.user?.strPhoneNo?.trim() || "—";
 
-  const procNonCanvasStatus =
-    (isProcurement || isManagement) &&
-    (draftKey.includes(statusCode) ||
-      finalizeKey?.includes(statusCode) ||
-      finalizeVerificationKey?.includes(statusCode) ||
-      priceApprovedKey?.includes(statusCode) ||
-      procPriceApprovedKey?.includes(statusCode));
-
   const limitedContent =
     (!isProcurement && !Number(transaction?.nAssignedAO) > 0) ||
     procNonCanvasStatus;
@@ -279,7 +314,7 @@ export default function useTransactionWorkspace() {
   // watches the whole board. The button itself says "Assign AO" or
   // "Reassign AO" depending on whether one is already on the transaction
   // (see hasAssignedAO).
-  const showReassignAO = isAOTL || isManagement;
+  const showReassignAO = (isAOTL || isManagement) && !forCollection;
   const showReassignProcurement =
     forPurchaseKey.includes(statusCode) && (isManagement || isProcurementTL);
   const transactionHasABC =
@@ -304,7 +339,7 @@ export default function useTransactionWorkspace() {
     0,
   );
 
-  const abcValue = `₱ ${fmtPHP(transactionHasABC ? transaction.dTotalABC : totalItemsABC)}`;
+  const abcValue = `${fmtPHP(transactionHasABC ? transaction.dTotalABC : totalItemsABC)}`;
   const abcSub =
     (itemsManagementKey.includes(statusCode) ||
       itemsVerificationKey.includes(statusCode) ||
@@ -312,7 +347,7 @@ export default function useTransactionWorkspace() {
       canvasVerificationKey.includes(statusCode)) &&
     transactionHasABC &&
     totalItemsABC > 0
-      ? `Items ₱${fmtPHP(totalItemsABC)}`
+      ? `Items ${fmtPHP(totalItemsABC)}`
       : null;
 
   const statusChangedTooltip = statusChangedAlert
@@ -383,9 +418,9 @@ export default function useTransactionWorkspace() {
     if (itemsManagementKey.includes(statusCode)) {
       if (transactionHasABC && totalItemsABC > 0) {
         if (totalItemsABC > Number(transaction.dTotalABC))
-          return `Items ABC total (₱${fmtPHP(totalItemsABC)}) exceeds Transaction ABC (₱${fmtPHP(transaction.dTotalABC)})`;
+          return `Items ABC total (${fmtPHP(totalItemsABC)}) exceeds Transaction ABC (${fmtPHP(transaction.dTotalABC)})`;
         if (totalItemsABC < Number(transaction.dTotalABC))
-          return `Items ABC total (₱${fmtPHP(totalItemsABC)}) must equal Transaction ABC (₱${fmtPHP(transaction.dTotalABC)})`;
+          return `Items ABC total (${fmtPHP(totalItemsABC)}) must equal Transaction ABC (${fmtPHP(transaction.dTotalABC)})`;
       }
       if (!transactionHasABC) {
         const missing = items.filter((i) => !i.abc || Number(i.abc) === 0);
@@ -395,7 +430,7 @@ export default function useTransactionWorkspace() {
     }
     if (isCanvasStatus && transactionHasABC) {
       if (totalCanvas > Number(transaction.dTotalABC || 0))
-        return `Total Canvas (₱${fmtPHP(totalCanvas)}) exceeds Transaction ABC (₱${fmtPHP(transaction.dTotalABC)}). Please adjust the included purchase options.`;
+        return `Total Canvas (${fmtPHP(totalCanvas)}) exceeds Transaction ABC (${fmtPHP(transaction.dTotalABC)}). Please adjust the included purchase options.`;
       const overItems = items.filter((item) => {
         const tot = item.purchaseOptions
           .filter((o) => o.bIncluded)
@@ -408,7 +443,7 @@ export default function useTransactionWorkspace() {
       if (anyItemHasABC && overItems.length)
         return `The following item(s) have canvas totals exceeding their ABC: ${overItems.map((i) => `"${i.name}"`).join(", ")}. Please adjust the included purchase options.`;
       if (totalItemsABC > Number(transaction.dTotalABC))
-        return `Items ABC total (₱${fmtPHP(totalItemsABC)}) must not exceed Transaction ABC (₱${fmtPHP(transaction.dTotalABC)})`;
+        return `Items ABC total (${fmtPHP(totalItemsABC)}) must not exceed Transaction ABC (${fmtPHP(transaction.dTotalABC)})`;
     }
     return null;
   }, [
@@ -436,12 +471,12 @@ export default function useTransactionWorkspace() {
   );
 
   const fetchSuppliers = async (force = false) => {
-    const cached = sessionStorage.getItem("suppliers_cache");
-    if (cached && !force) return setSuppliers(JSON.parse(cached));
+    const cached = localStorage.getItem("suppliers_cache", null);
+    if (cached && !force) return setSuppliers(cached);
     try {
       const res = await SupplierAPI.getAll();
       const opts = mapSuppliers(res.suppliers);
-      sessionStorage.setItem("suppliers_cache", JSON.stringify(opts));
+      localStorage.setItem("suppliers_cache", opts);
       setSuppliers(opts);
     } catch (err) {
       console.error("Error fetching suppliers:", err);
@@ -466,6 +501,15 @@ export default function useTransactionWorkspace() {
         optionsLoading: false,
       }));
       setItems(loadedItems);
+      // Persist for the next visit — instant render, silent refresh.
+      if (itemsCacheKey)
+        localStorage.setItem(itemsCacheKey, {
+          cItemType:
+            res.cItemType && typeof res.cItemType === "object"
+              ? Object.keys(res.cItemType)[0]
+              : res.cItemType,
+          items: loadedItems,
+        });
     } catch (err) {
       console.error("Error fetching items:", err);
     } finally {
@@ -574,7 +618,7 @@ export default function useTransactionWorkspace() {
     localActionRef.current = true;
     setActionModal(null);
     if (newStatusCode) {
-      sessionStorage.setItem(
+      localStorage.setItem(
         isManagement
           ? "selectedStatusCode"
           : isProcurement
@@ -812,15 +856,15 @@ export default function useTransactionWorkspace() {
     };
   }, [transaction?.nTransactionId]);
   useEffect(() => {
-    const cached = sessionStorage.getItem("ao_cache");
+    const cached = localStorage.getItem("ao_cache", null);
     if (cached) {
-      setAccountOfficers(JSON.parse(cached));
+      setAccountOfficers(cached);
       return;
     }
     UserAPI.getActiveAccountOfficers()
       .then((res) => {
         const list = res.accountOfficers || [];
-        sessionStorage.setItem("ao_cache", JSON.stringify(list));
+        localStorage.setItem("ao_cache", list);
         setAccountOfficers(list);
       })
       .catch((err) => console.error("Error fetching AOs:", err));
@@ -833,15 +877,15 @@ export default function useTransactionWorkspace() {
     (async () => {
       try {
         let options;
-        const cached = sessionStorage.getItem("direct_cost_options_cache");
+        const cached = localStorage.getItem("direct_cost_options_cache", null);
         if (cached) {
-          options = JSON.parse(cached);
+          options = cached;
         } else {
           const r = await DirectCostOptionAPI.getDirectCostOptions();
           options = r.data || r || [];
-          sessionStorage.setItem(
+          localStorage.setItem(
             "direct_cost_options_cache",
-            JSON.stringify(options),
+            options,
           );
         }
 
@@ -916,11 +960,17 @@ export default function useTransactionWorkspace() {
         return;
       }
       if (e.detail?.transactionItemId) {
-        setItems((prev) =>
-          prev.filter(
+        setItems((prev) => {
+          const next = prev.filter(
             (i) => String(i.id) !== String(e.detail.transactionItemId),
-          ),
-        );
+          );
+          if (itemsCacheKey)
+            localStorage.setItem(itemsCacheKey, {
+              cItemType: cItemTypeRef.current,
+              items: next,
+            });
+          return next;
+        });
       }
     };
 
@@ -1056,20 +1106,18 @@ export default function useTransactionWorkspace() {
         }
         const res = await PricingAPI.getItemPricings(chosen.nPricingSetId);
         const map = {};
-        let taxTotal = 0;
         (res.itemPricings || []).forEach((p) => {
           map[p.nTransactionItemId] = Number(p.dUnitSellingPrice || 0);
-          taxTotal += Number(p.tax || 0);
         });
         if (active) {
           setSellingPrices(map);
-          setCollectionTax(taxTotal);
+          // collectionTax deliberately stays 0 for now — no tax derivation
+          // off the item pricings.
         }
       } catch (err) {
         console.error("Failed to fetch unit selling prices:", err);
         if (active) {
           setSellingPrices({});
-          setCollectionTax(0);
         }
       }
     })();

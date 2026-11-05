@@ -61,8 +61,9 @@ class SupplierBankController extends ApiController
         }
     }
 
-    public function update(UpdateSupplierBankRequest $request, int $id): JsonResponse
+    public function update(UpdateSupplierBankRequest $request, $id): JsonResponse
     {
+        $id = (int) $id;
         try {
             $bank = $this->service->update($id, $request->validated());
 
@@ -77,8 +78,9 @@ class SupplierBankController extends ApiController
         }
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy($id): JsonResponse
     {
+        $id = (int) $id;
         try {
             $bank = $this->service->delete($id);
 
@@ -93,8 +95,9 @@ class SupplierBankController extends ApiController
         }
     }
 
-    public function bySupplier(int $supplierId): JsonResponse
+    public function bySupplier($supplierId): JsonResponse
     {
+        $supplierId = (int) $supplierId;
         try {
             $banks = $this->service->bySupplier($supplierId);
 

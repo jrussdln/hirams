@@ -43,6 +43,8 @@ const AddBulkItem = lazyPage("/add-bulk-item"); //DONE - NV
 const Transaction = lazyPage("/transaction"); //DONE - NV
 const Client = lazyPage("/client");
 const Supplier = lazyPage("/supplier"); //DONE - NV
+const SupplierContact = lazyPage("/supplier-contact");
+const SupplierBank = lazyPage("/supplier-bank");
 const User = lazyPage("/user"); // DONE - NV -> LOCSTR
 const Company = lazyPage("/company"); // DONE - NV -> LOCSTR
 const DirectCost = lazyPage("/direct-cost"); //DONE - NV -> LOCSTR
@@ -222,6 +224,8 @@ export default function AppRoute() {
                         element: <Navigate to="/settings" replace />,
                       },
                       { path: "/supplier", element: <Supplier /> },
+{ path: "/supplier-contact", element: <SupplierContact /> },
+{ path: "/supplier-bank", element: <SupplierBank /> },
                       { path: "/transaction", element: <Transaction /> },
                       {
                         path: "/transaction-canvas",

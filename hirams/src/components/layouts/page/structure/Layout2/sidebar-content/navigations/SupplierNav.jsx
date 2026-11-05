@@ -26,7 +26,7 @@ const SupplierNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   });
   const [suppliers, setSuppliers] = useState([]);
   const [countLoading, setCountLoading] = useState(true);
-  const isOnPage = location.pathname === "/supplier";
+  const isOnPage = location.pathname === "/supplier" || location.pathname === "/supplier-contact" || location.pathname === "/supplier-bank";
 
   // ── Sync status from localStorage ──
   useEffect(() => {

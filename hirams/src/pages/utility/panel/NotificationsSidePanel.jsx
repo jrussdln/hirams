@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useState } from "react";
+import { Box } from "@mui/material";
 import NotificationsBody from "../../../components/ui/menu/shared/NotificationsBody";
 import PageRightPanel from "../../../components/ui/panel/PageRightPanel";
 
@@ -22,10 +23,16 @@ export default function NotificationsSidePanel() {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const onOpen = () => setOpen(true);
+    const onOpen = () => {
+      setOpen(true);
+      window.dispatchEvent(new CustomEvent("close_print_preview_panel"));
+    };
+    const onClosePrint = () => setOpen(false);
     window.addEventListener("open_notifications_panel", onOpen);
+    window.addEventListener("open_print_preview_panel", onClosePrint);
     return () => {
       window.removeEventListener("open_notifications_panel", onOpen);
+      window.removeEventListener("open_print_preview_panel", onClosePrint);
     };
   }, []);
 
@@ -38,7 +45,16 @@ export default function NotificationsSidePanel() {
 
   return (
     <PageRightPanel open={open} width={PANEL_WIDTH}>
-      <NotificationsBody variant="panel" onClose={closePanel} />
+      <Box
+        sx={{
+          height: "100%",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <NotificationsBody variant="panel" onClose={closePanel} />
+      </Box>
     </PageRightPanel>
   );
 }

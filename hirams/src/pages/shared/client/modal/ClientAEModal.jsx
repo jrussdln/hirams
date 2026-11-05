@@ -93,6 +93,7 @@ function ClientAEModal({
 
       await withSpinner(entity, async () => {
         const payload = {
+          id: clientData.id,
           strClientName: formData.clientName,
           strClientNickName: formData.nickname,
           strTIN: tinToStorage(formData.tin),

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import PurchaseOrderAPI from "../../../../../api/endpoints/purchase-order.api.js";
 import VoucherAPI from "../../../../../api/endpoints/voucher.api.js";
@@ -8,7 +8,7 @@ import JevAPI from "../../../../../api/endpoints/jev.api.js";
 import JevEntriesAPI from "../../../../../api/endpoints/jev-entries.api.js";
 import VoucherSupplierAPI from "../../../../../api/endpoints/voucher-supplier.api.js";
 import VoucherAssigneeAPI from "../../../../../api/endpoints/voucher-assignee.api.js";
-import { getItem } from "../../../../../utils/storage/localStorage.js";
+import { getItem, setItem } from "../../../../../utils/storage/localStorage.js";
 import { withSpinner, showSwal } from "../../../../../utils/helpers/swal.jsx";
 import { printRoute } from "../../../../../utils/helpers/printRoute.js";
 import useKeysLabels from "../../../../../hooks/useKeysLabels.js";
@@ -89,44 +89,63 @@ export default function useVoucherUpdate() {
   } = useKeysLabels();
 
   // ── Voucher data ─────────────────────────────────────────────────────
-  const [voucher, setVoucher] = useState(null);
-  const [loading, setLoading] = useState(true);
+  // Seed from the list page's cache (voucher_list_<userId>) so the voucher
+  // renders instantly on revisit — silent refresh keeps it accurate.
+  const cachedVouchers = getItem(`voucher_list_${user?.nUserId}`, null);
+  const initialVoucher =
+    voucherId && Array.isArray(cachedVouchers)
+      ? cachedVouchers.find(
+          (v) => String(v.nVoucherId) === String(voucherId),
+        ) || null
+      : null;
+  const [voucher, setVoucher] = useState(initialVoucher);
+  const [loading, setLoading] = useState(!initialVoucher);
 
-  const fetchVoucher = useCallback(async () => {
-    if (!voucherId) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setVoucher(null); // reset immediately
-    try {
-      let data = null;
-      if (typeof VoucherAPI.getVoucher === "function") {
-        const res = await VoucherAPI.getVoucher(voucherId);
-        data = res?.data || res;
-      } else {
-        const res = await VoucherAPI.getVouchers();
-        const list = Array.isArray(res) ? res : res.data || [];
-        data = list.find((v) => String(v.nVoucherId) === String(voucherId));
+  const fetchVoucher = useCallback(
+    async ({ silent = false } = {}) => {
+      if (!voucherId) {
+        setLoading(false);
+        return;
       }
-      setVoucher(data || null);
-    } catch (err) {
-      console.error("Failed to fetch voucher:", err);
-      setVoucher(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [voucherId]);
+      if (!silent) {
+        setLoading(true);
+        setVoucher(null); // reset immediately
+      }
+      try {
+        let data = null;
+        if (typeof VoucherAPI.getVoucher === "function") {
+          const res = await VoucherAPI.getVoucher(voucherId);
+          data = res?.data || res;
+        } else {
+          const res = await VoucherAPI.getVouchers();
+          const list = Array.isArray(res) ? res : res.data || [];
+          data = list.find((v) => String(v.nVoucherId) === String(voucherId));
+        }
+        setVoucher(data || null);
+      } catch (err) {
+        console.error("Failed to fetch voucher:", err);
+        setVoucher(null);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [voucherId],
+  );
 
+  // Initial load — cache hit (voucher seeded from the list page's cache)
+  // → silent refresh, no skeleton; miss → visible load.
+  const loadedForRef = useRef(null);
   useEffect(() => {
-    fetchVoucher();
-  }, [fetchVoucher]);
+    if (!voucherId || loadedForRef.current === voucherId) return;
+    loadedForRef.current = voucherId;
+    fetchVoucher({ silent: Boolean(initialVoucher) });
+  }, [fetchVoucher, voucherId]);
 
   // An APPROVED purchase-price change (Transactions' price-change modal)
   // re-prices the PO lines this voucher totals — refetch silently or the
   // amounts stay at the old price until a reload.
   useEffect(() => {
-    const refetchOnOptionChange = () => fetchVoucher();
+    const refetchOnOptionChange = () => fetchVoucher({ silent: true });
     window.addEventListener("purchase_option_data_updated", refetchOnOptionChange);
     return () =>
       window.removeEventListener("purchase_option_data_updated", refetchOnOptionChange);
@@ -200,12 +219,23 @@ export default function useVoucherUpdate() {
 
   // ── EWT (derived) ────────────────────────────────────────────────────
   // Mirrors POListPanel/PORowPanel exactly: the EWT of each purchase
-  // option, worked out by utils/helpers/calculateEWT.js. Previously this
-  // was recomputed via a separate DirectCost API call, which could
-  // disagree with what's shown in the PO list/rows. Deriving it the same
-  // way keeps every view consistent.
+  // option, worked out by utils/helpers/calculateEWT.js. Deriving it the
+  // same way keeps every view consistent — the card totals and the
+  // voucher summary can never disagree on which cent the withholding tax
+  // lands on.
   // Assignee-type vouchers carry no POs — their EWT lives on each
   // particular's own dEWT line instead, summed the same way.
+  const ewtOptions = useMemo(() => {
+    const out = [];
+    supplierLinks.forEach((link) => {
+      (link.purchase_order?.purchase_order_options ?? [])
+        .forEach((opt) => {
+          // The EWT calculation helper reads `purchase_option`
+          out.push(opt);
+        });
+    });
+    return out;
+  }, [supplierLinks]);
   const ewtAmount = useMemo(() => {
     if (!voucher) return 0;
     if (isAssigneeType)
@@ -213,11 +243,10 @@ export default function useVoucherUpdate() {
         (sum, a) => sum + (Number(a.dEWT) || 0),
         0,
       );
-    return supplierLinks.reduce((sum, link) => {
-      const opts = link.purchase_order?.purchase_order_options ?? [];
-      return sum + totalEWT(opts);
-    }, 0);
-  }, [voucher, isAssigneeType, supplierLinks]);
+    // Use the helper, which does Math.round((n + Number.EPSILON) * 100) / 100
+    // to avoid floating point issues like .12999999999 -> .13
+    return totalEWT(ewtOptions);
+  }, [voucher, isAssigneeType, ewtOptions]);
 
   const ewtLoading = false; // kept for API compatibility with the view/props
 
@@ -872,15 +901,15 @@ export default function useVoucherUpdate() {
     if (action === "print_cheque") {
       try {
         await withSpinner(entity, async () => {
-          sessionStorage.setItem(
+          setItem(
             "printCheque_data",
-            JSON.stringify({
+            {
               voucher,
               payeeName,
               particulars: buildParticulars(),
               isAssigneeType,
               ewtAmount,
-            }),
+            },
           );
           printRoute("/print-cheque");
         });

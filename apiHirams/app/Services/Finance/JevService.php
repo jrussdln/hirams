@@ -39,6 +39,9 @@ class JevService
             // resolveDisplayTitle).
             'transactions.client',
             'transactions.latestHistory',
+            // The journal's creator — the Created column prints their
+            // nickname as the "BY: …" line over the date.
+            'user:nUserId,strNickName',
         ];
     }
 
@@ -94,6 +97,8 @@ class JevService
                 'strTitle'     => $this->resolveTitle($request),
                 'dtOccur'      => $request->dtOccur ?? now(),
                 'cStatus'      => 'P',
+                // Who raised the journal — the Created column's "BY: …".
+                'nUserId'      => auth()->id(),
             ]);
 
             return Jev::with('entries.journal_account')->find($jev->nJEVId);
@@ -377,6 +382,11 @@ class JevService
         // The list reads this so R / D rows get a name without the API
         // pretending the JEV itself was given one.
         $jev->strDisplayTitle = $this->resolveDisplayTitle($jev);
+
+        // Who created the journal — the Created column prints it as the
+        // "BY: <nickname>" line over the date. NULL when the journal
+        // predates the column: the frontend owns the fallback wording.
+        $jev->strCreatedBy = $jev->user?->strNickName;
 
         // Whether this JEV may be deleted, and why not when it may not.
         // The list reads this straight off the row, so the disabled button

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import ClientAPI from "../../../api/endpoints/client.api.js";
-import { getItem, setItem } from "../../../utils/storage/localStorage";
+import { getItem, setItem, hasItem } from "../../../utils/storage/localStorage";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 
 const SESSION_KEY = "selectedClientStatusCode";
+const CLIENTS_CACHE_KEY = "clients_cache";
 
 function formatClient(c) {
   return {
@@ -26,9 +27,13 @@ function formatClient(c) {
 export default function useClient() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [allClients, setAllClients] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isFetched, setIsFetched] = useState(false); // ✅ Track if already loaded
+  // Full dataset — loaded from localStorage cache on revisit,
+  // refreshed silently in the background
+  const [allClients, setAllClients] = useState(() =>
+    getItem(CLIENTS_CACHE_KEY, []),
+  );
+  const [loading, setLoading] = useState(() => !hasItem(CLIENTS_CACHE_KEY));
+  const [isFetched, setIsFetched] = useState(() => hasItem(CLIENTS_CACHE_KEY));
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
@@ -99,7 +104,9 @@ export default function useClient() {
 
       try {
         const result = await ClientAPI.getClients();
-        setAllClients((result.clients ?? []).map(formatClient));
+        const formatted = (result.clients ?? []).map(formatClient);
+        setAllClients(formatted);
+        setItem(CLIENTS_CACHE_KEY, formatted);
         setIsFetched(true); // ✅ Mark as loaded
       } catch (err) {
         console.error("Error fetching clients:", err);
@@ -116,12 +123,18 @@ export default function useClient() {
     fetchClientsRef.current = fetchClients;
   }, [fetchClients]);
 
-  // Initial fetch — runs ONLY once when mappings ready
+  // Initial fetch — runs ONLY once when mappings ready.
+  // No cache → visible load; cache exists → silent background refresh only.
+  const initialLoadRef = useRef(false);
   useEffect(() => {
-    if (!isFetched && !mappingLoading) {
+    if (mappingLoading || initialLoadRef.current) return;
+    initialLoadRef.current = true;
+    if (!hasItem(CLIENTS_CACHE_KEY)) {
       fetchClients();
+    } else {
+      fetchClientsRef.current?.(true, true); // force + silent — no skeleton
     }
-  }, [fetchClients, isFetched, mappingLoading]);
+  }, [fetchClients, mappingLoading]);
 
   // ✅ Real-time sync — SILENT refresh (no loading flash)
   useEffect(() => {
@@ -132,7 +145,11 @@ export default function useClient() {
     const onDeleted = (e) => {
       const clientId = e.detail?.clientId;
       if (!clientId) return;
-      setAllClients((prev) => prev.filter((c) => c.id !== clientId));
+      setAllClients((prev) => {
+        const next = prev.filter((c) => c.id !== clientId);
+        setItem(CLIENTS_CACHE_KEY, next);
+        return next;
+      });
     };
 
     window.addEventListener("client_data_updated", onUpdated);

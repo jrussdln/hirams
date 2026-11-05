@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { useTheme } from "@mui/material";
 import {
   Add,
@@ -8,6 +8,7 @@ import {
   PersonOff,
   PersonAdd,
   DriveFileMoveOutlined,
+  Link as LinkIcon,
 } from "@mui/icons-material";
 import PageLayout from "../../../components/layouts/page/content-page";
 import CustomTable from "../../../components/ui/form/Table";
@@ -29,9 +30,9 @@ import {
   NO_CONTACT_NUMBER,
 } from "../../../constants/tableDataFallbacks";
 
-// ─────────────────────────────────────────────────────────────────────
-// LOCAL COLOR MAP — pulls ONLY tokens THIS component actually uses
-// ─────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// LOCAL COLOR MAP â€” pulls ONLY tokens THIS component actually uses
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const useColors = (c) => ({
   pageBg: c.slate.outerBg,
   cardBg: c.slate.btnBg,
@@ -80,7 +81,7 @@ export default function ClientView({
   handleDeactivate,
   handleRedirect,
 }) {
-  // ✅ Standardized color wiring
+  // âœ… Standardized color wiring
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const base = React.useMemo(() => getThemeColors(isDark), [isDark]);
@@ -108,15 +109,16 @@ export default function ClientView({
                   {NO_NAME}
                 </span>
               )}
-              <span className="flex items-center gap-1 min-w-0">
+              <span className="flex items-center gap-1.5 min-w-0">
                 <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
                   {hasNickname ? row.nickname : NO_NICKNAME}
                 </span>
-                {/* How many transactions still name this client — the same
+                {/* How many transactions still name this client â€” the same
                     count that decides whether Delete or Transfer is offered. */}
                 {transactionCount > 0 && (
-                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
-                    · {transactionCount} transaction
+                  <span className="inline-flex items-center gap-0.5 text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+                    <LinkIcon sx={{ fontSize: "0.7rem" }} />
+                    {transactionCount} transaction
                     {transactionCount === 1 ? "" : "s"}
                   </span>
                 )}
@@ -255,18 +257,23 @@ export default function ClientView({
                     }}
                   />
                 )}
-                {row.transactionsCount > 0 && (
+                {(isActive || row.transactionsCount > 0) && (
                   // A client that still carries transactions cannot be
                   // deleted — the transactions would be left pointing at
                   // nothing. Transfer moves them to another client instead.
                   <BaseButton
                     icon={<DriveFileMoveOutlined fontSize="small" />}
-                    tooltip={`Transfer Transactions (${row.transactionsCount})`}
+                    tooltip={
+                      row.transactionsCount > 0
+                        ? `Transfer Transactions (${row.transactionsCount})`
+                        : "No transactions to transfer"
+                    }
                     actionColor="reassign"
                     size="small"
+                    disabled={row.transactionsCount === 0}
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleTransferClick(row);
+                      if (row.transactionsCount > 0) handleTransferClick(row);
                     }}
                   />
                 )}
@@ -329,7 +336,7 @@ export default function ClientView({
         />
       </section>
 
-      {/* ✅ Hardcoded bg-white → theme token */}
+      {/* âœ… Hardcoded bg-white â†’ theme token */}
       <section
         style={{
           backgroundColor: colors.cardBg,

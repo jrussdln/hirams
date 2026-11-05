@@ -27,7 +27,7 @@ export default function useLogin() {
   // Send them where they were headed instead of asking for a password again.
   useEffect(() => {
     if (getItem("token") && getItem("user")) {
-      navigate(location.state?.from || "/dashboard", { replace: true });
+      navigate("/dashboard", { replace: true });
     }
   }, [navigate, location.state]);
 
@@ -116,7 +116,7 @@ export default function useLogin() {
         await prefetchMappings();
         // Straight back to the page that was wanted (deep link), else the
         // dashboard. The old fixed 1s pause only held people on the form.
-        navigate(location.state?.from || "/dashboard", { replace: true });
+        navigate("/dashboard", { replace: true });
       } else {
         setStatus(uiMessages.common.errorMessage, "error");
       }

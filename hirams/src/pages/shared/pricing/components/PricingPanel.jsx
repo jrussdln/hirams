@@ -537,9 +537,18 @@ const PricingPanel = React.forwardRef(function PricingPanel(
   const colors = useMemo(() => useColors(base), [base]);
 
   /* ── State ── */
-  const [setsLoading, setSetsLoading] = useState(true);
+  const [setsLoading, setSetsLoading] = useState(() => !initialSet?.id);
   const [pricingSets, setPricingSets] = useState([]);
-  const [selectedSet, setSelectedSet] = useState(null);
+  const [selectedSet, setSelectedSet] = useState(() => {
+    if (initialSet?.id) {
+      return {
+        id: initialSet.id,
+        name: initialSet.name,
+        raw: initialSet.raw || initialSet,
+      };
+    }
+    return null;
+  });
   const [noSetError, setNoSetError] = useState(false);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1151,7 +1160,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
               whiteSpace: "nowrap",
             }}
           >
-            ₱ {fmtPHP(getUSP(item) * Number(item.qty || 0))}
+            {fmtPHP(getUSP(item) * Number(item.qty || 0))}
           </Typography>
         ),
         summaryRender: () => (
@@ -1163,7 +1172,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
               whiteSpace: "nowrap",
             }}
           >
-            ₱ {fmtPHP(totals.totalSellingAll)}
+            {fmtPHP(totals.totalSellingAll)}
           </Typography>
         ),
       },
@@ -1185,7 +1194,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                 whiteSpace: "nowrap",
               }}
             >
-              {display !== null ? `₱ ${fmtPHP(display)}` : "—"}
+              {display !== null ? fmtPHP(display) : "—"}
             </Typography>
           );
         },
@@ -1199,9 +1208,9 @@ const PricingPanel = React.forwardRef(function PricingPanel(
             }}
           >
             {transactionHasABC
-              ? `₱ ${fmtPHP(transaction.dTotalABC)}`
+              ? fmtPHP(transaction.dTotalABC)
               : totals.totalABCAll > 0
-                ? `₱ ${fmtPHP(totals.totalABCAll)}`
+                ? fmtPHP(totals.totalABCAll)
                 : "—"}
           </Typography>
         ),
@@ -1227,7 +1236,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                 whiteSpace: "nowrap",
               }}
             >
-              {has ? `₱ ${fmtPHP(diff)}` : "—"}
+              {has ? fmtPHP(diff) : "—"}
             </Typography>
           );
         },
@@ -1240,7 +1249,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
               whiteSpace: "nowrap",
             }}
           >
-            ₱ {fmtPHP(totals.totalDiffAll)}
+            {fmtPHP(totals.totalDiffAll)}
           </Typography>
         ),
       },
@@ -1260,7 +1269,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
               whiteSpace: "nowrap",
             }}
           >
-            ₱ {fmtPHP(getIncludedTotal(item))}
+            {fmtPHP(getIncludedTotal(item))}
           </Typography>
         ),
         summaryRender: () => (
@@ -1272,7 +1281,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
               whiteSpace: "nowrap",
             }}
           >
-            ₱ {fmtPHP(totals.totalPurchaseAll)}
+            {fmtPHP(totals.totalPurchaseAll)}
           </Typography>
         ),
       },
@@ -1314,7 +1323,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                   whiteSpace: "nowrap",
                 }}
               >
-                ₱ {fmtPHP(Math.abs(p))}
+                {fmtPHP(Math.abs(p))}
               </Typography>
             </Box>
           );
@@ -1351,7 +1360,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                 whiteSpace: "nowrap",
               }}
             >
-              ₱ {fmtPHP(Math.abs(totals.totalProfitAll))}
+              {fmtPHP(Math.abs(totals.totalProfitAll))}
             </Typography>
           </Box>
         ),
@@ -1376,7 +1385,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                 whiteSpace: "nowrap",
               }}
             >
-              ₱ {fmtPHP(t)}
+              {fmtPHP(t)}
             </Typography>
           );
         },
@@ -1389,7 +1398,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
               whiteSpace: "nowrap",
             }}
           >
-            ₱ {fmtPHP(totals.totalTaxAll)}
+            {fmtPHP(totals.totalTaxAll)}
           </Typography>
         ),
       },
@@ -1590,14 +1599,14 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                             mr: 0.5,
                           }}
                         >
-                          (Items ₱{fmtPHP(totals.totalABCAll)})
+                          (Items {fmtPHP(totals.totalABCAll)})
                         </Box>{" "}
-                        ₱ {fmtPHP(transaction.dTotalABC)}
+                        {fmtPHP(transaction.dTotalABC)}
                       </>
                     ) : transaction?.dTotalABC ? (
-                      `₱ ${fmtPHP(transaction.dTotalABC)}`
+                      fmtPHP(transaction.dTotalABC)
                     ) : totals.totalABCAll > 0 ? (
-                      `₱ ${fmtPHP(totals.totalABCAll)}`
+                      fmtPHP(totals.totalABCAll)
                     ) : (
                       NO_TRANSACTION_ABC
                     )

@@ -1,11 +1,20 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import JournalAccountAPI from "../../../api/endpoints/journal-account.api.js";
 import JevEntriesAPI from "../../../api/endpoints/jev-entries.api.js";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 import { withSpinner } from "../../../utils/helpers/swal.jsx";
+import {
+  getItem,
+  setItem,
+  hasItem,
+} from "../../../utils/storage/localStorage.js";
 
 // The sidebar item's route — the re-click signal below only answers for it.
 const JOURNAL_ACCOUNT_ROUTE = "/journal-account";
+
+// ── LOCAL STORAGE CACHE ──────────────────────────────────────────────
+const ACCOUNTS_CACHE_KEY = "journal_accounts_cache";
+const JEV_ENTRIES_CACHE_KEY = "jev_entries_cache";
 
 // ── Main Hook ─────────────────────────────────────────────────────────────
 export default function useJournalAccounts() {
@@ -14,10 +23,16 @@ export default function useJournalAccounts() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
 
-  // Data State
-  const [journalAccounts, setJournalAccounts] = useState([]);
-  const [jevEntries, setJevEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // Data State — seeded from cache, instant render on revisit.
+  const [journalAccounts, setJournalAccounts] = useState(() =>
+    getItem(ACCOUNTS_CACHE_KEY, []),
+  );
+  const [jevEntries, setJevEntries] = useState(() =>
+    getItem(JEV_ENTRIES_CACHE_KEY, []),
+  );
+  const [loading, setLoading] = useState(() =>
+    !hasItem(ACCOUNTS_CACHE_KEY),
+  );
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -102,6 +117,7 @@ export default function useJournalAccounts() {
       }));
 
       setJournalAccounts(formatted);
+      setItem(ACCOUNTS_CACHE_KEY, formatted);
     } catch (error) {
       console.error("Error fetching journal accounts:", error);
     } finally {
@@ -113,7 +129,9 @@ export default function useJournalAccounts() {
   const fetchJevEntries = async () => {
     try {
       const response = await JevEntriesAPI.getAll();
-      setJevEntries(response.data || response || []);
+      const data = response.data || response || [];
+      setJevEntries(data);
+      setItem(JEV_ENTRIES_CACHE_KEY, data);
     } catch (error) {
       console.error("Error fetching JEV entries:", error);
     }
@@ -136,8 +154,18 @@ export default function useJournalAccounts() {
   };
   // add handleMoveAccount to the hook's return object
   // ── Initial Load ─────────────────────────────────────────────────────
+  // Cache hit → silent refresh of the accounts (no skeleton);
+  // miss → visible load. JEV entries have no loading state of their own —
+  // they refresh in the background either way.
+  const initialLoadRef = useRef(false);
   useEffect(() => {
-    fetchJournalAccounts();
+    if (initialLoadRef.current) return;
+    initialLoadRef.current = true;
+    if (hasItem(ACCOUNTS_CACHE_KEY)) {
+      fetchJournalAccounts({ silent: true });
+    } else {
+      fetchJournalAccounts();
+    }
     fetchJevEntries();
   }, []);
 
@@ -147,9 +175,11 @@ export default function useJournalAccounts() {
   useEffect(() => {
     const handleDeleted = (e) => {
       const { journalAccountId } = e.detail || {};
-      setJournalAccounts((prev) =>
-        prev.filter((a) => a.id !== journalAccountId),
-      );
+      setJournalAccounts((prev) => {
+        const next = prev.filter((a) => a.id !== journalAccountId);
+        setItem(ACCOUNTS_CACHE_KEY, next);
+        return next;
+      });
     };
 
     const handleUpdated = () => {
@@ -261,9 +291,11 @@ export default function useJournalAccounts() {
 
   const handleDeleteSuccess = () => {
     if (!entityToDelete?.data) return;
-    setJournalAccounts((prev) =>
-      prev.filter((a) => a.id !== entityToDelete.data.id),
-    );
+    setJournalAccounts((prev) => {
+      const next = prev.filter((a) => a.id !== entityToDelete.data.id);
+      setItem(ACCOUNTS_CACHE_KEY, next);
+      return next;
+    });
   };
 
   const handleModalClose = () => {

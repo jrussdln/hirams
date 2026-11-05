@@ -165,6 +165,8 @@ class InventoryMovementService
                 'cJEVLinkType' => 'R',
                 'dtOccur'      => now(),
                 'cStatus'      => 'P',
+                // Who raised the journal — the Created column's "BY: …".
+                'nUserId'      => auth()->id(),
             ]);
 
             Inventory::whereIn('nInventoryId', $pendingRows->pluck('nInventoryId'))
@@ -201,6 +203,8 @@ class InventoryMovementService
                 'cJEVLinkType' => 'D',
                 'dtOccur'      => now(),
                 'cStatus'      => 'P',
+                // Who raised the journal — the Created column's "BY: …".
+                'nUserId'      => auth()->id(),
             ]);
 
             Inventory::whereIn('nInventoryId', $pendingRows->pluck('nInventoryId'))
@@ -247,6 +251,8 @@ class InventoryMovementService
                 'cJEVLinkType' => $isReceived ? 'R' : 'D',
                 'dtOccur'      => now(),
                 'cStatus'      => 'P',
+                // Who raised the journal — the Created column's "BY: …".
+                'nUserId'      => auth()->id(),
             ]);
 
             Inventory::whereIn('nInventoryId', $rows->pluck('nInventoryId'))

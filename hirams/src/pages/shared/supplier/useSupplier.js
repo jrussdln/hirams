@@ -5,11 +5,12 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import SupplierAPI from "../../../api/endpoints/supplier.api.js";
-import { getItem, setItem } from "../../../utils/storage/localStorage";
+import { getItem, setItem, removeItem, hasItem } from "../../../utils/storage/localStorage";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 const SESSION_KEY = "selectedSupplierStatusCode";
+const SUPPLIERS_CACHE_KEY = "suppliers_page_cache";
 const DEBOUNCE_MS = 300;
 
 function formatSupplier(supplier, { vat, ewt }) {
@@ -36,8 +37,6 @@ export default function useSupplier() {
   const [rowsPerPage, setRowsPerPage] = useState(15);
 
   const [openModal, setOpenModal] = useState(false);
-  const [openContactModal, setOpenContactModal] = useState(false);
-  const [openBankModal, setOpenBankModal] = useState(false);
   const [openInfoModal, setOpenInfoModal] = useState(false);
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [openTransferModal, setOpenTransferModal] = useState(false);
@@ -45,9 +44,15 @@ export default function useSupplier() {
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [entityToDelete, setEntityToDelete] = useState(null);
 
-  const [suppliers, setSuppliers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isFetched, setIsFetched] = useState(false); // ✅ Track if already loaded
+  // Full dataset — loaded from localStorage cache on revisit,
+  // refreshed silently in the background
+  const [suppliers, setSuppliers] = useState(() =>
+    getItem(SUPPLIERS_CACHE_KEY, []),
+  );
+  const [loading, setLoading] = useState(() => !hasItem(SUPPLIERS_CACHE_KEY));
+  const [isFetched, setIsFetched] = useState(() =>
+    hasItem(SUPPLIERS_CACHE_KEY),
+  );
 
   const [selectedStatusCode, setSelectedStatusCode] = useState(() =>
     getItem(SESSION_KEY, ""),
@@ -75,6 +80,7 @@ export default function useSupplier() {
     isAccountOfficer,
   } = useKeysLabels();
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Derive status keys
   const statusKeys = useMemo(() => {
@@ -143,8 +149,10 @@ export default function useSupplier() {
       try {
         const response = await SupplierAPI.getSuppliers();
         const raw = response.suppliers ?? [];
-        sessionStorage.removeItem("suppliers_cache"); // key used by the canvas & purchase hooks
-        setSuppliers(raw.map((s) => formatSupplier(s, { vat, ewt })));
+        removeItem("suppliers_cache"); // key used by the canvas & purchase hooks
+        const formatted = raw.map((s) => formatSupplier(s, { vat, ewt }));
+        setSuppliers(formatted);
+        setItem(SUPPLIERS_CACHE_KEY, formatted);
         setIsFetched(true); // ✅ Mark as loaded
       } catch (err) {
         console.error("Error fetching suppliers:", err);
@@ -165,22 +173,33 @@ export default function useSupplier() {
     () => fetchSuppliersRef.current?.(true, true),
     [],
   );
-  // Initial fetch — runs ONLY once when mappings are ready
+  // Initial fetch — runs ONLY once when mappings are ready.
+  // No cache → visible load; cache exists → silent background refresh only.
+  const initialLoadRef = useRef(false);
   useEffect(() => {
-    if (!isFetched && !mappingLoading) {
+    if (mappingLoading || initialLoadRef.current) return;
+    initialLoadRef.current = true;
+    if (!hasItem(SUPPLIERS_CACHE_KEY)) {
       fetchSuppliers();
+    } else {
+      fetchSuppliersRef.current?.(true, true); // force + silent — no skeleton
     }
-  }, [fetchSuppliers, isFetched, mappingLoading]);
+  }, [fetchSuppliers, mappingLoading]);
 
   // ✅ Real-time sync — SILENT refresh (no loading flash)
   useEffect(() => {
     const onUpdated = () => {
       fetchSuppliersRef.current?.(true, true); // force=true, silent=true
     };
-    const onDeleted = (e) =>
-      setSuppliers((prev) =>
-        prev.filter((s) => s.nSupplierId !== e.detail?.supplierId),
-      );
+    const onDeleted = (e) => {
+      const removedId = e.detail?.supplierId;
+      if (!removedId) return;
+      setSuppliers((prev) => {
+        const next = prev.filter((s) => s.nSupplierId !== removedId);
+        setItem(SUPPLIERS_CACHE_KEY, next);
+        return next;
+      });
+    };
     window.addEventListener("supplier_data_updated", onUpdated);
     window.addEventListener("supplier_data_deleted", onDeleted);
     return () => {
@@ -247,13 +266,11 @@ export default function useSupplier() {
     setOpenDeleteModal(true);
   }, []);
   const handleContactsClick = useCallback((supplier) => {
-    setSelectedSupplier(supplier);
-    setOpenContactModal(true);
-  }, []);
+    navigate(`/supplier-contact?id=${supplier.nSupplierId}`, { state: { supplier } });
+  }, [navigate]);
   const handleBankClick = useCallback((supplier) => {
-    setSelectedSupplier(supplier);
-    setOpenBankModal(true);
-  }, []);
+    navigate(`/supplier-bank?id=${supplier.nSupplierId}`, { state: { supplier } });
+  }, [navigate]);
   // Transfer — the stand-in for Delete on a supplier that still carries
   // purchase options: the modal moves them to another active supplier.
   const handleTransferClick = useCallback((supplier) => {
@@ -282,11 +299,6 @@ export default function useSupplier() {
     setOpenModal(false);
     setSelectedSupplier(null);
   }, []);
-  const handleCloseContactModal = useCallback(
-    () => setOpenContactModal(false),
-    [],
-  );
-  const handleCloseBankModal = useCallback(() => setOpenBankModal(false), []);
   const handleCloseInfoModal = useCallback(() => setOpenInfoModal(false), []);
   const handleCloseDeleteModal = useCallback(() => {
     setOpenDeleteModal(false);
@@ -323,12 +335,16 @@ export default function useSupplier() {
     [clientstatus, notifySidebar],
   );
 
-  // Delete success
+  // Delete success — drop from state AND from the localStorage cache
   const handleDeleteSuccess = useCallback(() => {
     if (!entityToDelete?.data) return;
-    setSuppliers((prev) =>
-      prev.filter((s) => s.nSupplierId !== entityToDelete.data.id),
-    );
+    setSuppliers((prev) => {
+      const next = prev.filter(
+        (s) => s.nSupplierId !== entityToDelete.data.id,
+      );
+      setItem(SUPPLIERS_CACHE_KEY, next);
+      return next;
+    });
   }, [entityToDelete]);
 
   // Row click
@@ -348,8 +364,6 @@ export default function useSupplier() {
     page,
     rowsPerPage,
     openModal,
-    openContactModal,
-    openBankModal,
     openInfoModal,
     openDeleteModal,
     openTransferModal,
@@ -381,8 +395,6 @@ export default function useSupplier() {
     handleBankClick,
     handleTransferClick,
     handleCloseModal,
-    handleCloseContactModal,
-    handleCloseBankModal,
     handleCloseInfoModal,
     handleCloseDeleteModal,
     handleCloseTransferModal,

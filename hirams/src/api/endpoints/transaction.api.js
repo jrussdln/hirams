@@ -17,7 +17,7 @@ export const TransactionAPI = {
     api.put(`transactions/${id}/assign`, payload), // new
   approvePricing: (id, payload) =>
     api.put(`transactions/${id}/approve-pricing`, payload), // new
-  getProcurementById: (id) => api.get(`transaction/procurement/${id}`), // new
+  getProcurementById: (id) => api.get(`transactions/${id}`), // new
   assignProcurement: (id, payload) =>
     api.post(`transactions/${id}/assign-procurement`, payload), // new
   // Archive views

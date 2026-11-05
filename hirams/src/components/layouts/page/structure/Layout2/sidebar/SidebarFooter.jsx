@@ -120,8 +120,8 @@ const SidebarFooter = ({
 
       {/* Row 4: Version — follows the rows above it */}
       <div
-        className="flex items-center px-1 w-full py-1"
-        style={{ justifyContent: showFull ? "flex-start" : "center" }}
+        className="flex items-center px-1 w-full py-1 justify-center"
+        style={{ justifyContent: "center" }}
       >
         <span
           className={`tracking-wide ${showFull ? "text-[10px]" : "text-[9px]"}`}

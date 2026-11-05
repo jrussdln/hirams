@@ -12,6 +12,8 @@ import {
   PhotoCameraOutlined,
   RemoveShoppingCartOutlined,
   PictureAsPdfOutlined,
+  DeleteSweepOutlined,
+  CleaningServicesOutlined,
 } from "@mui/icons-material";
 
 // ── Shared color variants ─────────────────────────────────────────────────
@@ -399,9 +401,10 @@ export const PRINT_PREVIEW_CONFIRM_STYLES = {
   },
 };
 
-// ── Settings confirm dialogs (My Account tab) ────────────────────────────
-// Wired in pages/utility/settings/components/AccountPanel.jsx through
-// SettingsConfirmationModal (pass style={SETTINGS_CONFIRM_STYLES[action]}).
+// ── Settings confirm dialogs (Settings page) ─────────────────────────────
+// Wired in pages/utility/settings/components/AccountPanel.jsx and
+// StoragePanel.jsx through SettingsConfirmationModal
+// (pass style={SETTINGS_CONFIRM_STYLES[action]}).
 export const SETTINGS_CONFIRM_STYLES = {
   save_profile: {
     variant: "blue",
@@ -423,6 +426,23 @@ export const SETTINGS_CONFIRM_STYLES = {
     title: "Update Password?",
     desc: "Your password will be changed. You will need to use the new password the next time you log in.",
     confirmLabel: "Yes, Update Password",
+  },
+  // StoragePanel — removes the cached lists; the login session stays intact.
+  clear_caches: {
+    variant: "blue",
+    Icon: CleaningServicesOutlined,
+    title: "Clear App Caches?",
+    desc: "This removes cached lists and temporary workspace data. Your login session stays intact.",
+    confirmLabel: "Yes, Clear Caches",
+  },
+  // StoragePanel — the wipe kills the login session too; the panel overrides
+  // title / desc with the selected storage's label (Local / Session).
+  wipe_storage: {
+    variant: "red",
+    Icon: DeleteSweepOutlined,
+    title: "Wipe Storage?",
+    desc: "This wipes everything in the selected storage, including your login session. You will need to log back in.",
+    confirmLabel: "Yes, Wipe Storage",
   },
 };
 export const CART_STATUS_STYLES = {

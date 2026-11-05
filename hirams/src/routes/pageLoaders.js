@@ -25,6 +25,10 @@ const pageLoaders = {
   // ── All roles ─────────────────────────────────────────────────────────
   "/dashboard": () => import("../pages/shared/overview/Dashboard.jsx"),
   "/supplier": () => import("../pages/shared/supplier"),
+  "/supplier-contact": () =>
+    import("../pages/shared/supplier/sub-pages/supplier-contact"),
+  "/supplier-bank": () =>
+    import("../pages/shared/supplier/sub-pages/supplier-bank"),
   "/transaction": () => import("../pages/shared/transactions"),
   "/transaction-canvas": () => import("../pages/shared/canvas"),
   "/transaction-pricing-set": () => import("../pages/shared/pricing-set"),

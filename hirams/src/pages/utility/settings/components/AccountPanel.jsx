@@ -16,6 +16,7 @@ import {
   Wc,
   CheckCircle,
   EditRounded,
+  ManageAccountsOutlined,
 } from "@mui/icons-material";
 import uiMessages from "../../../../utils/helpers/uiMessages.js";
 import useKeysLabels from "../../../../hooks/useKeysLabels.js";
@@ -35,65 +36,37 @@ import AccountPanelSkeleton from "./AccountPanelSkeleton.jsx";
 import { SETTINGS_CONFIRM_STYLES } from "../../../../utils/style/sharedConfirmStyles.jsx";
 import { showSwal, withSpinner } from "../../../../utils/helpers/swal.jsx";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
-// ─── CENTRALIZED THEME COLORS ── Auto switches Light/Dark ────────────────
-// Every value comes from getThemeColors. Shared ones (the banner gradient,
-// the plain status badge, white-on-fill, the red alert, the shadow colours)
-// are reused from their own groups; the rest come from account.*.
+
+// ─── THEME COLORS — neutral only (same tokens the Storage Manager uses) ────
 const useColors = (c) => ({
-  // header banner — ONE gradient token. The old headerStart/Mid/End triple
-  // rebuilt this same string from three stops that never varied by mode.
-  banner: c.blue.banner,
-  bannerRing: c.blue.bannerRing,
-  bannerTextHigh: c.blue.bannerTextHigh,
-  bannerTextMed: c.blue.bannerTextMed,
-  bannerTextSoft: c.blue.bannerTextSoft,
-
-  // plain status badge (sits on the banner)
-  statusText: c.badge.plain.text,
-  statusBg: c.badge.plain.bg,
-  statusBorder: c.badge.plain.border,
-
-  // green used ONLY by the "Password Updated Successfully" checkmark —
-  // the status badge itself is plain (see STATUS_MAP)
-  statusActiveText: c.account.statusActiveText,
-
-  // card & backgrounds
   cardBg: c.account.cardBg,
   cardBorder: c.account.cardBorder,
   rowHover: c.account.rowHover,
   iconBoxBg: c.account.iconBoxBg,
-  primary: c.account.primary,
-  primaryDark: c.account.primaryDark,
-
-  // text (the panel's own grey ramp, distinct from gray.*)
   textPrimary: c.account.textPrimary,
   textSecondary: c.account.textSecondary,
   textMuted: c.account.textMuted,
-  textInverse: c.gray.textOnFill,
-
-  // divider
   divider: c.account.divider,
 
-  // success state
+  // success state (password updated)
   successBg: c.account.successBg,
   successBorder: c.account.successBorder,
   successText: c.account.successText,
   successTextBold: c.account.successTextBold,
+  statusActiveText: c.account.statusActiveText,
 
-  // error — the glow only; the text itself is red.alertText
+  // error
   errorRed: c.red.alertText,
   errorRedGlow: c.account.errorRedGlow,
 
-  // the camera/edit affordance on the avatar
+  // avatar edit button
   editBtnBg: c.account.editBtnBg,
   editBtnBorder: c.account.editBtnBorder,
   editBtnHoverBg: c.account.editBtnHoverBg,
 
-  // shadow COLOURS — geometry stays at the call site
-  shadowStrong: c.shadow.strong,
+  textInverse: c.gray.textOnFill,
   shadowChip: c.shadow.chip,
 });
-
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -108,6 +81,8 @@ const FIELD_CONFIG = [
 const VERIFY_FIELDS = [
   { label: "Current Password", name: "currentPw", type: "password", xs: 12 },
 ];
+
+const STATUS_LABELS = { V: "Pending", A: "Active", I: "Inactive" };
 
 const INITIAL_VERIFY = { currentPw: "" };
 const INITIAL_PW_DATA = { newPw: "", confirmPw: "" };
@@ -128,17 +103,33 @@ const syncLocalStorage = (updates = {}) => {
     console.warn("Failed to sync localStorage user:", err);
   }
 };
+
 /**
- * Returns a human-readable status string.
- *
+ * Maps the raw API / localStorage user record to the panel's display shape.
+ */
+const buildPanelUser = (raw, userTypes, defaultUserType, sexMap) => ({
+  ...raw,
+  firstName: raw.strFName || "",
+  middleName: raw.strMName || "",
+  lastName: raw.strLName || "",
+  fullName:
+    [raw.strFName, raw.strMName, raw.strLName].filter(Boolean).join(" ") ||
+    "No Name",
+  nickname: raw.strNickName || "",
+  username: raw.strUserName || "",
+  phoneNumber: raw.strPhoneNo || "",
+  email: raw.strEmail || "",
+  type: userTypes?.[raw.cUserType] ?? defaultUserType?.[raw.cUserType] ?? "",
+  sex: sexMap?.[raw.cSex] || raw.cSex || "",
+  statusCode: raw.cStatus,
+});
+
+/**
  * bIsActive === 0 → currently online (no time shown)
  * bIsActive === 1 → offline, show "Active X ago" from last login
  */
 const getActiveText = (user) => {
-  // Online → no time
   if (Number(user?.bIsActive) === 0) return "Online";
-
-  // Offline → show last seen
   if (!user?.dtLoggedIn) return "Inactive";
 
   const lastSeen = new Date(user.dtLoggedIn);
@@ -153,44 +144,43 @@ const getActiveText = (user) => {
   if (hours < 24) return `Active ${hours} hr${hours === 1 ? "" : "s"} ago`;
   return `Active ${days} day${days === 1 ? "" : "s"} ago`;
 };
+
+// ── Small presentational piece ───────────────────────────────────────────────
+function SectionLabel({ children, colors, sx }) {
+  return (
+    <Typography
+      sx={{
+        fontSize: 11,
+        fontWeight: 700,
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: colors.textMuted,
+        ...sx,
+      }}
+    >
+      {children}
+    </Typography>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
-/**
- * Account profile panel — the Account Profile modal content, inline as the
- * "My Account" tab of the Settings page.
- */
 function AccountPanel() {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
-
-  // ✅ THEME-AWARE COLORS — Auto switches Light/Dark
   const colors = useColors(getThemeColors(isDark));
 
-  // Plain, neutral badge — no status colour. All three states share the
-  // same translucent-white treatment so it sits quietly on the blue banner.
-  const STATUS_MAP = {
-    V: {
-      color: colors.statusText,
-      bg: colors.statusBg,
-      border: colors.statusBorder,
-      label: "Pending",
-    },
-    A: {
-      color: colors.statusText,
-      bg: colors.statusBg,
-      border: colors.statusBorder,
-      label: "Active",
-    },
-    I: {
-      color: colors.statusText,
-      bg: colors.statusBg,
-      border: colors.statusBorder,
-      label: "Inactive",
-    },
-  };
+  const { userTypes, defaultUserType, sex: sexMap } = useKeysLabels();
 
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(false);
+  // Seeded from the localStorage "user" copy — instant render on revisit;
+  // the fetch below silently refreshes it.
+  const storedUser = getItem("user", null);
+  const [user, setUser] = useState(() =>
+    storedUser
+      ? buildPanelUser(storedUser, userTypes, defaultUserType, sexMap)
+      : null,
+  );
+  const [loading, setLoading] = useState(!storedUser);
   const [pwStep, setPwStep] = useState("idle");
 
   // Verify step
@@ -211,13 +201,11 @@ function AccountPanel() {
   const [editData, setEditData] = useState({});
   const [editErrors, setEditErrors] = useState({});
   const [editLoading, setEditLoading] = useState(false);
-  const { userTypes, defaultUserType, sex: sexMap } = useKeysLabels();
   const [imageError, setImageError] = useState(null);
-  // "save_profile" | "save_photo" | "update_password" while its confirmation
-  // dialog is open — same contract as inventory's confirmAction.
+  // "save_profile" | "save_photo" | "update_password" while its dialog is open
   const [confirmAction, setConfirmAction] = useState(null);
 
-  // ── Fetch user on mount (was: on modal open) ───────────────────────────────
+  // ── Fetch user on mount ────────────────────────────────────────────────────
   useEffect(() => {
     const nUserId = getItem("userId");
     if (!nUserId) return;
@@ -225,32 +213,13 @@ function AccountPanel() {
     let cancelled = false;
 
     const fetchUser = async () => {
-      setLoading(true);
+      if (!user) setLoading(true);
       try {
         const data = await UserAPI.getById(nUserId);
         const raw = data?.user ?? {};
 
         if (!cancelled) {
-          setUser({
-            ...raw,
-            firstName: raw.strFName || "",
-            middleName: raw.strMName || "",
-            lastName: raw.strLName || "",
-            fullName:
-              [raw.strFName, raw.strMName, raw.strLName]
-                .filter(Boolean)
-                .join(" ") || "No Name",
-            nickname: raw.strNickName || "",
-            username: raw.strUserName || "",
-            phoneNumber: raw.strPhoneNo || "",
-            email: raw.strEmail || "",
-            type:
-              userTypes?.[raw.cUserType] ??
-              defaultUserType?.[raw.cUserType] ??
-              "",
-            sex: sexMap?.[raw.cSex] || raw.cSex || "",
-            statusCode: raw.cStatus,
-          });
+          setUser(buildPanelUser(raw, userTypes, defaultUserType, sexMap));
         }
       } catch (e) {
         console.error("Failed to fetch user profile:", e);
@@ -277,7 +246,7 @@ function AccountPanel() {
     .filter(Boolean)
     .join(" ");
   const displayImage = MediaRoute.resolveProfileImage(user, imagePreview);
-  const statusChip = STATUS_MAP[user?.statusCode] ?? null;
+  const statusLabel = STATUS_LABELS[user?.statusCode] ?? null;
 
   // ── Profile image handlers ──────────────────────────────────────────────────
   const handleImageClick = () => fileInputRef.current?.click();
@@ -293,6 +262,7 @@ function AccountPanel() {
     setImageError(null);
     e.target.value = "";
   };
+
   const doUploadImage = async () => {
     if (!imageFile) return;
 
@@ -332,6 +302,7 @@ function AccountPanel() {
       setImageUploading(false);
     }
   };
+
   const handleDiscardImage = () => {
     if (imagePreview) URL.revokeObjectURL(imagePreview);
     setImageFile(null);
@@ -377,11 +348,9 @@ function AccountPanel() {
 
     setPwData((prev) => {
       const next = { ...prev, [name]: value };
-
       if (name === "newPw") {
         if (!value) next.confirmPw = "";
       }
-
       return next;
     });
 
@@ -416,11 +385,7 @@ function AccountPanel() {
         });
       });
       setPwStep("done");
-      await showSwal(
-        "SUCCESS",
-        {},
-        { entity: "Password", action: "updated" },
-      );
+      await showSwal("SUCCESS", {}, { entity: "Password", action: "updated" });
     } catch {
       setPwErrors({ newPw: uiMessages.common.failedUpdatePassword });
       await showSwal("ERROR", {}, { entity: "password", action: "update" });
@@ -429,8 +394,7 @@ function AccountPanel() {
     }
   };
 
-  // Validates first (errors surface inline, no dialog yet), then opens the
-  // confirmation dialog. The API call itself runs from handleConfirmAction.
+  // Validates first (errors surface inline), then opens the confirmation dialog.
   const handleChangePassword = () => {
     const errors = {};
 
@@ -461,6 +425,7 @@ function AccountPanel() {
       disabled: !pwData.newPw || pwData.newPw.length < 6,
     },
   ];
+
   const handleStartEdit = () => {
     setEditData({
       firstName: user?.firstName || "",
@@ -546,8 +511,6 @@ function AccountPanel() {
     }
   };
 
-  // Validates first (errors surface inline, no dialog yet), then opens the
-  // confirmation dialog. The API call itself runs from handleConfirmAction.
   const handleSaveProfile = () => {
     const newErrors = {};
     if (!editData.firstName?.trim())
@@ -576,8 +539,6 @@ function AccountPanel() {
   };
 
   // ── Confirmations ───────────────────────────────────────────────────────
-  // The footer buttons only open the dialog; this runs the action it was
-  // opened for (same contract as inventory's handleConfirmAction).
   const handleConfirmAction = async () => {
     const action = confirmAction;
     setConfirmAction(null);
@@ -586,7 +547,7 @@ function AccountPanel() {
     else if (action === "update_password") await doUpdatePassword();
   };
 
-  // ── Per-step footer buttons (replaces the ModalContainer footer) ───────────
+  // ── Per-step footer buttons ────────────────────────────────────────────────
   const stepFooter = {
     idle: {
       extra: imageFile ? null : (
@@ -621,7 +582,9 @@ function AccountPanel() {
           actionColor={imageFile ? "save" : "verify"}
           disabled={imageUploading}
           onClick={
-            imageFile ? () => setConfirmAction("save_photo") : () => setPwStep("verify")
+            imageFile
+              ? () => setConfirmAction("save_photo")
+              : () => setPwStep("verify")
           }
         />
       ),
@@ -705,9 +668,24 @@ function AccountPanel() {
 
   const currentFooter = stepFooter[pwStep] ?? stepFooter.idle;
 
+  const cardSx = {
+    borderRadius: 3,
+    backgroundColor: colors.cardBg,
+    border: `1px solid ${colors.cardBorder}`,
+    overflow: "hidden",
+  };
+
+  const stepTitles = {
+    idle: "Personal information",
+    editProfile: "Edit profile",
+    verify: "Verify identity",
+    change: "Set new password",
+    done: "Password updated",
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <Box sx={{ p: { xs: 1.5, sm: 3 } }}>
+    <Box sx={{ p: { xs: 1.5, sm: 3 }, maxWidth: 1200, mx: "auto" }}>
       <input
         ref={fileInputRef}
         type="file"
@@ -716,190 +694,202 @@ function AccountPanel() {
         onChange={handleImageChange}
       />
 
-      <Paper elevation={0} sx={{ backgroundColor: "transparent" }}>
-        {/* ── Header banner ──────────────────────────────────────────────── */}
+      {/* ── Page header ── */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 3 }}>
         <Box
           sx={{
-            background: colors.banner,
-            borderRadius: "12px 12px 0 0",
-            px: { xs: 1.5, sm: 2.5 },
-            py: { xs: 1.5, sm: 2.5 },
+            p: 1.25,
+            borderRadius: 2,
+            backgroundColor: colors.iconBoxBg,
+            color: colors.textSecondary,
             display: "flex",
-            alignItems: { xs: "flex-start", sm: "center" },
-            gap: { xs: 1.5, sm: 2 },
-            flexWrap: "wrap",
           }}
         >
-          {/* Avatar */}
-          <Box sx={{ position: "relative", flexShrink: 0 }}>
-            <Box
+          <ManageAccountsOutlined />
+        </Box>
+        <Box>
+          <Typography
+            sx={{
+              fontSize: 18,
+              fontWeight: 700,
+              color: colors.textPrimary,
+              lineHeight: 1.2,
+            }}
+          >
+            My Account
+          </Typography>
+          <Typography sx={{ fontSize: 12.5, color: colors.textSecondary }}>
+            Manage your profile, photo, and password.
+          </Typography>
+        </Box>
+      </Box>
+
+      {loading && !user ? (
+        <AccountPanelSkeleton />
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* ── Left column: profile summary ── */}
+          <div className="lg:col-span-4">
+            <Paper
+              elevation={0}
               sx={{
-                width: { xs: 70, sm: 100 },
-                height: { xs: 70, sm: 100 },
-                borderRadius: "50%",
-                overflow: "hidden",
-                border: imageError
-                  ? `2.5px solid ${colors.errorRed}`
-                  : `2.5px solid ${colors.bannerRing}`,
-                boxShadow: imageError
-                  ? `0 0 0 3px ${colors.errorRedGlow}`
-                  : `0 4px 12px ${colors.shadowStrong}`,
-                transition: "border 0.2s, box-shadow 0.2s",
+                ...cardSx,
+                p: 3,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                textAlign: "center",
               }}
             >
-              <img
-                src={displayImage}
-                alt="Profile"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            </Box>
-            {imageError && (
-              <Box
-                sx={{
-                  position: "absolute",
-                  left: "110%",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  bgcolor: colors.errorRed,
-                  color: colors.textInverse,
-                  fontSize: "0.65rem",
-                  fontWeight: 500,
-                  px: 1.2,
-                  py: 0.6,
-                  borderRadius: "6px",
-                  whiteSpace: "nowrap",
-                  boxShadow: `0 2px 8px ${colors.shadowStrong}`,
-                  zIndex: 10,
-                  pointerEvents: "none",
-                  "&::before": {
-                    content: '""',
-                    position: "absolute",
-                    top: "50%",
-                    right: "100%",
-                    transform: "translateY(-50%)",
-                    border: "5px solid transparent",
-                    borderRightColor: colors.errorRed,
-                  },
-                }}
-              >
-                {imageError}
-              </Box>
-            )}
-            <Tooltip title="Change photo" placement="bottom">
-              <IconButton
-                onClick={handleImageClick}
-                size="small"
-                sx={{
-                  position: "absolute",
-                  bottom: 2,
-                  right: 2,
-                  width: { xs: 22, sm: 26 },
-                  height: { xs: 22, sm: 26 },
-                  bgcolor: colors.editBtnBg,
-                  border: `2px solid ${colors.editBtnBorder}`,
-                  boxShadow: `0 1px 4px ${colors.shadowChip}`,
-                  "&:hover": {
-                    bgcolor: colors.editBtnHoverBg,
-                    borderColor: colors.primary,
-                    "& svg": { color: colors.primary },
-                  },
-                }}
-              >
-                <EditRounded
+              {/* Avatar */}
+              <Box sx={{ position: "relative", mb: 2, mt: 1 }}>
+                <Box
                   sx={{
-                    fontSize: { xs: "0.65rem", sm: "0.75rem" },
-                    color: colors.textSecondary,
+                    width: 132,
+                    height: 132,
+                    borderRadius: "50%",
+                    overflow: "hidden",
+                    border: imageError
+                      ? `2.5px solid ${colors.errorRed}`
+                      : `2.5px solid ${colors.cardBorder}`,
+                    boxShadow: imageError
+                      ? `0 0 0 3px ${colors.errorRedGlow}`
+                      : "none",
+                    transition: "border 0.2s, box-shadow 0.2s",
                   }}
-                />
-              </IconButton>
-            </Tooltip>
-          </Box>
+                >
+                  <img
+                    src={displayImage}
+                    alt="Profile"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </Box>
+                <Tooltip title="Change photo" placement="bottom">
+                  <IconButton
+                    onClick={handleImageClick}
+                    size="small"
+                    sx={{
+                      position: "absolute",
+                      bottom: 2,
+                      right: 2,
+                      width: 28,
+                      height: 28,
+                      bgcolor: colors.editBtnBg,
+                      border: `2px solid ${colors.editBtnBorder}`,
+                      boxShadow: `0 1px 4px ${colors.shadowChip}`,
+                      "&:hover": {
+                        bgcolor: colors.editBtnHoverBg,
+                        "& svg": { color: colors.textPrimary },
+                      },
+                    }}
+                  >
+                    <EditRounded
+                      sx={{ fontSize: "0.8rem", color: colors.textSecondary }}
+                    />
+                  </IconButton>
+                </Tooltip>
+              </Box>
 
-          {/* Profile text */}
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography
-              sx={{
-                color: colors.bannerTextHigh,
-                fontSize: { xs: "0.6rem", sm: "0.68rem" },
-                fontWeight: 500,
-                letterSpacing: "1px",
-                textTransform: "uppercase",
-              }}
-            >
-              My Profile
-            </Typography>
+              {imageError && (
+                <Typography
+                  sx={{
+                    fontSize: 11.5,
+                    fontWeight: 500,
+                    color: colors.errorRed,
+                    mb: 1,
+                    maxWidth: 240,
+                  }}
+                >
+                  {imageError}
+                </Typography>
+              )}
+              {imageFile && !imageError && (
+                <Typography
+                  sx={{ fontSize: 11.5, color: colors.textMuted, mb: 1 }}
+                >
+                  New photo selected, not saved yet
+                </Typography>
+              )}
 
-            <Typography
-              sx={{
-                color: colors.textInverse,
-                fontWeight: 700,
-                fontSize: { xs: "0.9rem", sm: "1rem" },
-                lineHeight: 1.2,
-                wordBreak: "break-word",
-              }}
-            >
-              {fullName}
-            </Typography>
-
-            {user?.type && (
               <Typography
                 sx={{
-                  color: colors.bannerTextMed,
-                  fontSize: { xs: "0.7rem", sm: "0.75rem" },
-                  mt: 0.2,
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: colors.textPrimary,
+                  lineHeight: 1.2,
+                  wordBreak: "break-word",
+                  textTransform: "uppercase",
                 }}
               >
-                {user.type}
+                {user?.firstName ? user.firstName.toUpperCase() : "NO NAME"}
               </Typography>
-            )}
 
-            <Typography
-              sx={{
-                color: colors.bannerTextSoft,
-                fontSize: { xs: "0.68rem", sm: "0.72rem" },
-                mt: 0.3,
-              }}
-            >
-              {getActiveText(user)}
-            </Typography>
-          </Box>
+              {user?.lastName && (
+                <Typography
+                  sx={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: colors.textSecondary,
+                    lineHeight: 1.2,
+                    mt: 0.5,
+                    wordBreak: "break-word",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {user.lastName.toUpperCase()}
+                </Typography>
+              )}
 
-          {/* Status chip */}
-          {statusChip && (
-            <Chip
-              label={statusChip.label}
-              size="small"
-              sx={{
-                backgroundColor: statusChip.bg,
-                color: statusChip.color,
-                border: `1px solid ${statusChip.border}`,
-                fontWeight: 600,
-                fontSize: { xs: "0.62rem", sm: "0.7rem" },
-                letterSpacing: "0.3px",
-                flexShrink: 0,
-                height: { xs: 22, sm: 26 },
-              }}
-            />
-          )}
-        </Box>
+              {user?.type && (
+                <Typography
+                  sx={{ fontSize: 12, color: colors.textMuted, mt: 1 }}
+                >
+                  {user.type}
+                </Typography>
+              )}
 
-        {loading && !user ? (
-          /* ── Loading (was a text-only "Loading profile…" block) ─────────── */
-          <AccountPanelSkeleton />
-        ) : (
-          <>
-            {/* ── STEP: idle – profile info ────────────────────────────── */}
-            {pwStep === "idle" && (
               <Box
                 sx={{
-                  border: `1px solid ${colors.cardBorder}`,
-                  borderTop: "none",
-                  borderRadius: "0 0 12px 12px",
-                  overflow: "hidden",
-                  bgcolor: colors.cardBg,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexWrap: "wrap",
+                  gap: 1,
+                  mt: 1.5,
                 }}
               >
-                {FIELD_CONFIG.map(({ label, key, icon }, i) => {
+                {statusLabel && (
+                  <Chip
+                    label={statusLabel}
+                    size="small"
+                    sx={{
+                      height: 24,
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      color: colors.textSecondary,
+                      backgroundColor: colors.iconBoxBg,
+                      border: `1px solid ${colors.cardBorder}`,
+                    }}
+                  />
+                )}
+                <Typography sx={{ fontSize: 11.5, color: colors.textMuted }}>
+                  {getActiveText(user)}
+                </Typography>
+              </Box>
+            </Paper>
+          </div>
+
+          {/* ── Right column: details / forms ── */}
+          <div className="lg:col-span-8">
+            <Paper elevation={0} sx={cardSx}>
+              <Box sx={{ px: 3, pt: 2.5, pb: 1.5 }}>
+                <SectionLabel colors={colors}>{stepTitles[pwStep]}</SectionLabel>
+              </Box>
+              <Divider sx={{ borderColor: colors.divider }} />
+
+              {/* idle – profile info */}
+              {pwStep === "idle" &&
+                FIELD_CONFIG.map(({ label, key, icon }, i) => {
                   const Icon = icon;
                   return (
                     <Box key={label}>
@@ -908,9 +898,9 @@ function AccountPanel() {
                           display: "flex",
                           alignItems: { xs: "flex-start", sm: "center" },
                           flexDirection: { xs: "column", sm: "row" },
-                          px: { xs: 1.5, sm: 2 },
-                          py: { xs: 1.2, sm: 1.1 },
-                          gap: { xs: 0.5, sm: 1.5 },
+                          px: 3,
+                          py: 1.5,
+                          gap: { xs: 0.5, sm: 2 },
                           transition: "background 0.15s",
                           "&:hover": { bgcolor: colors.rowHover },
                         }}
@@ -919,16 +909,16 @@ function AccountPanel() {
                           sx={{
                             display: "flex",
                             alignItems: "center",
-                            gap: 1,
-                            minWidth: { sm: 140 },
+                            gap: 1.25,
+                            minWidth: { sm: 160 },
                             flexShrink: 0,
                           }}
                         >
                           <Box
                             sx={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: "8px",
+                              width: 30,
+                              height: 30,
+                              borderRadius: 1.5,
                               bgcolor: colors.iconBoxBg,
                               display: "flex",
                               alignItems: "center",
@@ -937,13 +927,15 @@ function AccountPanel() {
                             }}
                           >
                             <Icon
-                              sx={{ fontSize: "0.85rem", color: colors.primary }}
+                              sx={{
+                                fontSize: "0.9rem",
+                                color: colors.textSecondary,
+                              }}
                             />
                           </Box>
-
                           <Typography
                             sx={{
-                              fontSize: "0.74rem",
+                              fontSize: 12.5,
                               fontWeight: 600,
                               color: colors.textSecondary,
                               whiteSpace: "nowrap",
@@ -953,259 +945,185 @@ function AccountPanel() {
                           </Typography>
                         </Box>
 
-                        <Divider
-                          orientation="horizontal"
-                          flexItem
-                          sx={{
-                            display: { xs: "block", sm: "none" },
-                            borderColor: colors.divider,
-                          }}
-                        />
-
-                        <Divider
-                          orientation="vertical"
-                          flexItem
-                          sx={{
-                            display: { xs: "none", sm: "block" },
-                            mx: 0.5,
-                            borderColor: colors.divider,
-                          }}
-                        />
-
                         <Typography
                           sx={{
-                            fontSize: { xs: "0.82rem", sm: "0.84rem" },
-                            color: colors.textPrimary,
-                            fontStyle: user?.[key] ? "normal" : "italic",
-                            pl: { xs: 4.5, sm: 0 },
+                            fontSize: 13.5,
+                            color: user?.[key]
+                              ? colors.textPrimary
+                              : colors.textMuted,
+                            pl: { xs: 5.5, sm: 0 },
                             wordBreak: "break-word",
                           }}
                         >
                           {user?.[key] || "—"}
                         </Typography>
                       </Box>
-
                       {i < FIELD_CONFIG.length - 1 && (
-                        <Divider
-                          sx={{ mx: { xs: 1.5, sm: 2 }, borderColor: colors.divider }}
-                        />
+                        <Divider sx={{ borderColor: colors.divider }} />
                       )}
                     </Box>
                   );
                 })}
-              </Box>
-            )}
 
-            {/* ── STEP: editProfile ────────────────────────────────────── */}
-            {pwStep === "editProfile" && (
+              {/* editProfile */}
+              {pwStep === "editProfile" && (
+                <Box sx={{ p: 3 }}>
+                  <FormGrid
+                    fields={[
+                      { label: "First Name", name: "firstName", xs: 4 },
+                      { label: "Middle Name", name: "middleName", xs: 4 },
+                      { label: "Last Name", name: "lastName", xs: 4 },
+                      { label: "Nickname", name: "nickname", xs: 6 },
+                      {
+                        label: "Sex",
+                        name: "sex",
+                        type: "select",
+                        xs: 6,
+                        options: Object.entries(sexMap || {}).map(
+                          ([, label]) => ({ value: label, label }),
+                        ),
+                      },
+                      {
+                        label: "Phone Number",
+                        name: "phoneNumber",
+                        type: "phone",
+                        xs: 6,
+                      },
+                      {
+                        label: "Username",
+                        name: "username",
+                        type: "username",
+                        xs: 6,
+                      },
+                      { label: "Email", name: "email", type: "email", xs: 12 },
+                    ]}
+                    formData={editData}
+                    errors={editErrors}
+                    handleChange={handleEditChange}
+                  />
+                </Box>
+              )}
+
+              {/* verify */}
+              {pwStep === "verify" && (
+                <Box sx={{ p: 3 }}>
+                  <Typography
+                    sx={{
+                      fontSize: 13,
+                      color: colors.textSecondary,
+                      mb: 2,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    Confirm your{" "}
+                    <strong style={{ color: colors.textPrimary }}>
+                      current password
+                    </strong>{" "}
+                    to proceed.
+                  </Typography>
+                  <FormGrid
+                    fields={VERIFY_FIELDS}
+                    formData={verifyData}
+                    errors={verifyErrors}
+                    handleChange={handleVerifyChange}
+                  />
+                </Box>
+              )}
+
+              {/* change */}
+              {pwStep === "change" && (
+                <Box sx={{ p: 3 }}>
+                  <Typography
+                    sx={{
+                      fontSize: 13,
+                      color: colors.textSecondary,
+                      mb: 2,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    Enter and confirm your{" "}
+                    <strong style={{ color: colors.textPrimary }}>
+                      new password
+                    </strong>
+                    .
+                  </Typography>
+                  <FormGrid
+                    fields={changeFields}
+                    formData={pwData}
+                    errors={pwErrors}
+                    handleChange={handlePwChange}
+                  />
+                </Box>
+              )}
+
+              {/* done */}
+              {pwStep === "done" && (
+                <Box
+                  sx={{
+                    m: 3,
+                    p: 3,
+                    borderRadius: 2,
+                    border: `1px solid ${colors.successBorder}`,
+                    bgcolor: colors.successBg,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 1.5,
+                    textAlign: "center",
+                  }}
+                >
+                  <CheckCircle
+                    sx={{ fontSize: 44, color: colors.statusActiveText }}
+                  />
+                  <Typography
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: 15,
+                      color: colors.successText,
+                    }}
+                  >
+                    Password Updated Successfully
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontSize: 13,
+                      color: colors.successTextBold,
+                      lineHeight: 1.6,
+                      maxWidth: 320,
+                    }}
+                  >
+                    Your password has been changed. Use your new password the
+                    next time you log in.
+                  </Typography>
+                </Box>
+              )}
+
+              {/* Footer actions inside Personal Information card after sex */}
+              <Divider sx={{ borderColor: colors.divider }} />
               <Box
                 sx={{
-                  border: `1px solid ${colors.cardBorder}`,
-                  borderTop: "none",
-                  borderRadius: "0 0 12px 12px",
-                  bgcolor: colors.cardBg,
-                  p: 3,
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontSize: "0.72rem",
-                    fontWeight: 700,
-                    color: colors.textSecondary,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    mb: 1.5,
-                  }}
-                >
-                  Edit Profile
-                </Typography>
-                <FormGrid
-                  fields={[
-                    { label: "First Name", name: "firstName", xs: 4 },
-                    { label: "Middle Name", name: "middleName", xs: 4 },
-                    { label: "Last Name", name: "lastName", xs: 4 },
-                    { label: "Nickname", name: "nickname", xs: 6 },
-                    {
-                      label: "Sex",
-                      name: "sex",
-                      type: "select",
-                      xs: 6,
-                      options: Object.entries(sexMap || {}).map(
-                        ([, label]) => ({ value: label, label }),
-                      ),
-                    },
-                    {
-                      label: "Phone Number",
-                      name: "phoneNumber",
-                      type: "phone",
-                      xs: 6,
-                    },
-                    {
-                      label: "Username",
-                      name: "username",
-                      type: "username",
-                      xs: 6,
-                    },
-                    { label: "Email", name: "email", type: "email", xs: 12 },
-                  ]}
-                  formData={editData}
-                  errors={editErrors}
-                  handleChange={handleEditChange}
-                />
-              </Box>
-            )}
-
-            {/* ── STEP: verify ─────────────────────────────────────────── */}
-            {pwStep === "verify" && (
-              <Box
-                sx={{
-                  border: `1px solid ${colors.cardBorder}`,
-                  borderTop: "none",
-                  borderRadius: "0 0 12px 12px",
-                  bgcolor: colors.cardBg,
-                  p: 3,
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontSize: "0.72rem",
-                    fontWeight: 700,
-                    color: colors.textSecondary,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    mb: 1.5,
-                  }}
-                >
-                  Verify Identity
-                </Typography>
-                <Typography
-                  sx={{
-                    fontSize: "0.82rem",
-                    color: colors.textPrimary,
-                    mb: 2,
-                    lineHeight: 1.6,
-                  }}
-                >
-                  Confirm your <strong>current password</strong> to proceed.
-                </Typography>
-                <FormGrid
-                  fields={VERIFY_FIELDS}
-                  formData={verifyData}
-                  errors={verifyErrors}
-                  handleChange={handleVerifyChange}
-                />
-              </Box>
-            )}
-
-            {/* ── STEP: change ─────────────────────────────────────────── */}
-            {pwStep === "change" && (
-              <Box
-                sx={{
-                  border: `1px solid ${colors.cardBorder}`,
-                  borderTop: "none",
-                  borderRadius: "0 0 12px 12px",
-                  bgcolor: colors.cardBg,
-                  p: 3,
-                }}
-              >
-                <Typography
-                  sx={{
-                    fontSize: "0.72rem",
-                    fontWeight: 700,
-                    color: colors.textSecondary,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                    mb: 1.5,
-                  }}
-                >
-                  Set New Password
-                </Typography>
-                <Typography
-                  sx={{
-                    fontSize: "0.82rem",
-                    color: colors.textPrimary,
-                    mb: 2,
-                    lineHeight: 1.6,
-                  }}
-                >
-                  Enter and confirm your <strong>new password</strong>.
-                </Typography>
-                <FormGrid
-                  fields={changeFields}
-                  formData={pwData}
-                  errors={pwErrors}
-                  handleChange={handlePwChange}
-                />
-              </Box>
-            )}
-
-            {/* ── STEP: done ───────────────────────────────────────────── */}
-            {pwStep === "done" && (
-              <Box
-                sx={{
-                  border: `1px solid ${colors.successBorder}`,
-                  borderTop: "none",
-                  borderRadius: "0 0 12px 12px",
-                  bgcolor: colors.successBg,
-                  p: 3,
                   display: "flex",
-                  flexDirection: "column",
+                  flexWrap: "wrap",
                   alignItems: "center",
-                  gap: 1.5,
-                  textAlign: "center",
+                  justifyContent: "flex-end",
+                  gap: 1,
+                  px: 3,
+                  py: 1.75,
                 }}
               >
-                <CheckCircle
-                  sx={{ fontSize: 48, color: colors.statusActiveText }}
-                />
-                <Typography
-                  sx={{
-                    fontWeight: 700,
-                    fontSize: "0.95rem",
-                    color: colors.successText,
-                  }}
-                >
-                  Password Updated Successfully
-                </Typography>
-                <Typography
-                  sx={{
-                    fontSize: "0.82rem",
-                    color: colors.successTextBold,
-                    lineHeight: 1.6,
-                    maxWidth: 320,
-                  }}
-                >
-                  Your password has been changed. Use your new password the next
-                  time you log in.
-                </Typography>
+                {currentFooter.extra}
+                {currentFooter.secondary}
+                {currentFooter.primary}
               </Box>
-            )}
-          </>
-        )}
-
-        {/* ── Footer actions (was the modal footer) ───────────────────────── */}
-        <Box
-          sx={{
-            display: "flex",
-            flexWrap: "wrap",
-            alignItems: "center",
-            justifyContent: "flex-end",
-            gap: 1,
-            mt: 2,
-          }}
-        >
-          {currentFooter.extra}
-          {currentFooter.secondary}
-          {currentFooter.primary}
-        </Box>
-      </Paper>
+            </Paper>
+          </div>
+        </div>
+      )}
 
       {/* Save Profile / Save Photo / Update Password confirmations */}
       <SettingsConfirmationModal
         open={!!confirmAction}
-        style={
-          confirmAction ? SETTINGS_CONFIRM_STYLES[confirmAction] : null
-        }
+        style={confirmAction ? SETTINGS_CONFIRM_STYLES[confirmAction] : null}
         loading={editLoading || imageUploading || changeLoading}
         onConfirm={handleConfirmAction}
         onClose={() => setConfirmAction(null)}

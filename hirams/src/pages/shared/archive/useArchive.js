@@ -5,22 +5,34 @@ import PricingAPI from "../../../api/endpoints/pricing.api.js";
 import DirectCostOptionAPI from "../../../api/endpoints/direct-cost-option.api.js";
 import DirectCostAPI from "../../../api/endpoints/direct-cost.api.js";
 import { fmtDateTime, fmtDate } from "../../../utils/helpers/timeZone.js";
-import { getItem } from "../../../utils/storage/localStorage.js";
+import { getItem, setItem, hasItem } from "../../../utils/storage/localStorage.js";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
+
+// Cache is per user — the archived list differs by role (management /
+// procurement / account officer).
+const archiveCacheKey = (userId) => `archive_transactions_cache_${userId ?? "anon"}`;
 
 export default function useArchive() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const user = useMemo(() => getItem("user"), []);
+  const userId = user?.nUserId;
+  const ARCHIVE_CACHE_KEY = archiveCacheKey(userId);
+
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
-  const [transactions, setTransactions] = useState([]);
+  const [transactions, setTransactions] = useState(() =>
+    getItem(ARCHIVE_CACHE_KEY, []),
+  );
   // { [transactionId]: { collectible, ewt, tax, retention } }
   const [collectibleMap, setCollectibleMap] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !hasItem(ARCHIVE_CACHE_KEY));
+  const [initialLoading, setInitialLoading] = useState(() =>
+    !hasItem(ARCHIVE_CACHE_KEY),
+  );
 
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [archiveModalTransaction, setArchiveModalTransaction] = useState(null);
@@ -53,10 +65,6 @@ export default function useArchive() {
   const lostKey = archiveStatusKeys[1] ?? "";
   const completedKey = archiveStatusKeys[2] ?? "";
 
-  const user = useMemo(() => getItem("user"), []);
-  const userId = user?.nUserId;
-
-  // ── Selected Status: from Sidebar / session / default ─────────────────────
   const SESSION_KEY = "selectedArchiveStatusCode";
   const firstCode = Object.keys(archiveStatus || {})[0] ?? "";
 
@@ -103,16 +111,13 @@ export default function useArchive() {
         // Direct-cost option names are shared by every row — fetched (and
         // cached) once rather than per transaction.
         let options;
-        const cached = sessionStorage.getItem("direct_cost_options_cache");
+        const cached = getItem("direct_cost_options_cache", null);
         if (cached) {
-          options = JSON.parse(cached);
+          options = cached;
         } else {
           const r = await DirectCostOptionAPI.getDirectCostOptions();
           options = r.data || r || [];
-          sessionStorage.setItem(
-            "direct_cost_options_cache",
-            JSON.stringify(options),
-          );
+          setItem("direct_cost_options_cache", options);
         }
 
         const nameOf = (id) => {
@@ -233,6 +238,7 @@ export default function useArchive() {
         });
 
         setTransactions(formatted);
+        setItem(ARCHIVE_CACHE_KEY, formatted);
         fetchCollectible(formatted);
       } catch (err) {
         console.error("Error fetching archived transactions:", err);
@@ -257,13 +263,18 @@ export default function useArchive() {
     fetchRef.current = fetchTransactions;
   }, [fetchTransactions]);
 
+  // Initial load — cache hit → silent refresh (no skeleton);
+  // miss → visible load. Runs once when mappings are ready.
   const hasFetched = useRef(false);
   useEffect(() => {
-    if (!mappingLoading && !hasFetched.current) {
-      hasFetched.current = true;
+    if (mappingLoading || hasFetched.current) return;
+    hasFetched.current = true;
+    if (hasItem(ARCHIVE_CACHE_KEY)) {
+      fetchRef.current({ silent: true });
+    } else {
       fetchTransactions();
     }
-  }, [mappingLoading, fetchTransactions]);
+  }, [mappingLoading, fetchTransactions, ARCHIVE_CACHE_KEY]);
 
   // ── Realtime Updates ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -271,9 +282,11 @@ export default function useArchive() {
     const onDeleted = (e) => {
       const id = e.detail?.transactionId;
       if (id)
-        setTransactions((prev) =>
-          prev.filter((t) => String(t.id) !== String(id)),
-        );
+        setTransactions((prev) => {
+          const next = prev.filter((t) => String(t.id) !== String(id));
+          setItem(ARCHIVE_CACHE_KEY, next);
+          return next;
+        });
       else fetchRef.current({ silent: true });
     };
     window.addEventListener("txn_data_updated", onUpdated);

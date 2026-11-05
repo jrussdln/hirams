@@ -44,8 +44,9 @@ class SupplierContactController extends ApiController
         }
     }
 
-    public function update(UpdateSupplierContactRequest $request, int $id): JsonResponse
+    public function update(UpdateSupplierContactRequest $request, $id): JsonResponse
     {
+        $id = (int) $id;
         try {
             $supplierContact = $this->service->update($id, $request->validated());
 
@@ -60,8 +61,9 @@ class SupplierContactController extends ApiController
         }
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy($id): JsonResponse
     {
+        $id = (int) $id;
         try {
             $supplierContact = $this->service->delete($id);
 
@@ -76,8 +78,9 @@ class SupplierContactController extends ApiController
         }
     }
 
-    public function bySupplier(int $supplierId): JsonResponse
+    public function bySupplier($supplierId): JsonResponse
     {
+        $supplierId = (int) $supplierId;
         try {
             $contacts = $this->service->bySupplier($supplierId);
 

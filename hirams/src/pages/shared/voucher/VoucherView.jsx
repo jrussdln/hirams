@@ -1,5 +1,5 @@
 import { useTheme } from "@mui/material/styles";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import CustomSearchField from "../../../components/ui/form/SearchField";
 import CustomTable from "../../../components/ui/form/Table";
 import PageLayout from "../../../components/layouts/page/content-page";
@@ -14,8 +14,34 @@ import {
   NO_ADDRESS,
   NO_TIN,
   NO_ADDRESS_TIN,
+  NO_CREATOR,
   NO_VOUCHER_NO,
+  OPEN_DATE,
 } from "../../../constants/tableDataFallbacks";
+import { Tooltip } from "@mui/material";
+import PersonIcon from "@mui/icons-material/PersonOutline";
+import EventIcon from "@mui/icons-material/Event";
+import { fmtPHP } from "../../../utils/formatters/formatter.js";
+
+// ── Created-column helper — mirrors TransactionView's Account Officer style
+// Tiny icons stand in for the row labels ("BY:", the date) — the full value
+// rides in the tooltip and the shared grid keeps rows aligned down the column.
+const OFFICER_GRID_CLASS =
+  "grid w-fit max-w-full min-w-0 grid-cols-[auto_minmax(0,9.5rem)] items-baseline gap-x-1";
+
+const LabelIcon = (props) => {
+  const { icon: Icon, title, className = "" } = props;
+  return (
+    <Tooltip title={title} arrow placement="top">
+      <span
+        className={`inline-flex items-center justify-center text-gray-500 dark:text-gray-400 ${className}`}
+        style={{ lineHeight: 0 }}
+      >
+        <Icon sx={{ fontSize: "0.7rem" }} />
+      </span>
+    </Tooltip>
+  );
+};
 
 // ── Local Color Map — only tokens used in this component ──────────────
 const useColors = (c) => ({
@@ -25,6 +51,18 @@ const useColors = (c) => ({
   green: { bg: c.green.bg, text: c.green.text, textDark: c.green.textDark },
   amber: { bg: c.amber.bg, text: c.amber.text, textDark: c.amber.textDark },
 });
+
+// Next-action hints for CLOSED vouchers, keyed by the JEV stage the API
+// computes (strJevStage). Printed under the payee name in the Voucher
+// column — the finance workflow reads top-down: journal it, balance it,
+// finalize it, then mark the voucher paid.
+const JEV_STAGE_LABELS = {
+  "no-jev": "Add JEV now!",
+  "no-entries": "No Entries at this moment.",
+  unbalanced: "JEV Entries not yet balanced.",
+  "pending-finalize": "Pending JEV Finalize",
+  "pending-paid": "Pending Mark as Paid",
+};
 
 export default function VoucherView({
   itemsLoading,
@@ -68,6 +106,10 @@ export default function VoucherView({
   const isDark = theme.palette.mode === "dark";
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useMemo(() => useColors(base), [base]);
+
+  // Which voucher the "Edit" button is currently opening in the update modal.
+  // Null while the Create flow is the one in charge of the modal.
+  const [editingVoucher, setEditingVoucher] = useState(null);
 
   const typeBadgeColors = useMemo(
     () => ({
@@ -125,15 +167,53 @@ export default function VoucherView({
               )}
             </div>
             <span
-              className={`block truncate uppercase tracking-wide leading-tight -mt-0.5 ${
+              className={`block truncate tracking-wide leading-tight -mt-0.5 ${
                 hasName ? "text-[0.8125rem] font-medium" : "text-xs font-light italic"
               }`}
             >
               {hasName ? row.displayName : NO_NAME}
             </span>
+            {/* Closed vouchers are mid-workflow: say which JEV step comes
+                next. Same font color as the DV number line above. */}
+            {String(row.cStatus) === String(voucherClosedKey) && row.jevStage && (
+              <span className="block truncate text-[0.55rem] font-medium italic uppercase tracking-wide leading-tight -mt-0.5 text-gray-500 dark:text-gray-400">
+                {JEV_STAGE_LABELS[row.jevStage]}
+              </span>
+            )}
           </div>
         );
       },
+    },
+    {
+      key: "amount",
+      label: "Amount",
+      align: "right",
+      xs: 0.75,
+      // The voucher's total (gross), not the net of EWT — with the EWT and the
+      // freight under it, in the same small italic as the PO panels.
+      render: (_, row) => {
+        const subLine =
+          "block text-[0.55rem] font-medium italic tabular-nums leading-tight text-gray-500 dark:text-gray-400";
+        return (
+          <div className="min-w-0 text-right leading-tight">
+            <span className="block text-xs font-medium tabular-nums leading-tight">
+              {fmtPHP(row.amount)}
+            </span>
+            {row.ewt > 0 && <span className={subLine}>EWT: {fmtPHP(row.ewt)}</span>}
+            {row.freight > 0 && (
+              <span className={subLine}>Freight: {fmtPHP(row.freight)}</span>
+            )}
+          </div>
+        );
+      },
+      title: (_, row) =>
+        [
+          `Total: ${fmtPHP(row.amount)}`,
+          row.ewt > 0 ? `EWT: ${fmtPHP(row.ewt)}` : null,
+          row.freight > 0 ? `Freight: ${fmtPHP(row.freight)}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
     },
     {
       key: "displayAddress",
@@ -169,25 +249,88 @@ export default function VoucherView({
         );
       },
     },
-    { key: "dtCreated", label: "Created", align: "right" },
+    {
+      key: "dtCreated",
+      label: "Created",
+      align: "right",
+      render: (_, row) => {
+        // Same icon-label grid style as TransactionView's Account Officer
+        // column: tiny label icons, uppercase small values, ONE shared grid
+        // so rows line up down the column. Missing nicknames (pre-existing
+        // rows) read the shared dash.
+        const hasName = Boolean(row.strCreatedByName?.trim());
+        const hasDate = Boolean(row.dtCreated);
+        const lineClass =
+          "truncate uppercase tracking-wide text-[0.625rem] font-medium leading-tight";
+        const valueClass = "text-left truncate";
+
+        if (!hasName && !hasDate) {
+          return (
+            <span
+              className="text-xs font-light italic"
+              style={{ color: colors.textMuted }}
+            >
+              {NO_CREATOR}
+            </span>
+          );
+        }
+
+        return (
+          <div className="flex min-w-0 justify-end">
+            <div className={`${OFFICER_GRID_CLASS} ${lineClass}`}>
+              <LabelIcon icon={PersonIcon} title="Created by" />
+              <span className={valueClass}>
+                {hasName ? row.strCreatedByName : NO_CREATOR}
+              </span>
+              <LabelIcon icon={EventIcon} title="Created at" className="-mt-0.5" />
+              <span className={`${valueClass} -mt-0.5`}>
+                {hasDate ? row.dtCreated : OPEN_DATE}
+              </span>
+            </div>
+          </div>
+        );
+      },
+      title: (row) => row.dtCreated,
+    },
     {
       key: "actions",
       label: "Actions",
       align: "center",
-      render: (_, row) => (
-        <div className="flex justify-center gap-0">
-          <BaseButton
-            icon={icons.view}
-            tooltip="View Voucher"
-            size="small"
-            actionColor="view"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleViewClick(row._raw);
-            }}
-          />
-        </div>
-      ),
+      render: (_, row) => {
+        const canEdit =
+          String(row.cStatus) === String(voucherActiveKey) ||
+          String(row.cStatus) === String(voucherClosedKey);
+
+        return (
+          <div className="flex justify-center gap-0">
+            <BaseButton
+              icon={icons.view}
+              tooltip="View Voucher"
+              size="small"
+              actionColor="view"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewClick(row._raw);
+              }}
+            />
+            {canEdit && (
+              <BaseButton
+                icon={icons.edit}
+                // The voucher-update page IS the edit form — same navigation,
+                // but the action tint (amber) says what you are going there to do.
+                tooltip="Edit Voucher"
+                size="small"
+                actionColor="edit"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingVoucher(row._raw);
+                  setVoucherModalOpen(true);
+                }}
+              />
+            )}
+          </div>
+        );
+      },
     },
   ];
 
@@ -226,7 +369,10 @@ export default function VoucherView({
             icon={icons.add}
             variant="contained"
             actionColor="approve"
-            onClick={() => setVoucherModalOpen(true)}
+            onClick={() => {
+              setEditingVoucher(null);
+              setVoucherModalOpen(true);
+            }}
           />
         )}
       </section>
@@ -244,9 +390,13 @@ export default function VoucherView({
       </section>
       <CreateVoucherModal
         open={voucherModalOpen}
-        onClose={() => setVoucherModalOpen(false)}
+        onClose={() => {
+          setVoucherModalOpen(false);
+          setEditingVoucher(null);
+        }}
         onSuccess={() => {
           setVoucherModalOpen(false);
+          setEditingVoucher(null);
           fetchVouchers({ bustCache: true });
           window.dispatchEvent(new CustomEvent("voucher_data_updated"));
         }}
@@ -256,6 +406,7 @@ export default function VoucherView({
         voucherSupplierTypeKey={voucherSupplierTypeKey}
         voucherAssigneeTypeKey={voucherAssigneeTypeKey}
         paymentTerms={paymentTerms} // ← add, sourced from useKeysLabels()
+        editVoucher={editingVoucher}
       />
     </PageLayout>
   );

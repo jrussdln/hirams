@@ -348,7 +348,7 @@ function AddBulkItem() {
     filledRows.length === 0
       ? "Add at least one item before saving"
       : abcExceedsTransaction
-        ? `Total ABC (₱${fmtPHP(totalABC)}) exceeds Transaction ABC (₱${fmtPHP(txnABC)})`
+        ? `Total ABC (${fmtPHP(totalABC)}) exceeds Transaction ABC (${fmtPHP(txnABC)})`
         : missingItemABC
           ? "All items must have an ABC value when transaction has no total ABC"
           : submitted && hasAnyRowError
@@ -646,7 +646,7 @@ function AddBulkItem() {
               whiteSpace: "nowrap",
             }}
           >
-            ₱ {fmtPHP(newItemsABC)}
+            {fmtPHP(newItemsABC)}
           </Typography>
         ),
       };
@@ -730,7 +730,7 @@ function AddBulkItem() {
                         marginLeft: 2,
                       }}
                     >
-                      ₱{fmtPHP(txnABC)}
+                      {fmtPHP(txnABC)}
                     </span>
                   </span>
                 </>
@@ -745,7 +745,7 @@ function AddBulkItem() {
                     marginLeft: 2,
                   }}
                 >
-                  ₱{fmtPHP(totalABC)}
+                  {fmtPHP(totalABC)}
                 </span>
                 {existingItemsABC > 0 && newItemsABC > 0 && (
                   <span
@@ -755,8 +755,7 @@ function AddBulkItem() {
                       marginLeft: 3,
                     }}
                   >
-                    (existing ₱{fmtPHP(existingItemsABC)} + new ₱
-                    {fmtPHP(newItemsABC)})
+                    (existing {fmtPHP(existingItemsABC)} + new {fmtPHP(newItemsABC)})
                   </span>
                 )}
               </span>
@@ -773,16 +772,14 @@ function AddBulkItem() {
 
         {abcUnderTransaction && (
           <Alert severity="warning" sx={{ mb: 1.5, fontSize: "0.75rem" }}>
-            Items ABC total (₱{fmtPHP(totalABC)}) is under Transaction ABC (₱
-            {fmtPHP(txnABC)}). You can still save, but consider adjusting your
+            Items ABC total ({fmtPHP(totalABC)}) is under Transaction ABC ({fmtPHP(txnABC)}). You can still save, but consider adjusting your
             item ABC values.
           </Alert>
         )}
 
         {abcExceedsTransaction && (
           <Alert severity="error" sx={{ mb: 1.5, fontSize: "0.75rem" }}>
-            Total Item ABC (₱{fmtPHP(totalABC)}) exceeds Transaction ABC (₱
-            {fmtPHP(txnABC)}). Please adjust your item ABC values.
+            Total Item ABC ({fmtPHP(totalABC)}) exceeds Transaction ABC ({fmtPHP(txnABC)}). Please adjust your item ABC values.
           </Alert>
         )}
 

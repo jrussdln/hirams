@@ -33,6 +33,9 @@ export const NO_TAX_EWT = "No EWT";
 // ── Voucher ───────────────────────────────────────────────────────────
 export const NO_VOUCHER_NO = "No voucher number";
 
+// ── Creator (JEV / voucher lists — the Created column's "BY: …") ──────
+export const NO_CREATOR = "Not Available";
+
 // ── JEV ───────────────────────────────────────────────────────────────
 export const NO_JEV_NO = "No JEV number";
 
@@ -62,6 +65,7 @@ export default {
   NO_TAX_EWT,
   NO_VOUCHER_NO,
   NO_JEV_NO,
+  NO_CREATOR,
   NO_SUBMISSION_DATE,
   NO_TRANSACTION_ABC,
   NOT_YET_ASSIGNED,

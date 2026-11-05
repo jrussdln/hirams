@@ -1,30 +1,35 @@
-import { useCallback, useEffect, useState, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState, useMemo, useRef } from "react";import { useNavigate } from "react-router-dom";
 import PurchaseOrderAPI from "../../../api/endpoints/purchase-order.api.js";
 import VoucherAPI from "../../../api/endpoints/voucher.api.js";
+import { totalEWT } from "../../../utils/helpers/calculateEWT.js";
 import { fmtDateTime } from "../../../utils/helpers/timeZone";
 import {
   getItem,
   setItem,
   removeItem,
+  hasItem,
 } from "../../../utils/storage/localStorage.js";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 
 export default function useVoucher() {
   const navigate = useNavigate();
-  const [itemsLoading, setItemsLoading] = useState(false);
-  const [vouchers, setVouchers] = useState([]);
+  // Seeded from cache — instant render on revisit, silent refresh follows.
+  const user = useMemo(() => getItem("user", {}), []);
+  const currentUserId = user?.nUserId;
+  const storageKey = `voucher_list_${currentUserId}`;
+  const optionStatusesKey = `voucher_option_statuses_${currentUserId}`;
+
+  const [itemsLoading, setItemsLoading] = useState(() => !hasItem(storageKey));
+  const [vouchers, setVouchers] = useState(() => getItem(storageKey, []));
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
 
   const [voucherModalOpen, setVoucherModalOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
-  const [optionStatuses, setOptionStatuses] = useState({});
-
-  const user = useMemo(() => getItem("user", {}), []);
-  const currentUserId = user?.nUserId;
-  const storageKey = `voucher_list_${currentUserId}`;
+  const [optionStatuses, setOptionStatuses] = useState(() =>
+    getItem(optionStatusesKey, {}),
+  );
   const {
     voucherStatus,
     userTypes,
@@ -97,23 +102,15 @@ export default function useVoucher() {
         map[Number(h.nPurchaseItemId)] = h?.nStatus ?? null;
       });
       setOptionStatuses(map);
+      setItem(optionStatusesKey, map);
     } catch (err) {
       console.error("fetchOptionStatuses error:", err);
     }
-  }, []);
+  }, [optionStatusesKey]);
 
   const fetchVouchers = useCallback(
     async ({ silent = false, bustCache = false } = {}) => {
       if (bustCache) removeItem(storageKey);
-
-      if (!silent && !bustCache) {
-        const stored = getItem(storageKey);
-        if (stored) {
-          setVouchers(stored);
-          fetchVouchers({ silent: true });
-          return;
-        }
-      }
 
       if (!silent) setItemsLoading(true);
       try {
@@ -136,15 +133,29 @@ export default function useVoucher() {
     fetchRef.current = fetchVouchers;
   }, [fetchVouchers]);
 
+  // Initial load — cache hit → silent refresh (no skeleton);
+  // miss → visible load. Runs exactly once per visit.
+  const initialLoadRef = useRef(false);
   useEffect(() => {
-    if (!mappingLoading) fetchVouchers();
-  }, [mappingLoading, fetchVouchers]);
+    if (mappingLoading || initialLoadRef.current) return;
+    initialLoadRef.current = true;
+    if (hasItem(storageKey)) {
+      fetchRef.current({ silent: true });
+    } else {
+      fetchVouchers();
+    }
+  }, [mappingLoading, fetchVouchers, storageKey]);
 
   useEffect(() => {
     const onUpdated = () => fetchRef.current({ silent: true });
     const onDeleted = (e) => {
       const id = e.detail?.voucherId;
-      if (id) setVouchers((prev) => prev.filter((v) => v.nVoucherId !== id));
+      if (id)
+        setVouchers((prev) => {
+          const next = prev.filter((v) => v.nVoucherId !== id);
+          setItem(storageKey, next);
+          return next;
+        });
       else fetchRef.current({ silent: true });
     };
     window.addEventListener("voucher_data_updated", onUpdated);
@@ -249,6 +260,41 @@ export default function useVoucher() {
 
         const supplierLinks = v.voucher_suppliers ?? [];
         const voucherTypeLabel = isAssigneeType ? "Assignee" : "Supplier";
+        // The voucher's TOTAL amount (the gross) — the same figure the update
+        // page shows as the particulars grand total. NOT the net of EWT.
+        // Supplier vouchers: Σ QTY × dUnitPrice over the linked POs' lines;
+        // assignee vouchers: Σ particular amount × qty.
+        const amount = isAssigneeType
+          ? (v.voucher_assignees ?? []).reduce(
+              (sum, a) =>
+                sum + Number(a.dAmount || 0) * Number(a.nQuantity || 1),
+              0,
+            )
+          : supplierLinks.reduce((sum, link) => {
+              const opts = link.purchase_order?.purchase_order_options ?? [];
+              return opts.reduce((s, opt) => {
+                const p = opt?.purchase_option;
+                return s + Number(p?.nQuantity || 0) * Number(p?.dUnitPrice || 0);
+              }, sum);
+            }, 0);
+        // The EWT on the same lines — supplier vouchers derive it per line
+        // (see utils/helpers/calculateEWT.js), assignee vouchers sum their
+        // particulars' own dEWT.
+        const ewt = isAssigneeType
+          ? (v.voucher_assignees ?? []).reduce(
+              (sum, a) => sum + (Number(a.dEWT) || 0),
+              0,
+            )
+          : supplierLinks.reduce((sum, link) => {
+              const opts = link.purchase_order?.purchase_order_options ?? [];
+              return sum + totalEWT(opts);
+            }, 0);
+        // The freight rides on the POs themselves — assignee vouchers carry
+        // no POs and so no freight.
+        const freight = supplierLinks.reduce(
+          (sum, link) => sum + Number(link.purchase_order?.dFreight || 0),
+          0,
+        );
 
         // ✅ REPLACED: Use cStatus instead of bIsPaid
         let isPaid;
@@ -278,10 +324,27 @@ export default function useVoucher() {
           displayTIN,
           displayAddress,
           dtCreated: fmtDateTime(v.dtCreated),
+          // Who created the voucher — "BY: <nickname>" over the date in the
+          // Created column (tblvouchers.nUserId → tblusers.strNickName,
+          // shipped by the API as strCreatedBy). A dash from the API (or a
+          // null for a pre-column row) means "no creator" — blank so the
+          // view can print the NO_CREATOR placeholder.
+          strCreatedByName:
+            v.strCreatedBy && v.strCreatedBy !== "—" ? v.strCreatedBy : "",
           poCount: supplierLinks.length,
           isAssigneeType,
           voucherTypeLabel,
           isPaid,
+          amount,
+          ewt,
+          freight,
+          // The voucher's own status letter — the JEV-progress hint under
+          // the payee name only prints on Closed vouchers.
+          cStatus: v.cStatus ?? "",
+          // Where the voucher stands in the JEV pipeline, computed by the
+          // API (strJevStage): no-jev | no-entries | unbalanced |
+          // pending-finalize | pending-paid.
+          jevStage: v.strJevStage ?? null,
         };
       }),
     [

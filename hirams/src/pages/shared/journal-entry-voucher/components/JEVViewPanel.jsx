@@ -353,7 +353,12 @@ export default function JevViewPanel({
   };
 
   useEffect(() => {
-    if (!jev?.entries) fetchEntries();
+    // Always pull entries through JevEntriesAPI — it is the only endpoint
+    // that hydrates journal_account (+ parent chain + client/supplier), which
+    // the panel needs to print the account title. Relying on jev?.entries
+    // (which come from the voucher/jev show() payload) leaves the title
+    // blank, because that payload does not carry the account relation.
+    fetchEntries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jevId]);
 
@@ -437,21 +442,8 @@ export default function JevViewPanel({
     [toEntries],
   );
 
-  // ── To/From state for those JEVs ─────────────────────────────────────
-  // Handed to the entry form as a message in the same wording style as the
-  // old cap ("… ₱265,000.00 · Remaining max: ₱…"), but purely informative.
-  const balanceHint = useMemo(() => {
-    if (!isInventoryJev) return null;
-    const balanced = Math.abs(fromTotal - toTotal) < 0.005;
-    return {
-      balanced,
-      text: balanced
-        ? `To and From are equal: To ${fmtPHP(toTotal)} = From ${fmtPHP(fromTotal)}`
-        : `To and From must be equal. To: ${fmtPHP(toTotal)} · From: ${fmtPHP(fromTotal)} · Difference: ${fmtPHP(
-            Math.abs(toTotal - fromTotal),
-          )}`,
-    };
-  }, [isInventoryJev, fromTotal, toTotal]);
+  // ── To/From state for those JEVs ─ removed (the balance hint line under
+  // the amount field is gone; Finalize still refuses an unbalanced JEV).
 
   const fromAccountIds = useMemo(
     () => fromEntries.map((e) => Number(e.nJournalAccountId)).filter(Boolean),
@@ -764,7 +756,7 @@ export default function JevViewPanel({
         ) : (
           list.map((entry, idx) => (
             <Box
-              key={entry.nJEVEntryId}
+              key={entry.nJEVEntryId ?? `entry-${side}-${idx}`}
               sx={{
                 px: 1.5,
                 py: 0.875,
@@ -1245,7 +1237,6 @@ export default function JevViewPanel({
           panelTitle={panelTitle}
           flowType={flowType}
           itemsPanel={itemsPanel}
-          balanceHint={balanceHint}
           supplierInfo={supplierInfo}
           clientName={clientName}
         />

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import AssigneeAPI from "../../../api/endpoints/assignee.api.js";
-import { getItem, setItem } from "../../../utils/storage/localStorage";
+import { getItem, setItem, hasItem } from "../../../utils/storage/localStorage";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 const SESSION_KEY = "selectedAssigneeStatusCode";
+const ASSIGNEES_CACHE_KEY = "assignees_cache";
 const DEBOUNCE_MS = 300;
 
 /* ── Helper ─────────────────────────────────────────────────────────── */
@@ -37,9 +38,17 @@ export default function useAssignee() {
   const [selectedAssignee, setSelectedAssignee] = useState(null);
   const [entityToDelete, setEntityToDelete] = useState(null);
 
-  const [assignees, setAssignees] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isFetched, setIsFetched] = useState(false);
+  // Full dataset — loaded from localStorage cache on revisit,
+  // refreshed silently in the background
+  const [assignees, setAssignees] = useState(() =>
+    getItem(ASSIGNEES_CACHE_KEY, []),
+  );
+  const [loading, setLoading] = useState(() =>
+    !hasItem(ASSIGNEES_CACHE_KEY),
+  );
+  const [isFetched, setIsFetched] = useState(() =>
+    hasItem(ASSIGNEES_CACHE_KEY),
+  );
   const {
     statuses,
     loading: mappingLoading,
@@ -97,7 +106,9 @@ export default function useAssignee() {
       try {
         const response = await AssigneeAPI.getAssignees();
         const raw = response.assignees ?? [];
-        setAssignees(raw.map(formatAssignee));
+        const formatted = raw.map(formatAssignee);
+        setAssignees(formatted);
+        setItem(ASSIGNEES_CACHE_KEY, formatted);
         setIsFetched(true);
       } catch (err) {
         console.error("Error fetching assignees:", err);
@@ -113,9 +124,16 @@ export default function useAssignee() {
     fetchAssigneesRef.current = fetchAssignees;
   }, [fetchAssignees]);
 
+  // Initial load — runs ONCE when mappings are ready.
+  // No cache → visible load; cache exists → silent background refresh only.
+  const initialLoadRef = useRef(false);
   useEffect(() => {
-    if (!mappingLoading) {
+    if (mappingLoading || initialLoadRef.current) return;
+    initialLoadRef.current = true;
+    if (!hasItem(ASSIGNEES_CACHE_KEY)) {
       fetchAssignees();
+    } else {
+      fetchAssigneesRef.current?.(true, true); // force + silent — no skeleton
     }
   }, [mappingLoading, fetchAssignees]);
 
@@ -128,8 +146,15 @@ export default function useAssignee() {
 
   useEffect(() => {
     const onUpdated = () => fetchAssigneesRef.current?.(true, true);
-    const onDeleted = (e) =>
-      setAssignees((prev) => prev.filter((a) => a.id !== e.detail?.assigneeId));
+    const onDeleted = (e) => {
+      const removedId = e.detail?.assigneeId;
+      if (!removedId) return;
+      setAssignees((prev) => {
+        const next = prev.filter((a) => a.id !== removedId);
+        setItem(ASSIGNEES_CACHE_KEY, next);
+        return next;
+      });
+    };
 
     window.addEventListener("assignee_data_updated", onUpdated);
     window.addEventListener("assignee_data_deleted", onDeleted);

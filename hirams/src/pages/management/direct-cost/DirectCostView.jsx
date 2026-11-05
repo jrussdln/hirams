@@ -7,7 +7,7 @@ import SyncMenu from "../../../components/ui/form/SyncMenu";
 import DirectCostAEModal from "./modal/DirectCostAEModal";
 import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../../shared/transactions/modal/DeleteVerificationModal";
-import { Edit, Delete, Add, DriveFileMoveOutlined } from "@mui/icons-material";
+import { Edit, Delete, Add, DriveFileMoveOutlined, Link as LinkIcon } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../utils/style/getThemeColors";
 
@@ -60,7 +60,7 @@ export default function DirectCostView({
           const costCount = Number(row.costsCount ?? 0);
 
           return (
-            <div className="min-w-0 text-left">
+            <div className="min-w-0 text-left flex items-center gap-1.5">
               {/* The option name… */}
               <span
                 className="block text-xs font-medium leading-tight truncate"
@@ -68,11 +68,10 @@ export default function DirectCostView({
               >
                 {row.costName}
               </span>
-              {/* …with how many live transactions still charge a cost to it
-                  BELOW it — the same count that decides whether Delete or
-                  Transfer is offered. */}
+              {/* …with how many live transactions still charge a cost to it */}
               {costCount > 0 && (
-                <span className="block text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 truncate">
+                <span className="inline-flex items-center gap-0.5 text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 truncate">
+                  <LinkIcon sx={{ fontSize: "0.7rem" }} />
                   {costCount} transaction{costCount === 1 ? "" : "s"}
                 </span>
               )}

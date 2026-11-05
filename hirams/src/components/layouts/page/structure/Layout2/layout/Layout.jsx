@@ -3,7 +3,6 @@ import { Outlet } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
 import Sidebar from "./Sidebar";
 import PageChunkErrorBoundary from "../../../../../ui/error-boundary/PageChunkErrorBoundary";
-import CookieNotice from "../../../../../ui/auth/CookieNotice";
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
 
 const useColors = (c) => ({
@@ -46,7 +45,7 @@ function Layout() {
           toggleCollapse={toggleCollapse}
         />
         <div className="flex-1 min-w-0 flex flex-col h-full">
-          <main className="flex-1 min-w-0 overflow-auto">
+          <main className="flex-1 min-w-0 min-h-0 overflow-hidden">
             {/* Route code-split: only the page chunk loads, the shell above
                 (sidebar/header) stays mounted while it downloads.
                 fallback={null} — React Router runs navigations inside
@@ -61,10 +60,6 @@ function Layout() {
           </main>
         </div>
       </div>
-
-      {/* Post-login cookie bar — fixed to the viewport bottom, so it sits
-          outside the flex shell; unmounts itself once accepted. */}
-      <CookieNotice />
     </>
   );
 }

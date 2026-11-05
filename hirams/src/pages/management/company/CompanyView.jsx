@@ -7,7 +7,7 @@ import SyncMenu from "../../../components/ui/form/SyncMenu";
 import CompanyAEModal from "./modal/CompanyAEModal";
 import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../../shared/transactions/modal/DeleteVerificationModal";
-import { Add, Edit, Delete, Phone, Email, DriveFileMoveOutlined } from "@mui/icons-material";
+import { Add, Edit, Delete, Phone, Email, DriveFileMoveOutlined, Link as LinkIcon } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import {
@@ -77,6 +77,16 @@ export default function CompanyView({
           const transactionCount = Number(row.transactionsCount ?? 0);
           const voucherCount = Number(row.vouchersCount ?? 0);
 
+          const linkParts = [];
+          if (transactionCount > 0) {
+            linkParts.push(
+              `${transactionCount} transaction${transactionCount === 1 ? "" : "s"}`,
+            );
+          }
+          if (voucherCount > 0) {
+            linkParts.push(`${voucherCount} voucher${voucherCount === 1 ? "" : "s"}`);
+          }
+
           return (
             <div className="min-w-0 text-left">
               {hasName ? (
@@ -88,21 +98,16 @@ export default function CompanyView({
                   {NO_NAME}
                 </span>
               )}
-              <span className="flex items-center gap-1 min-w-0">
+              <span className="flex items-center gap-1.5 min-w-0">
                 <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
                   {hasNickname ? row.nickname : NO_NICKNAME}
                 </span>
                 {/* What still names this company — the same counts that
                     decide whether Delete or Transfer is offered. */}
-                {transactionCount > 0 && (
-                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
-                    · {transactionCount} transaction
-                    {transactionCount === 1 ? "" : "s"}
-                  </span>
-                )}
-                {voucherCount > 0 && (
-                  <span className="truncate text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
-                    · {voucherCount} voucher{voucherCount === 1 ? "" : "s"}
+                {linkParts.length > 0 && (
+                  <span className="inline-flex items-center gap-0.5 text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
+                    <LinkIcon sx={{ fontSize: "0.7rem" }} />
+                    {linkParts.join(" · ")}
                   </span>
                 )}
               </span>

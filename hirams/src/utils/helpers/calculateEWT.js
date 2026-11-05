@@ -56,7 +56,89 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+// ── A faithful twin of PHP's round($x, 2) ─────────────────────────────
+// The EWT is DERIVED on the backend too (FormulaHelper::calculateEWT
+// appends dEWT on every option) through PHP's round(). That is NOT a
+// plain binary round: PHP pre-rounds the value to 14–15 significant
+// decimal digits and then rounds the pre-rounded result —
+// round(3150 / 1.12 * 0.01, 2) = 28.13 even though the binary double
+// is 28.124999999999996 — so TC / 1.12 * 0.01 can split the PO view
+// (which recomputes with the supplier's flags) from the voucher view
+// (which falls back to the appended dEWT) on exactly one cent.
+// Ported from php_math_round (ext/standard/math.c, PHP 8.2), default
+// mode PHP_ROUND_HALF_UP (half away from zero).
+const phpIntLog10Abs = (value) => {
+  const val = Math.abs(value);
+  if (val < 1e-8 || val > 1e22) return Math.floor(Math.log10(val));
+  // Same binary search PHP uses: index 15 is 1e7, each step halves the gap.
+  const values = [
+    1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1,
+    1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7,
+    1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15,
+    1e16, 1e17, 1e18, 1e19, 1e20, 1e21, 1e22,
+  ];
+  let result = 15;
+  if (val < values[result]) result -= 8; else result += 8;
+  if (val < values[result]) result -= 4; else result += 4;
+  if (val < values[result]) result -= 2; else result += 2;
+  if (val < values[result]) result -= 1; else result += 1;
+  if (val < values[result]) result -= 1;
+  return result - 8;
+};
+
+const pow10Exact = (p) => {
+  // PHP keeps exact doubles for 10^0 .. 10^22 — the lookup table beats pow()
+  // on last-bit drift.
+  if (p >= 0 && p <= 22) {
+    switch (p) {
+      case 0: return 1e0; case 1: return 1e1; case 2: return 1e2;
+      case 3: return 1e3; case 4: return 1e4; case 5: return 1e5;
+      case 6: return 1e6; case 7: return 1e7; case 8: return 1e8;
+      case 9: return 1e9; case 10: return 1e10; case 11: return 1e11;
+      case 12: return 1e12; case 13: return 1e13; case 14: return 1e14;
+      case 15: return 1e15; case 16: return 1e16; case 17: return 1e17;
+      case 18: return 1e18; case 19: return 1e19; case 20: return 1e20;
+      case 21: return 1e21; case 22: return 1e22;
+      default: break;
+    }
+  }
+  return Math.pow(10, p);
+};
+
+const phpRoundHelper = (value) =>
+  value >= 0.0 ? Math.floor(value + 0.5) : Math.ceil(value - 0.5);
+
+export const phpRoundHalfUp = (value, places = 2) => {
+  if (!Number.isFinite(value) || value === 0.0) return value;
+  places = Math.trunc(places);
+  const precisionPlaces = 14 - phpIntLog10Abs(value);
+  const f1 = pow10Exact(Math.abs(places));
+
+  let tmp;
+  if (precisionPlaces > places && precisionPlaces - 15 < places) {
+    // Pre-round to the 14–15 significant decimal digits (the digits FP
+    // arithmetic can actually carry), then move the decimal point.
+    const usePrecision = precisionPlaces;
+    const f2 = pow10Exact(Math.abs(usePrecision));
+    tmp = usePrecision >= 0 ? value * f2 : value / f2;
+    tmp = phpRoundHelper(tmp);
+    const back = places - precisionPlaces;
+    const f2b = pow10Exact(Math.abs(back));
+    tmp = tmp / f2b;
+  } else {
+    tmp = places >= 0 ? value * f1 : value / f1;
+    if (Math.abs(tmp) >= 1e15) return value;
+  }
+
+  tmp = phpRoundHelper(tmp);
+
+  if (Math.abs(places) < 23) {
+    tmp = places > 0 ? tmp / f1 : tmp * f1;
+  }
+  return tmp;
+};
+
+const round2 = (n) => phpRoundHalfUp(Number(n), 2);
 
 /**
  * The EWT of ONE line.

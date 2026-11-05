@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import UserAPI from "../../../api/endpoints/user.api.js";
-import { getItem, setItem } from "../../../utils/storage/localStorage";
+import { getItem, setItem, hasItem } from "../../../utils/storage/localStorage";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 
 const SESSION_KEY = "selectedUserStatusCode";
+const USERS_CACHE_KEY = "users_cache";
 const DEBOUNCE_MS = 300;
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
@@ -96,10 +97,11 @@ export default function useUser() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [entityToDelete, setEntityToDelete] = useState(null);
 
-  // Full dataset — loaded ONCE, refreshed silently in background
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isFetched, setIsFetched] = useState(false);
+  // Full dataset — loaded from localStorage cache on revisit,
+  // refreshed silently in the background
+  const [users, setUsers] = useState(() => getItem(USERS_CACHE_KEY, []));
+  const [loading, setLoading] = useState(() => !hasItem(USERS_CACHE_KEY));
+  const [isFetched, setIsFetched] = useState(() => hasItem(USERS_CACHE_KEY));
 
   const [selectedStatusCode, setSelectedStatusCode] = useState(() =>
     getItem(SESSION_KEY, ""),
@@ -168,7 +170,9 @@ export default function useUser() {
         const response = await UserAPI.getUsers("");
         const raw = response.users ?? [];
         const mappings = { userTypes, defaultUserType, sex, statuses };
-        setUsers(raw.map((u) => formatUser(u, mappings)));
+        const formatted = raw.map((u) => formatUser(u, mappings));
+        setUsers(formatted);
+        setItem(USERS_CACHE_KEY, formatted);
         setIsFetched(true);
       } catch (err) {
         console.error("Error fetching users:", err);
@@ -185,12 +189,20 @@ export default function useUser() {
     fetchUsersRef.current = fetchUsers;
   }, [fetchUsers]);
 
-  // Initial load — runs ONLY once when mappings are ready
+  // Initial load — runs ONLY once when mappings are ready.
+  // No cache → visible load; cache exists → silent background refresh only.
+  const initialLoadRef = useRef(false);
+  const silentRefreshRef = useRef(false);
   useEffect(() => {
-    if (!isFetched && !mappingLoading) {
+    if (mappingLoading || initialLoadRef.current) return;
+    initialLoadRef.current = true;
+    if (!hasItem(USERS_CACHE_KEY)) {
       fetchUsers();
+    } else {
+      silentRefreshRef.current = true;
+      fetchUsers(true, true); // force + silent — keep cache fresh, no skeleton
     }
-  }, [fetchUsers, isFetched, mappingLoading]);
+  }, [fetchUsers, mappingLoading]);
 
   // Real-time sync — SILENT refresh (no loading flash)
   useEffect(() => {
@@ -198,7 +210,13 @@ export default function useUser() {
       fetchUsersRef.current(true, true); // force=true, silent=true
     };
     const onDeleted = (e) => {
-      setUsers((prev) => prev.filter((u) => u.id !== e.detail?.userId));
+      const removedId = e.detail?.userId;
+      if (!removedId) return;
+      setUsers((prev) => {
+        const next = prev.filter((u) => u.id !== removedId);
+        setItem(USERS_CACHE_KEY, next);
+        return next;
+      });
     };
 
     window.addEventListener("user_data_updated", onUpdated);

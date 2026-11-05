@@ -58,11 +58,15 @@ class VoucherService extends CrudService
     public function listVouchers(): Collection
     {
         $vouchers = Voucher::with([
-            'jev',
+            // jev.entries is only read for the Closed-voucher hint under the
+            // payee (strJevStage below) — the two dAmount columns are enough.
+            'jev.entries:nJEVId,dAmount',
             'company',
             'supplier:nSupplierId,strSupplierNickName,strSupplierName,strTIN,strAddress',
             'voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.transactionItem.transaction.company',
             'voucher_assignees.assignee',
+            // The voucher's creator — the Created column's "BY: …" line.
+            'user:nUserId,strNickName',
         ])->orderByDesc('nVoucherId')->get();
         // Flatten the assigned AO's user id onto each voucher.
         // All PO's on a voucher share the same assignee, so the first non-null wins.
@@ -83,9 +87,61 @@ class VoucherService extends CrudService
             }
 
             $voucher->nAssignedUserId = $nAssignedUserId;
+            // Who created the voucher — "BY: <nickname>" over the date.
+            // NULL when the voucher predates the column: the frontend owns
+            // the fallback wording, so we must not ship a fake "—".
+            $voucher->strCreatedBy = $voucher->user?->strNickName;
+            // Where this voucher stands in the JEV pipeline — the Voucher
+            // column prints the next action under the payee name once the
+            // voucher is Closed (the finance workflow: journal it, balance
+            // it, finalize it, pay it).
+            $voucher->strJevStage = $this->resolveJevStage($voucher);
         });
 
         return $vouchers;
+    }
+
+    /**
+     * The next JEV-side action a Closed voucher is waiting on:
+     *
+     *   no-jev            → no journal at all (or its journal was cancelled)
+     *   no-entries        → journal raised but no entries recorded yet
+     *   unbalanced        → entries exist, but the debit and credit sides
+     *                       do not square to the cent
+     *   pending-finalize  → balanced, but the journal is still Pending —
+     *                       finance must finalize it into the books
+     *   pending-paid      → journal is Active (finalized, on the books) —
+     *                       only the mark-as-paid step remains
+     *
+     * Only Closed vouchers print this, but the stage is computed for every
+     * row so the frontend can decide (and future screens can reuse it).
+     */
+    private function resolveJevStage(Voucher $voucher): ?string
+    {
+        $journal = $voucher->jev;
+
+        // No journal — or a cancelled one the voucher cannot use — means
+        // the voucher needs a journal raised in the first place.
+        if (!$journal || $journal->cStatus === 'C') {
+            return 'no-jev';
+        }
+
+        $entries = $journal->entries;
+        if ($entries->isEmpty()) {
+            return 'no-entries';
+        }
+
+        // Same two-sided rule the frontend's computeJevBalance applies:
+        // debits are stored positive, credits negative, and both sides
+        // must be non-empty and equal to the cent.
+        $debits  = round($entries->where('dAmount', '>=', 0)->sum('dAmount'), 2);
+        $credits = round(abs($entries->where('dAmount', '<', 0)->sum('dAmount')), 2);
+
+        if ($debits <= 0 || $credits <= 0 || abs($debits - $credits) > 0.001) {
+            return 'unbalanced';
+        }
+
+        return $journal->cStatus === 'A' ? 'pending-paid' : 'pending-finalize';
     }
 
     /**
@@ -93,12 +149,18 @@ class VoucherService extends CrudService
      */
     public function show(string $id): Voucher
     {
-        return Voucher::with([
+        $voucher = Voucher::with([
             'jev',
+            'user:nUserId,strNickName',
             'voucher_assignees.assignee',
             'voucher_assignees.company',
             'voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.transactionItem.transaction.company', // ← add full chain
         ])->findOrFail($id);
+        // Same "BY: <nickname>" line the list ships with. NULL when the
+        // voucher predates the column — the frontend owns the fallback.
+        $voucher->strCreatedBy = $voucher->user?->strNickName;
+
+        return $voucher;
     }
 
     /* --------------------------------------------------------------------- */
@@ -125,6 +187,8 @@ class VoucherService extends CrudService
                 'cJEVLinkType' => request()->input('cJEVLinkType'),
                 'dtOccur'      => now(),
                 'cStatus'      => 'P',
+                // The voucher's creator raises the journal too.
+                'nUserId'      => auth()->id(),
             ]);
 
             $voucher->nJEVId = $jev->nJEVId;
@@ -166,6 +230,8 @@ class VoucherService extends CrudService
                 'cPaymentTerms' => $data['cPaymentTerms'] ?? null, // ← add
                 'nJEVId'        => $data['nJEVId'] ?? null,
                 'dtCreated'     => now(),
+                // Who created the voucher — the Created column's "BY: …".
+                'nUserId'       => auth()->id(),
             ]);
         });
         foreach ($data['nPurchaseOrderIds'] ?? [] as $poId) {
