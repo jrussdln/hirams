@@ -23,6 +23,8 @@ import BackHandOutlined from "@mui/icons-material/BackHandOutlined";
 import ZoomInOutlined from "@mui/icons-material/ZoomInOutlined";
 import ZoomOutOutlined from "@mui/icons-material/ZoomOutOutlined";
 import Slider from "@mui/material/Slider";
+// Shared by the panel header and the preview toolbar so they always match
+export const PRINT_HEADER_H = 56;
 
 const useColors = (c) => ({
   outerBg: c.slate.outerBg,
@@ -42,27 +44,6 @@ const useColors = (c) => ({
   btnHoverBg: c.slate.btnHoverBg,
 });
 
-/**
- * PrintPreviewRightPanel
- *
- * Sliding right panel for Print Preview, mirroring the exact layout, header,
- * surface colors, and typography of NotificationsSidePanel and AIChatBotPanel.
- *
- * Props:
- *  - open: boolean
- *  - onClose: () => void
- *  - width: number (default 350)
- *  - paperSize, setPaperSize, paperSizes
- *  - orientation, setOrientation
- *  - margin, setMargin, margins
- *  - colorMode, setColorMode
- *  - onPrint: () => void
- *  - onSavePdf: () => void
- *  - pdfBusy: boolean
- *  - onCopyImage: () => void
- *  - copyBusy: boolean
- *  - copied: boolean
- */
 export default function PrintPreviewRightPanel({
   open,
   onClose,
@@ -114,8 +95,8 @@ export default function PrintPreviewRightPanel({
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-                 px: 2,
-                  height: 56,
+            px: 2,
+            height: PRINT_HEADER_H,
             boxSizing: "border-box",
             borderBottom: `1px solid ${colors.border}`,
             flexShrink: 0,

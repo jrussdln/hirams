@@ -3,42 +3,21 @@ import { createPortal } from "react-dom";
 import { useTheme } from "@mui/material/styles";
 import {
   Box,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  Grid,
-  IconButton,
-  Menu,
   Typography,
 } from "@mui/material";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { getDesignTokens } from "../../../utils/style/theme.js";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 import { useReactToPrint } from "react-to-print";
-import ArrowBackOutlined from "@mui/icons-material/ArrowBackOutlined";
-import PrintOutlined from "@mui/icons-material/PrintOutlined";
-import DownloadOutlined from "@mui/icons-material/DownloadOutlined";
-import ZoomInOutlined from "@mui/icons-material/ZoomInOutlined";
-import ZoomOutOutlined from "@mui/icons-material/ZoomOutOutlined";
-import DescriptionOutlined from "@mui/icons-material/DescriptionOutlined";
-import PanToolOutlined from "@mui/icons-material/PanToolOutlined";
-import BackHandOutlined from "@mui/icons-material/BackHandOutlined";
 import ChevronLeftOutlined from "@mui/icons-material/ChevronLeftOutlined";
 import ChevronRightOutlined from "@mui/icons-material/ChevronRightOutlined";
-import MenuOutlined from "@mui/icons-material/MenuOutlined";
 import PrintPreviewRightPanel from "./PrintPreviewRightPanel.jsx";
 import BaseButton from "../form/BaseButton.jsx";
-import Slider from "@mui/material/Slider";
-import EditOutlined from "@mui/icons-material/EditOutlined";
-import EditOffOutlined from "@mui/icons-material/EditOffOutlined";
 import UndoOutlined from "@mui/icons-material/UndoOutlined";
 import RedoOutlined from "@mui/icons-material/RedoOutlined";
 import RestartAltOutlined from "@mui/icons-material/RestartAltOutlined";
 import MiniBaseButton from "../form/MiniBaseButton.jsx";
 import { EditableCell, PrintEditableContext } from "./EditableCell.jsx";
-import WarningAmberOutlined from "@mui/icons-material/WarningAmberOutlined";
-import CloseOutlined from "@mui/icons-material/CloseOutlined";
 import ModalContainer from "../../layouts/modal/ModalContainer.jsx";
 import {
   PRINT_PREVIEW_CONFIRM_STYLES,
@@ -75,14 +54,12 @@ export default function PrintPreview({
   children,
   header = null,
   footer = null,
-  onExport,
   defaultPaperSize = "A4",
   defaultOrientation = "portrait",
   defaultMargin = "Normal",
   maxWidth = "800px",
   pdfFileName = "document",
   onControlsReady,
-  hideHeaderControls = false,
   showSystemGenerated = true,
 }) {
   const theme = useTheme();
@@ -98,6 +75,20 @@ export default function PrintPreview({
   const printRef = useRef(null);
   const pdfPageRefs = useRef([]);
 
+  // Fit the preview to the space left in the window so the inner area scrolls
+  const rootRef = useRef(null);
+  const [rootH, setRootH] = useState(null);
+  useEffect(() => {
+    const fit = () => {
+      const el = rootRef.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top;
+      setRootH(Math.max(240, window.innerHeight - top - 12)); // 12 = bottom gap, tune if needed
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
   const ToolbarButton = ({ active = false, variant = "blue", ...props }) => (
     <MiniBaseButton variant={active ? variant : "neutral"} {...props} />
   );
@@ -610,9 +601,22 @@ export default function PrintPreview({
     moveDrag(t.clientX, t.clientY);
   };
   useEffect(() => {
+    const onMouseMove = (e) => {
+      if (!dragState.current.dragging) return;
+      moveDrag(e.clientX, e.clientY);
+    };
+    const onTouchMove = (e) => {
+      if (!dragState.current.dragging) return;
+      const t = e.touches[0];
+      moveDrag(t.clientX, t.clientY);
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
     window.addEventListener("mouseup", endDrag);
     window.addEventListener("touchend", endDrag);
     return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("mouseup", endDrag);
       window.removeEventListener("touchend", endDrag);
     };
@@ -627,10 +631,11 @@ export default function PrintPreview({
       }}
     >
       <Box
+        ref={rootRef}
         sx={{
           display: "flex",
           flexDirection: "row",
-          height: "100%",
+          height: rootH ? `${rootH}px` : "100%",
           minHeight: 0,
           alignItems: "stretch",
           mx: "-12px",
@@ -674,8 +679,6 @@ export default function PrintPreview({
                   : "grab"
                 : "default",
               userSelect: isDragging ? "none" : "auto",
-              scrollbarWidth: "none",
-              "&::-webkit-scrollbar": { display: "none" },
             }}
           >
             <style>{`
@@ -696,7 +699,7 @@ export default function PrintPreview({
                   zIndex: 10,
                   alignSelf: "stretch",
                   mx: -2,
-                              height: 67,
+                  height: 72,
                   boxSizing: "border-box",
                   bgcolor: c.headerBg,
                   borderBottom: `1px solid ${c.border}`,
@@ -749,7 +752,11 @@ export default function PrintPreview({
 
                   {/* CENTER */}
                   <Box
-                    sx={{ display: "flex", alignItems: "center", gap: 0.75 }}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.75,
+                    }}
                   >
                     {viewMode === "print" && (
                       <>
@@ -767,6 +774,7 @@ export default function PrintPreview({
                             color: base.gray.textSecondary,
                             minWidth: 90,
                             textAlign: "center",
+                            py: 0.75,
                           }}
                         >
                           Page {currentPage} of {totalPages}

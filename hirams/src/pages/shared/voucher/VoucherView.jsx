@@ -99,6 +99,12 @@ export default function VoucherView({
   fetchVouchers,
   setVoucherModalOpen,
   paymentTerms,
+  confirmAction,
+  setConfirmAction,
+  confirmRow,
+  setConfirmRow,
+  confirmLoading,
+  handleConfirmMark,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -108,10 +114,6 @@ export default function VoucherView({
   // Which voucher the "Edit" button is currently opening in the update modal.
   // Null while the Create flow is the one in charge of the modal.
   const [editingVoucher, setEditingVoucher] = useState(null);
-  // Mark as Paid / Unpaid confirmation — stores the row and target status.
-  const [confirmAction, setConfirmAction] = useState(null);
-  const [confirmRow, setConfirmRow] = useState(null);
-  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const typeBadgeColors = useMemo(
     () => ({
@@ -384,25 +386,6 @@ export default function VoucherView({
       },
     },
   ];
-
-  // ── Mark as Paid / Unpaid confirmation ──────────────────────────────
-  const handleConfirmMark = async () => {
-    if (!confirmRow || !confirmAction) return;
-    setConfirmLoading(true);
-    try {
-      const targetStatus =
-        confirmAction === "paid" ? voucherPaidKey : voucherClosedKey;
-      await VoucherAPI.updateVoucherStatus(confirmRow.id, targetStatus);
-      await fetchVouchers({ silent: true });
-      window.dispatchEvent(new CustomEvent("voucher_data_updated"));
-    } catch (err) {
-      console.error("Failed to update voucher status:", err);
-    } finally {
-      setConfirmAction(null);
-      setConfirmRow(null);
-      setConfirmLoading(false);
-    }
-  };
 
   return (
     <PageLayout

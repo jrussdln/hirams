@@ -12,10 +12,6 @@ import EditOutlined from "@mui/icons-material/EditOutlined";
 import AddCircleOutline from "@mui/icons-material/AddCircleOutline";
 import getThemeColors from "../../../utils/style/getThemeColors";
 
-// ─── SHARED CONTEXT ───
-// Provided by <PrintPreview>, consumed by every EditableCell in
-// header/footer/children. Kept here (not in PrintPreview) since it's
-// really part of this component's contract, not the layout's.
 export const PrintEditableContext = createContext(null);
 
 function usePrintEditableCell(id, initialValue = "") {
@@ -30,11 +26,6 @@ function usePrintEditableCell(id, initialValue = "") {
   return [value, setValue, ctx.editingEnabled];
 }
 
-// ─── SHARED STATE/BEHAVIOR ───
-// EditableCell and EditableCell.Inline used to duplicate this entire
-// block (value/draft/editing state, focus-on-edit, commit/cancel,
-// hasValue/displayText/icon derivation). Consolidated into one hook so
-// there's a single place to fix bugs or add features later.
 function useEditableCellState(id, initialValue, formatDisplay) {
   const [value, setValue, editingEnabled] = usePrintEditableCell(
     id,
@@ -277,8 +268,6 @@ EditableCell.Inline = function EditableCellInline({
     </span>
   );
 };
-// ─── RICH TEXT VARIANT — renders as a <td>, contentEditable, supports
-// multi-line/paragraph input (Enter = new line) for Quill-style HTML ───
 EditableCell.RichText = function EditableCellRichText({
   id,
   colSpan,

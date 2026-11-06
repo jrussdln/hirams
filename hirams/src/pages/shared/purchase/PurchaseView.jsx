@@ -12,8 +12,8 @@ import DeleteVerificationModal from "../transactions/modal/DeleteVerificationMod
 import TransactionActionModal from "../transactions/modal/TransactionActionModal";
 import GetSuggestionsModal from "../canvas/modal/GetSuggestionsModal";
 import UpdateDeliveryInfoModal from "../pricing/modal/UpdateDeliveryInfoModal";
-import PrintDeliveryReceiptModal from "../purchase/modal/PrintDeliveryReceiptModal";
-import PrintSalesInvoiceModal from "../purchase/modal/PrintSalesInvoiceModal";
+import MiniBaseButton from "../../../components/ui/form/MiniBaseButton";
+import DRPanel from "./components/DR-SIPreview";
 import DirectCostModal from "../transactions/modal/DirectCostModal";import ArchiveModal from "../archive/modal/ArchiveModal";
 import AlertStructure from "../../../components/ui/structure/AlertStructure";
 import TransactionItemsTable from "../canvas/components/TransactionItemsTable";
@@ -141,10 +141,6 @@ export default function PurchaseView(props) {
     salesInvoiceItems,
     cartKey,
     forApprovalKey,
-    forPaymentKey,
-    pendingReceiptKey,
-    forDeliveryKey,
-    deliveredKey,
 
     removedFromCartKey,
     forCanvasKey,
@@ -248,6 +244,32 @@ export default function PurchaseView(props) {
   } = props;
 
   if (!transaction) return null;
+  // While the user is printing the Delivery Receipt the workspace's
+  // whole page is hidden and the Print DR panel owns the window instead.
+  const isPrintDrAvailable =
+    forPurchaseKey.includes(statusCode) &&
+    !isCompareActive &&
+    isAssignedToMe &&
+    !statusChangedAlert &&
+    deliveredOptions.length > 0;
+
+  const siReady =
+    totalPurchaseProgress === 100 && salesInvoiceItems.length > 0;
+
+  if (confirmDrPrint && transaction) {
+    return (
+      <DRPanel
+        transaction={transaction}
+        transactionCode={transactionCode}
+        deliveredOptions={deliveredOptions}
+        salesInvoiceItems={salesInvoiceItems}
+        totalPurchaseProgress={totalPurchaseProgress}
+        assignedAOName={assignedAOName}
+        assignedAONo={assignedAONo}
+        onClose={() => setConfirmDrPrint(false)}
+      />
+    );
+  }
   const isJevFinalized = !!jev && String(jev.cStatus) !== String(jevPendingKey);
   const showingJev = !!jev && showJev && !isCompareActive;
   const txnDetailsProps = {
@@ -263,6 +285,53 @@ export default function PurchaseView(props) {
       title="Transaction"
       subtitle={`${currentStatusLabel || ""} / ${transactionCode || ""}`}
       scrollRef={scrollRef}
+      subFooter={isPrintDrAvailable && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            width: "100%",
+            height: "100%",
+            padding: "0 1rem",
+          }}
+        >
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.75,
+              pr: 1,
+            }}
+          >
+            {React.cloneElement(icons.print, {
+              sx: { fontSize: "0.8rem", color: "white" },
+            })}
+            <Typography
+              sx={{
+                fontSize: "0.65rem",
+                fontWeight: 700,
+                color: "white",
+                textTransform: "uppercase",
+                letterSpacing: "0.025em",
+              }}
+            >
+              {siReady
+                ? "DELIVERY RECEIPT/SALES INVOICE IS NOW AVAILABLE!"
+                : "DELIVERY RECEIPT IS NOW AVAILABLE!"}
+            </Typography>
+          </Box>
+          <MiniBaseButton
+            label="VIEW"
+            icon={icons.view}
+            color="white"
+            bg="rgba(255, 255, 255, 0.15)"
+            border="rgba(255, 255, 255, 0.3)"
+            hoverBg="rgba(255, 255, 255, 0.25)"
+            onClick={() => setConfirmDrPrint(true)}
+          />
+        </div>
+      )}
       headerRight={
         !limitedContent ? (
           <div
@@ -358,35 +427,11 @@ export default function PurchaseView(props) {
             !isCompareActive &&
             isAssignedToMe && (
               <>
-                {!statusChangedAlert && deliveredOptions.length > 0 && (
-                  <BaseButton
-                    label="Print DR"
-                    icon={icons.print}
-                    onClick={() => setConfirmDrPrint(true)}
-                    actionColor="save"
-                  />
-                )}
                 {!statusChangedAlert &&
                   salesInvoiceItems.length > 0 &&
                   totalPurchaseProgress === 100 && (
                     <>
-                      <BaseButton
-                        label="Print SI"
-                        icon={icons.print}
-                        onClick={() => setConfirmSiPrint(true)}
-                        actionColor="edit"
-                        disabled={
-                          salesInvoiceItems.length === 0 ||
-                          totalPurchaseProgress < 100
-                        }
-                        tooltip={
-                          salesInvoiceItems.length === 0
-                            ? "No invoiceable items yet"
-                            : totalPurchaseProgress < 100
-                              ? "All purchase items must be 100% complete before printing the sales invoice"
-                              : ""
-                        }
-                      />
+                  {/* Print SI button removed */}
                       <BaseButton
                         label="For Collection"
                         icon={icons.print}
@@ -421,16 +466,6 @@ export default function PurchaseView(props) {
               actionColor={hasAssignedAO ? "reassign" : "assign"}
             />
           )}
-          {!statusChangedAlert &&
-            showReassignProcurement &&
-            !(totalPurchaseProgress === 100) && (
-              <BaseButton
-                label="Reassign Procurement"
-                icon={icons.assign}
-                onClick={() => setAssignProcurementModalOpen(true)}
-                actionColor="reassign"
-              />
-            )}
         </>
       }
       loading={itemsLoading}
@@ -680,29 +715,7 @@ export default function PurchaseView(props) {
         isManagement={isManagement}
         onSuccess={() => setDeliveryModalOpen(false)}
       />
-      <PrintDeliveryReceiptModal
-        open={confirmDrPrint}
-        onClose={() => setConfirmDrPrint(false)}
-        transaction={transaction}
-        deliveredOptions={deliveredOptions}
-        assignedAOName={assignedAOName}
-        assignedAONo={assignedAONo}
-        transactionCode={transactionCode}
-        currentUserId={currentUserId}
-        pendingReceiptKey={pendingReceiptKey}
-        deliveredKey={deliveredKey}
-        forPaymentKey={forPaymentKey}
-        onStatusToggled={() => fetchItems({ restoreScroll: true })}
-      />
-      <PrintSalesInvoiceModal
-        open={confirmSiPrint}
-        onClose={() => setConfirmSiPrint(false)}
-        transaction={transaction}
-        invoiceItems={salesInvoiceItems}
-        assignedAOName={assignedAOName}
-        assignedAONo={assignedAONo}
-        transactionCode={transactionCode}
-      />
+
       <DirectCostModal
         open={directCostModalOpen}
         onClose={() => setDirectCostModalOpen(false)}

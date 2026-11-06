@@ -16,6 +16,7 @@ import { getToDeliver, getDelivered } from "../../../../../../../utils/helpers/p
 import {
   getTimePeriod,
   isFullyReceived,
+  TIME_PERIOD_ORDER,
 } from "../../../../../../../pages/shared/item-purchasing/useItemPurchasing.js";
 
 const SESSION_KEY = "selectedItemPurchasingStatusCode";
@@ -55,18 +56,46 @@ const countCards = (matchingPOs, code, forDeliveryKey, deliveredKey) => {
 
   if (!isDeliveryTab) return matchingPOs.length;
 
-  const seen = new Set();
-  for (const po of matchingPOs) {
-    const period = getTimePeriod(po.dtPurchaseOrderCreated || null);
-    for (const opt of po.purchase_order_options || []) {
-      const tx = opt?.purchase_option?.transaction_item?.transaction;
-      const key = `${period}|${String(
-        tx?.strCode || tx?.nTransactionId || `po-${po.nPurchaseOrderId}`,
-      )}`;
-      seen.add(key);
+  const isForDeliveryTab = String(code) === String(forDeliveryKey);
+  const isDeliveredTab = String(code) === String(deliveredKey);
+  const groupQualifies = (entries) =>
+    isForDeliveryTab
+      ? entries.some(({ opt }) => getToDeliver(opt?.purchase_option) > 0)
+      : isDeliveredTab
+        ? entries.some(({ opt }) => getDelivered(opt?.purchase_option) > 0)
+        : true;
+
+  const out = {};
+  for (const period of TIME_PERIOD_ORDER) {
+    const pos = matchingPOs.filter(
+      (po) => getTimePeriod(po.dtPurchaseOrderCreated || null) === period
+    );
+    if (!pos.length) continue;
+    const byKey = new Map();
+    for (const po of pos) {
+      for (const opt of po.purchase_order_options || []) {
+        const tx = opt?.purchase_option?.transaction_item?.transaction;
+        const key = String(
+          tx?.strCode || tx?.nTransactionId || `po-${po.nPurchaseOrderId}`,
+        );
+        let group = byKey.get(key);
+        if (!group) {
+          group = { key, entries: [] };
+          byKey.set(key, group);
+        }
+        group.entries.push({ po, opt });
+      }
     }
+    out[period] = [...byKey.values()].filter((g) =>
+      groupQualifies(g.entries),
+    );
   }
-  return seen.size;
+
+  let totalCards = 0;
+  for (const period of TIME_PERIOD_ORDER) {
+    totalCards += (out[period] || []).length;
+  }
+  return totalCards;
 };
 
 const ItemPurchasingNavSection = ({

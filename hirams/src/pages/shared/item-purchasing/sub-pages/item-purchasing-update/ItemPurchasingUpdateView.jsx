@@ -10,6 +10,7 @@ import {
 
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
 import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
+import MiniBaseButton from "../../../../../components/ui/form/MiniBaseButton.jsx";
 import { CartUpdateSkeleton } from "../../components/shared/Skeleton.jsx";
 import CartProgressStepper from "../../components/CartProgressStepper.jsx";
 import LineItems from "../../components/LineItems.jsx";
@@ -764,15 +765,7 @@ export default function ItemPurchasingUpdateView({
         />
       )}
 
-      {(allOptionsAtPO || allOptionsAtPayment) && (
-        <BaseButton
-          label="View PO"
-          icon={<ReceiptLongOutlined sx={{ fontSize: "1rem" }} />}
-          onClick={handlePreviewPO}
-          actionColor="default"
-          disabled={isLoadingPage || actionLoading}
-        />
-      )}
+
 
       {/* MANAGE VOUCHER — finance/management only, like the Approve next
           to it: the voucher is where the money settles, so an AO or AOTL
@@ -1111,6 +1104,52 @@ export default function ItemPurchasingUpdateView({
       }
       footerLActions={footerLActions}
       footerRActions={footerRActions}
+      subFooter={
+        (selectedStatusCode === forApprovalKey || selectedStatusCode === forPaymentKey || allOptionsAtPO || allOptionsAtPayment) && po?.strPurchaseOrderNo ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+              height: "100%",
+              padding: "0 1rem",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                pr: 1,
+              }}
+            >
+              <ReceiptLongOutlined sx={{ fontSize: "0.8rem", color: "white" }} />
+              <Typography
+                sx={{
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  color: "white",
+                  letterSpacing: "0.025em",
+                }}
+              >
+                PURCHASE ORDER <Box component="span" sx={{ fontStyle: "italic" }}>{`(${po.strPurchaseOrderNo})`}</Box> IS NOW AVAILABLE!
+              </Typography>
+            </Box>
+            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <MiniBaseButton
+                label="VIEW"
+                icon={icons.view}
+                color="white"
+                bg="rgba(255, 255, 255, 0.15)"
+                border="rgba(255, 255, 255, 0.3)"
+                hoverBg="rgba(255, 255, 255, 0.25)"
+                onClick={handlePreviewPO}
+              />
+            </Box>
+          </div>
+        ) : null
+      }
       loading={isLoadingPage || paymentLoading}
     >
       {isLoadingPage && !paymentLoading ? (

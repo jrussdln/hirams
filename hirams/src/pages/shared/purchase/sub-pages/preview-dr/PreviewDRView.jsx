@@ -172,6 +172,7 @@ export default function PreviewDRView({
         onExport={() => console.log("wire up export")}
         onControlsReady={setPrintControls}
         hideHeaderControls={true}
+        showSystemGenerated={false}
       >
         <div style={{ padding: "24px 32px", boxSizing: "border-box" }}>
           <table style={TABLE_STYLE}>

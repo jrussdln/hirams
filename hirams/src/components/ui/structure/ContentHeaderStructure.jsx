@@ -44,20 +44,20 @@ function ContentHeaderStructure({
         overflow: "hidden",
       }}
     >
-      <Typography
-        variant="body2"
-        component="div"
-        sx={{
-          color: textColor ?? colors.defaultText,
-          fontWeight,
-          fontSize,
-          lineHeight,
-          textAlign,
-          overflowX: "auto",
-        }}
-      >
-        {children}
-      </Typography>
+<Typography
+  variant="body2"
+  component="div"
+  sx={{
+    color: textColor ?? colors.defaultText,
+    fontWeight,
+    fontSize,
+    lineHeight,
+    textAlign,
+    overflow: "visible",
+  }}
+>
+  {children}
+</Typography>
     </Box>
   );
 }

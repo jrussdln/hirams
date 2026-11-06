@@ -227,7 +227,19 @@ export default function useTransactionWorkspace() {
   const [deliveryModalOpen, setDeliveryModalOpen] = useState(false);
   const [compareData, setCompareData] = useState(null);
   const [isCompareActive, setIsCompareActive] = useState(false);
-  const [confirmDrPrint, setConfirmDrPrint] = useState(false);
+  // Print DR mode survives the preview round-trip: the DR preview's Back
+  // walks history(-1), which REMOUNTS this view and would reset plain
+  // state → the flag is parked in sessionStorage under the transaction's
+  // own key, and Back from the panel clears it.
+  const drPrintModeKey = `hirams_drprint_mode_${transactionCode}`;
+  const [confirmDrPrint, setConfirmDrPrintFlag] = useState(
+    () => transactionCode && sessionStorage.getItem(drPrintModeKey) === "1",
+  );
+  const setConfirmDrPrint = (value) => {
+    setConfirmDrPrintFlag(Boolean(value));
+    if (value) sessionStorage.setItem(drPrintModeKey, "1");
+    else sessionStorage.removeItem(drPrintModeKey);
+  };
   const [confirmSiPrint, setConfirmSiPrint] = useState(false);
   const [totalCollectibleValue, setTotalCollectibleValue] = useState(0);
   const [sellingPrices, setSellingPrices] = useState({});

@@ -41,9 +41,6 @@ import BaseButton from "../../../../../components/ui/form/BaseButton";
 import CookieNotice from "../../../../../components/ui/auth/CookieNotice";
 import AIChatbotWidget from "../../../../../components/ui/widget/AIChatBotWidget";
 import NotificationSidePanel from "../../../../../pages/utility/panel/NotificationsSidePanel";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import UpDownIndicatorWidget from "../../../../../components/ui/widget/UpDownIndicatorWidget";
 import {
   aiChatBotEnabled,
   darkModeEnabled,
@@ -137,7 +134,23 @@ const useColors = (c) => ({
   overlayBg: c.slate.overlay,
   mutedBg: c.slate.mutedBg,
   hoverSubtle: c.slate.hover,
+  shine: c.slate.shine,
 });
+
+// ── shine sweep keyframe for subfooter (same pattern as sidebar item) ──
+const SUBFOOTER_KEYFRAMES = `
+  @keyframes subfooter-shine {
+    0%   { left: -150%; }
+    50%  { left: 150%; }
+    100% { left: 150%; }
+  }
+`;
+if (typeof document !== "undefined" && !document.getElementById("subfooter-kf")) {
+  const s = document.createElement("style");
+  s.id = "subfooter-kf";
+  s.textContent = SUBFOOTER_KEYFRAMES;
+  document.head.appendChild(s);
+}
 
 const Layout2 = ({
   title,
@@ -146,12 +159,12 @@ const Layout2 = ({
   footer,
   footerLActions,
   footerRActions,
+  subFooter,
   loading = false,
   scrollRef,
   actions,
   onArchive,
   headerRight,
-  upDownIndicator = true,
 }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -251,9 +264,9 @@ const Layout2 = ({
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-4px); }
         }
-        @keyframes bounceDown {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(4px); }
+        @keyframes slideInLeft {
+          from { transform: translateX(-100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
         }
       `}</style>
 
@@ -640,21 +653,7 @@ const Layout2 = ({
           className="flex-1 overflow-auto min-h-0 flex flex-col"
           style={loading ? { pointerEvents: "none" } : undefined}
         >
-          {upDownIndicator && (
-            <UpDownIndicatorWidget
-              scrollRef={effectiveScrollRef}
-              direction="up"
-              watch={[children, loading]}
-            />
-          )}
           <div className="p-3 space-y-0">{children}</div>
-          {upDownIndicator && (
-            <UpDownIndicatorWidget
-              scrollRef={effectiveScrollRef}
-              direction="down"
-              watch={[children, loading]}
-            />
-          )}
         </div>
         <NotificationSidePanel />
         {/* The AI panel is a flex sibling of this row — its trigger lives
@@ -663,6 +662,37 @@ const Layout2 = ({
           <AIChatbotWidget showFloatingTrigger={false} />
         )}
       </div>
+      {/* SUB FOOTER - positioned between content and footer */}
+      {subFooter && (
+        <div
+          className="z-20 px-3 mx-1 border-t relative overflow-hidden"
+          style={{
+            borderColor: colors.blueText,
+            backgroundColor: colors.blueText,
+            height: 28,
+            display: "flex",
+            alignItems: "center",
+            animation: "slideInLeft 0.8s cubic-bezier(0.22, 1, 0.36, 1)",
+          }}
+        >
+          <span
+            style={{
+              position: "absolute",
+              top: 0,
+              left: "-150%",
+              width: "60%",
+              height: "100%",
+              background:
+                `linear-gradient(120deg, transparent, ${colors.shine}, transparent)`,
+              animation: "subfooter-shine 2.8s ease-in-out infinite",
+              pointerEvents: "none",
+            }}
+          />
+          <div style={{ position: "relative", zIndex: 1, width: "100%", display: "flex", alignItems: "center" }}>
+            {subFooter}
+          </div>
+        </div>
+      )}
       {/* FOOTER */}
       {(footer || footerLActions || footerRActions) && (
         <footer

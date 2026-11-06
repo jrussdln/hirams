@@ -16,6 +16,35 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      window.addEventListener('error', function(event) {
+        const target = event.target;
+        if (target && (target.tagName === 'SCRIPT' || target.tagName === 'LINK')) {
+          const src = target.src || target.href;
+          if (src && (src.includes('/assets/') || src.includes('.js'))) {
+            const lastReload = sessionStorage.getItem('last_maintenance_reload');
+            const now = Date.now();
+            if (!lastReload || now - parseInt(lastReload) > 15000) {
+              sessionStorage.setItem('last_maintenance_reload', now.toString());
+              window.location.reload();
+            }
+          }
+        }
+      }, true);
+
+      window.addEventListener('unhandledrejection', function(event) {
+        const msg = event.reason?.message || '';
+        if (msg.includes('Loading chunk') || msg.includes('dynamically imported module') || msg.includes('MIME type') || msg.includes('text/html')) {
+          const lastReload = sessionStorage.getItem('last_maintenance_reload');
+          const now = Date.now();
+          if (!lastReload || now - parseInt(lastReload) > 15000) {
+            sessionStorage.setItem('last_maintenance_reload', now.toString());
+            window.location.reload();
+            event.preventDefault();
+          }
+        }
+      });
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

@@ -12,6 +12,7 @@ import { useMemo, useState } from "react";
 import PageLayout from "../../../../../components/layouts/page/content-page/index.jsx";
 import JevViewPanel from "../../../journal-entry-voucher/components/JEVViewPanel.jsx";
 import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
+import MiniBaseButton from "../../../../../components/ui/form/MiniBaseButton.jsx";
 import { VoucherUpdateSkeleton } from "../../components/Skeleton.jsx";
 import ParticularsAEModal from "../../modal/ParticularsAEModal.jsx";
 import CreateVoucherModal from "../../modal/CreateVoucherModal.jsx";
@@ -511,13 +512,15 @@ export default function VoucherUpdateView() {
       )}
       {showFooterPrint && (
         <>
-          <BaseButton
-            label="Preview Voucher"
-            icon={<ReceiptLongOutlined sx={{ fontSize: "1rem" }} />}
-            onClick={handlePreviewVoucher}
-            actionColor="default"
-            disabled={confirmLoading || saving}
-          />
+          {!isClosedOrPaid && (
+            <BaseButton
+              label="Preview Voucher"
+              icon={<ReceiptLongOutlined sx={{ fontSize: "1rem" }} />}
+              onClick={handlePreviewVoucher}
+              actionColor="default"
+              disabled={confirmLoading || saving}
+            />
+          )}
           {/* Preview Cheque moved out of the footer — it now sits on the Fund
               account line inside the JEV panel (see JevViewPanel). */}
           {/* Marking a voucher unpaid pulls the stock back out, so it is not
@@ -656,6 +659,52 @@ export default function VoucherUpdateView() {
       subtitle={`${vu.voucherStatus?.[voucher.cStatus] || ""} / ${voucher.strNumber || ""}`}
       footerLActions={footerLActions}
       footerRActions={footerRActions}
+      subFooter={
+        isClosedOrPaid && voucher?.strNumber ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+              height: "100%",
+              padding: "0 1rem",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                pr: 1,
+              }}
+            >
+              <ReceiptLongOutlined sx={{ fontSize: "0.8rem", color: "white" }} />
+              <Typography
+                sx={{
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  color: "white",
+                  letterSpacing: "0.025em",
+                }}
+              >
+                DISBURSEMENT VOUCHER <Box component="span" sx={{ fontStyle: "italic" }}>{`(${voucher.strNumber})`}</Box> IS NOW AVAILABLE!
+              </Typography>
+            </Box>
+            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <MiniBaseButton
+                label="VIEW"
+                icon={icons.view}
+                color="white"
+                bg="rgba(255, 255, 255, 0.15)"
+                border="rgba(255, 255, 255, 0.3)"
+                hoverBg="rgba(255, 255, 255, 0.25)"
+                onClick={handlePreviewVoucher}
+              />
+            </Box>
+          </div>
+        ) : null
+      }
       loading={confirmLoading || saving}
     >
       {VoucherHeader}

@@ -144,10 +144,9 @@ const PAGE_CONTAINER_SX = {
 };
 
 const FOOTER_WRAPPER_SX = {
-  position: "absolute",
-  bottom: FOOTER_OFFSET.bottom,
-  left: FOOTER_OFFSET.left,
-  right: FOOTER_OFFSET.right,
+  marginTop: 24,
+  marginLeft: FOOTER_OFFSET.left,
+  marginRight: FOOTER_OFFSET.right,
   fontFamily: "Calibri, Arial, sans-serif",
   fontSize: "0.75rem",
   color: DOC_INK,
@@ -244,6 +243,7 @@ export default function PreviewSIView({
         onExport={() => console.log("wire up export")}
         onControlsReady={setPrintControls}
         hideHeaderControls={true}
+        showSystemGenerated={false}
       >
         <div style={PAGE_CONTAINER_SX}>
           <table style={TABLE_STYLE}>

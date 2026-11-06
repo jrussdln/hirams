@@ -11,6 +11,7 @@ import {
   removeItem,
   hasItem,
 } from "../../../utils/storage/localStorage.js";
+import { withSpinner } from "../../../utils/helpers/swal.jsx";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 
 export default function useVoucher() {
@@ -72,6 +73,8 @@ export default function useVoucher() {
     forPurchaseKey,
     paidKey,
     forDeliveryKey,
+    pendingReceiptKey,
+    forPaymentKey,
     deliveredKey,
     chequeKey,
     isAOTL,
@@ -501,6 +504,88 @@ export default function useVoucher() {
     ],
   );
 
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [confirmRow, setConfirmRow] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  const accountPath = (account) => {
+    const names = [];
+    let cur = account;
+    let guard = 0;
+    while (cur && guard < 10) {
+      names.unshift(cur.display_name || cur.strAccountName || "");
+      cur = cur.parent ?? null;
+      guard++;
+    }
+    return names.join(" / ");
+  };
+
+  const jevToIsInventory = (v) => {
+    const entries = v?.jev?.jev_entries ?? [];
+    return entries
+      .filter((e) => Number(e.dAmount) >= 0)
+      .some((e) =>
+        accountPath(e.journal_account)
+          .trim()
+          .toLowerCase()
+          .startsWith("inventories"),
+      );
+  };
+
+  const handleConfirmMark = async () => {
+    if (!confirmRow || !confirmAction) return;
+    const row = confirmRow;
+    const action = confirmAction;
+    setConfirmAction(null);
+    setConfirmRow(null);
+    setConfirmLoading(true);
+    try {
+      await withSpinner("Voucher", async () => {
+        const v = row._raw;
+        const isAssigneeType = Number(v?.nTypeId) === Number(voucherAssigneeTypeKey);
+        const supplierLinks = v?.voucher_suppliers ?? [];
+
+        if (action === "paid") {
+          const insertInventory = !isAssigneeType && jevToIsInventory(v);
+          if (isAssigneeType) {
+            await VoucherAPI.updateVoucherStatus(row.id, voucherPaidKey);
+          } else {
+            await Promise.all([
+              PurchaseOrderAPI.updateCartStatusBulk({
+                nPurchaseOrderIds: supplierLinks.map((vs) => vs.nPurchaseOrderId),
+                nStatus: insertInventory ? forDeliveryKey : pendingReceiptKey,
+                nUserId: currentUserId,
+              }),
+              VoucherAPI.updateVoucherStatus(row.id, voucherPaidKey, {
+                insertInventory,
+              }),
+            ]);
+          }
+        } else if (action === "unpaid") {
+          if (isAssigneeType) {
+            await VoucherAPI.updateVoucherStatus(row.id, voucherClosedKey);
+          } else {
+            await VoucherAPI.updateVoucherStatus(row.id, voucherClosedKey, {
+              removeInventory: true,
+            });
+            await PurchaseOrderAPI.updateCartStatusBulk({
+              nPurchaseOrderIds: supplierLinks.map((vs) => vs.nPurchaseOrderId),
+              nStatus: forPaymentKey,
+              nUserId: currentUserId,
+            });
+          }
+        }
+      });
+
+      await fetchVouchers({ silent: true });
+      window.dispatchEvent(new CustomEvent("voucher_data_updated"));
+    } catch (err) {
+      console.error(`Failed to update voucher status to ${action}:`, err);
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
   return {
     itemsLoading,
     search,
@@ -529,6 +614,8 @@ export default function useVoucher() {
     forPurchaseKey,
     paidKey,
     forDeliveryKey,
+    pendingReceiptKey,
+    forPaymentKey,
     deliveredKey,
     chequeKey,
     jevDisbursementVoucherKey,
@@ -541,5 +628,11 @@ export default function useVoucher() {
     fetchVouchers,
     setVoucherModalOpen,
     paymentTerms,
+    confirmAction,
+    setConfirmAction,
+    confirmRow,
+    setConfirmRow,
+    confirmLoading,
+    handleConfirmMark,
   };
 }

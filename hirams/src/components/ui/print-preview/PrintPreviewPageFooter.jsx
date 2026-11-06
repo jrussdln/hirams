@@ -6,32 +6,6 @@ import MenuOutlined from "@mui/icons-material/MenuOutlined";
 import CloseOutlined from "@mui/icons-material/CloseOutlined";
 import BaseButton from "../form/BaseButton.jsx";
 
-/**
- * PrintPreviewHeader
- *
- * Renders the "Go to Print View / Go Back Normal View" toggle and "Menu / Close Menu" button
- * for the page layout's footerRActions slot. These buttons control the PrintPreview
- * component's viewMode and panelOpen state. Uses BaseButton style to match the Back button.
- *
- * The parent PrintPreview component calls onControlsReady with an object containing
- * viewMode, setViewMode, panelOpen, setPanelOpen, and editingEnabled.
- *
- * Usage in a preview page:
- *   const [printControls, setPrintControls] = useState(null);
- *   return (
- *     <PageLayout
- *       footerRActions={
- *         <PrintPreviewHeader
- *           printControls={printControls}
- *         />
- *       }
- *     >
- *       <PrintPreview onControlsReady={setPrintControls}>
- *         ...
- *       </PrintPreview>
- *     </PageLayout>
- *   );
- */
 export default function PrintPreviewPageFooter({
   printControls,
   side = "right",
