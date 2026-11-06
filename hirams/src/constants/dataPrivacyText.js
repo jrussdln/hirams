@@ -6,7 +6,7 @@
  * (Privacy Statement, Privacy Notice, Terms and Conditions). Both read from
  * here, so the banner can never promise wording the page doesn't show.
  */
-export const DATA_PRIVACY_ENABLED = true;
+export const DATA_PRIVACY_ENABLED = false;
 export const SYSTEM_NAME = "HiRAMS' Inc.";
 export const SYSTEM_FULL_NAME =
   "";
@@ -110,7 +110,7 @@ export const acceptanceNote =
 // ── Important Notice (shown after login) ─────────────────────────────
 // Bottom bar on every logged-in page until the user presses "I Agree".
 // CookieNotice.jsx reads this; the choice is remembered per browser.
-export const COOKIE_NOTICE_ENABLED = true;
+export const COOKIE_NOTICE_ENABLED = false;
 export const cookieNotice = {
   heading: "IMPORTANT NOTICE:",
   before:

@@ -259,6 +259,13 @@ export default function useItemPurchasingUpdateView() {
   );
   const [loading, setLoading] = useState(!initialPO);
   const [poVoucherStatus, setPoVoucherStatus] = useState(null);
+  // True once fetchVoucherStatus() has run — before that the button must
+  // stay hidden so it never flashes and then disappears when a voucher is
+  // already linked.
+  const [voucherStatusResolved, setVoucherStatusResolved] = useState(false);
+  // The linked voucher itself (not just its status) — the Manage Voucher
+  // button needs the id to jump straight to it when it is Closed.
+  const [poVoucher, setPoVoucher] = useState(null);
   // ?status= carries the tab the card was opened from — a partially received
   // PO is listed under For Delivery while its own status is still Pending
   // Receipt.
@@ -491,22 +498,36 @@ export default function useItemPurchasingUpdateView() {
       const res = await VoucherAPI.getVouchers();
       const vouchers = Array.isArray(res) ? res : (res?.data ?? []);
       let status = null;
+      let found = null;
       vouchers.forEach((v) => {
         (v.voucher_suppliers ?? []).forEach((vs) => {
-          if (String(vs.nPurchaseOrderId) === String(poId)) status = v.cStatus;
+          if (String(vs.nPurchaseOrderId) === String(poId)) {
+            status = v.cStatus;
+            found = found || v;
+          }
         });
       });
       setPoVoucherStatus(status);
+      setPoVoucher(found);
     } catch (err) {
       console.error("Failed to fetch voucher status:", err);
+    } finally {
+      setVoucherStatusResolved(true);
     }
   }, [poId]);
 
   // Initial load — cache hit (PO seeded from the list page's cache)
-  // → silent refresh, no skeleton; miss → visible load.
+  // → silent refresh, no skeleton; miss → visible load. Runs whenever we
+  // navigate to/view a PO so the Manage Voucher button always has current
+  // voucher state before the user clicks it.
   const loadedForRef = useRef(null);
   useEffect(() => {
-    if (!poId || loadedForRef.current === poId) return;
+    if (!poId) return;
+    // Always refresh the linked voucher for this PO — the PO page must know
+    // whether it already has a (Closed) voucher before the Manage Voucher
+    // button decides: open the manage modal or jump straight to it.
+    fetchVoucherStatus();
+    if (loadedForRef.current === poId) return;
     loadedForRef.current = poId;
     const cachedList = getItem("cart_cache_purchaseOrders", null);
     const hadPO =
@@ -517,8 +538,23 @@ export default function useItemPurchasingUpdateView() {
     } else {
       fetchPO();
     }
-    fetchVoucherStatus();
   }, [fetchPO, fetchVoucherStatus, poId]);
+
+  // Keep the linked-voucher state current whenever a voucher action
+  // dispatches an update/delete (the Manage Voucher modal does both, as
+  // does any other voucher screen), so the Manage Voucher button always
+  // reflects what is actually linked.
+  useEffect(() => {
+    const refetch = () => fetchVoucherStatus();
+    window.addEventListener("voucher_data_updated", refetch);
+    window.addEventListener("voucher_data_deleted", refetch);
+    window.addEventListener("purchase_order_data_updated", refetch);
+    return () => {
+      window.removeEventListener("voucher_data_updated", refetch);
+      window.removeEventListener("voucher_data_deleted", refetch);
+      window.removeEventListener("purchase_order_data_updated", refetch);
+    };
+  }, [fetchVoucherStatus]);
 
   const notifyUpdated = useCallback((detail) => {
     window.dispatchEvent(
@@ -1788,6 +1824,9 @@ export default function useItemPurchasingUpdateView() {
     initialOptionId,
     isLoadingPage,
     poVoucherStatus,
+    poVoucher,
+    voucherStatusResolved,
+    fetchVoucherStatus,
     // keys / roles
     cartKey: cartKey ?? "",
     forApprovalKey: forApprovalKey ?? "",

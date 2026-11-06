@@ -7,20 +7,17 @@ import SyncMenu from "../../../components/ui/form/SyncMenu";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import FormControlFilter from "../../../components/ui/form/FormControlFilter";
 import CreateVoucherModal from "./modal/CreateVoucherModal";
+import VoucherAPI from "../../../api/endpoints/voucher.api.js";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import icons from "../../../utils/style/iconFormatStyles";
-import {
-  NO_NAME,
-  NO_ADDRESS,
-  NO_TIN,
-  NO_ADDRESS_TIN,
-  NO_CREATOR,
-  NO_VOUCHER_NO,
-  OPEN_DATE,
-} from "../../../constants/tableDataFallbacks";
+import SettingsConfirmationModal from "../../../pages/utility/settings/modal/SettingsConfirmationModal.jsx";
+import { VOUCHER_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
+import { NO_NAME, NO_ADDRESS, NO_TIN, NO_ADDRESS_TIN, NO_CREATOR, NO_VOUCHER_NO, OPEN_DATE } from "../../../constants/tableDataFallbacks";
 import { Tooltip } from "@mui/material";
 import PersonIcon from "@mui/icons-material/PersonOutline";
 import EventIcon from "@mui/icons-material/Event";
+import PaymentOutlined from "@mui/icons-material/PaymentOutlined";
+import CheckCircleOutline from "@mui/icons-material/CheckCircleOutline";
 import { fmtPHP } from "../../../utils/formatters/formatter.js";
 
 // ── Created-column helper — mirrors TransactionView's Account Officer style
@@ -80,6 +77,7 @@ export default function VoucherView({
   voucherStatus,
   voucherActiveKey,
   voucherClosedKey,
+  voucherPaidKey,
   voucherCancelledKey,
   voucherSupplierTypeKey,
   voucherAssigneeTypeKey,
@@ -88,7 +86,7 @@ export default function VoucherView({
   cancelledPOKey,
   forPurchaseKey,
   paidKey,
-  receivedKey,
+  forDeliveryKey,
   deliveredKey,
   chequeKey,
   jevDisbursementVoucherKey,
@@ -110,6 +108,10 @@ export default function VoucherView({
   // Which voucher the "Edit" button is currently opening in the update modal.
   // Null while the Create flow is the one in charge of the modal.
   const [editingVoucher, setEditingVoucher] = useState(null);
+  // Mark as Paid / Unpaid confirmation — stores the row and target status.
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [confirmRow, setConfirmRow] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const typeBadgeColors = useMemo(
     () => ({
@@ -136,16 +138,26 @@ export default function VoucherView({
     {
       key: "strNumber",
       label: "Voucher",
-      xs: 2,
+      xs: 1.5,
       render: (_, row) => {
         const hasNumber = Boolean(row.strNumber?.trim());
         const hasName = Boolean(row.displayName?.trim());
         // With a type filter active every row is the same type, so the
-        // badge only appears on the unfiltered list.
-        const showType = typeFilter === "all";
+        // badge only appears on the unfiltered list — except for Supplier
+        // vouchers when filtered to Supplier type, where we show the AO
+        // name alone instead of repeating "Supplier" on every row.
+        const showTypeBadge = typeFilter === "all" || typeFilter === "supplier";
         const typeColor = row.isAssigneeType
           ? typeBadgeColors.assignee
           : typeBadgeColors.supplier;
+        const badgeText =
+          row.isAssigneeType
+            ? row.voucherTypeLabel
+            : typeFilter === "supplier"
+              ? row.aoNickname
+                ? `(AO: ${row.aoNickname.toUpperCase()})`
+                : null
+              : `SUPPLIER${row.aoNickname ? ` - AO: ${row.aoNickname.toUpperCase()}` : ""}`;
 
         return (
           <div className="min-w-0 text-left">
@@ -153,7 +165,7 @@ export default function VoucherView({
               <span className="truncate text-[0.625rem] font-medium uppercase tracking-wide leading-tight text-gray-500 dark:text-gray-400">
                 {hasNumber ? row.strNumber : NO_VOUCHER_NO}
               </span>
-              {showType && (
+              {showTypeBadge && badgeText && (
                 <span
                   className="shrink-0 px-1 py-px text-[0.5rem] font-medium uppercase leading-none rounded-full"
                   style={{
@@ -162,7 +174,7 @@ export default function VoucherView({
                     border: `1px solid ${colors.border}`,
                   }}
                 >
-                  {row.voucherTypeLabel}
+                  {badgeText}
                 </span>
               )}
             </div>
@@ -296,28 +308,29 @@ export default function VoucherView({
       key: "actions",
       label: "Actions",
       align: "center",
+      xs: 1.75,
+      // The pay icon's enable/disable mirrors the update page's Mark as
+      // Paid / Unpaid buttons exactly (gates computed in useVoucher):
+      //   Mark as Paid   → Closed + finalized JEV + Finance Officer / Mgmt
+      //   Mark as Unpaid → Paid + finalized JEV + nothing received yet —
+      // Edit stays on Active / Closed as before.
       render: (_, row) => {
-        const canEdit =
-          String(row.cStatus) === String(voucherActiveKey) ||
-          String(row.cStatus) === String(voucherClosedKey);
+        const isClosed = String(row.cStatus) === String(voucherClosedKey);
+        const isPaidStatus = String(row.cStatus) === String(voucherPaidKey);
+        // Same enable/disable gates as the update page's Mark as Paid /
+        // Unpaid buttons, computed per row in useVoucher.
+        const canMarkPaid = Boolean(row.canMarkPaid);
+        const canMarkUnpaid = Boolean(row.canMarkUnpaid);
+        const payBlocked = row.payBlockedReason;
 
         return (
           <div className="flex justify-center gap-0">
-            <BaseButton
-              icon={icons.view}
-              tooltip="View Voucher"
-              size="small"
-              actionColor="view"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleViewClick(row._raw);
-              }}
-            />
-            {canEdit && (
+            {(
+              String(row.cStatus) === String(voucherActiveKey) ||
+              String(row.cStatus) === String(voucherClosedKey)
+            ) && (
               <BaseButton
                 icon={icons.edit}
-                // The voucher-update page IS the edit form — same navigation,
-                // but the action tint (amber) says what you are going there to do.
                 tooltip="Edit Voucher"
                 size="small"
                 actionColor="edit"
@@ -328,11 +341,68 @@ export default function VoucherView({
                 }}
               />
             )}
+            <BaseButton
+              icon={icons.view}
+              tooltip="View Voucher"
+              size="small"
+              actionColor="view"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleViewClick(row._raw);
+              }}
+            />
+            {isClosed || isPaidStatus ? (
+              <BaseButton
+                icon={
+                  isPaidStatus ? (
+                    <CheckCircleOutline sx={{ fontSize: "0.85rem" }} />
+                  ) : (
+                    <PaymentOutlined sx={{ fontSize: "0.85rem" }} />
+                  )
+                }
+                tooltip={
+                  isPaidStatus
+                    ? canMarkUnpaid
+                      ? "Mark as Unpaid"
+                      : `Cannot unpay — ${payBlocked}`
+                    : canMarkPaid
+                      ? "Mark as Paid"
+                      : `Cannot mark as paid — ${payBlocked}`
+                }
+                size="small"
+                actionColor={isPaidStatus ? "default" : "approve"}
+                disabled={isPaidStatus ? !canMarkUnpaid : !canMarkPaid}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmRow(row);
+                  setConfirmAction(isPaidStatus ? "unpaid" : "paid");
+                }}
+              />
+            ) : null}
           </div>
         );
       },
     },
   ];
+
+  // ── Mark as Paid / Unpaid confirmation ──────────────────────────────
+  const handleConfirmMark = async () => {
+    if (!confirmRow || !confirmAction) return;
+    setConfirmLoading(true);
+    try {
+      const targetStatus =
+        confirmAction === "paid" ? voucherPaidKey : voucherClosedKey;
+      await VoucherAPI.updateVoucherStatus(confirmRow.id, targetStatus);
+      await fetchVouchers({ silent: true });
+      window.dispatchEvent(new CustomEvent("voucher_data_updated"));
+    } catch (err) {
+      console.error("Failed to update voucher status:", err);
+    } finally {
+      setConfirmAction(null);
+      setConfirmRow(null);
+      setConfirmLoading(false);
+    }
+  };
 
   return (
     <PageLayout
@@ -407,6 +477,23 @@ export default function VoucherView({
         voucherAssigneeTypeKey={voucherAssigneeTypeKey}
         paymentTerms={paymentTerms} // ← add, sourced from useKeysLabels()
         editVoucher={editingVoucher}
+      />
+
+      {/* Mark as Paid / Unpaid confirmation — same shell as Settings panels */}
+      <SettingsConfirmationModal
+        open={!!confirmAction}
+        style={
+          confirmAction
+            ? VOUCHER_CONFIRM_STYLES[confirmAction]
+            : null
+        }
+        badge={confirmRow?.strNumber ?? ""}
+        loading={confirmLoading}
+        onConfirm={handleConfirmMark}
+        onClose={() => {
+          setConfirmAction(null);
+          setConfirmRow(null);
+        }}
       />
     </PageLayout>
   );

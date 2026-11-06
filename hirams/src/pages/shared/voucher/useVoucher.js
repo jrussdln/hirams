@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from "react";import { useNavigate } from "react-router-dom";
 import PurchaseOrderAPI from "../../../api/endpoints/purchase-order.api.js";
 import VoucherAPI from "../../../api/endpoints/voucher.api.js";
+import InventoryAPI from "../../../api/endpoints/inventory.api.js";
+import UserAPI from "../../../api/endpoints/user.api.js";
 import { totalEWT } from "../../../utils/helpers/calculateEWT.js";
 import { fmtDateTime } from "../../../utils/helpers/timeZone";
 import {
@@ -30,6 +32,24 @@ export default function useVoucher() {
   const [optionStatuses, setOptionStatuses] = useState(() =>
     getItem(optionStatusesKey, {}),
   );
+  // AO nickname lookup — nAssignedUserId → strNickName, built once on mount so
+  // the AO column can show the account officer's name.
+  const [aoNicknameMap, setAoNicknameMap] = useState({});
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await UserAPI.getAllUsers();
+        const users = Array.isArray(res?.users) ? res.users : [];
+        const map = {};
+        users.forEach((u) => {
+          if (u?.nUserId) map[u.nUserId] = u?.strNickName || "";
+        });
+        setAoNicknameMap(map);
+      } catch (err) {
+        console.error("Failed to fetch users for AO column:", err);
+      }
+    })();
+  }, []);
   const {
     voucherStatus,
     userTypes,
@@ -37,6 +57,7 @@ export default function useVoucher() {
     loading: mappingLoading,
 
     jevDisbursementVoucherKey,
+    jevPendingKey,
     voucherActiveKey,
     voucherClosedKey,
     voucherPaidKey,
@@ -50,7 +71,7 @@ export default function useVoucher() {
     purchaseOrderKey,
     forPurchaseKey,
     paidKey,
-    receivedKey,
+    forDeliveryKey,
     deliveredKey,
     chequeKey,
     isAOTL,
@@ -107,6 +128,68 @@ export default function useVoucher() {
       console.error("fetchOptionStatuses error:", err);
     }
   }, [optionStatusesKey]);
+
+  // ── Arrival rule — the SAME source the update page and the API's own
+  //    guard use (InventoryAPI.getHistoryBulk): any linked purchase item
+  //    with a posted receipt (non-zero qty, status A/P) has already
+  //    arrived, so its Paid voucher cannot be unpaid anymore — the
+  //    receipts and the journal behind them are already posted.
+  const allLinkedItemIds = useMemo(
+    () => [
+      ...new Set(
+        (vouchers || [])
+          .flatMap((v) => v.voucher_suppliers ?? [])
+          .flatMap((vs) => vs.purchase_order?.purchase_order_options ?? [])
+          .map((o) => o.purchase_option?.nPurchaseItemId)
+          .filter(Boolean)
+          .map(String),
+      ),
+    ],
+    [vouchers],
+  );
+  const [arrivedItemIds, setArrivedItemIds] = useState(() => new Set());
+  // Receipts are posted from other screens — a fresh history fetch keeps
+  // the Unpaid gate honest without a reload.
+  const [arrivalRefreshKey, setArrivalRefreshKey] = useState(0);
+  useEffect(() => {
+    const bump = () => setArrivalRefreshKey((k) => k + 1);
+    window.addEventListener("inventory_data_updated", bump);
+    window.addEventListener("inventory_data_deleted", bump);
+    return () => {
+      window.removeEventListener("inventory_data_updated", bump);
+      window.removeEventListener("inventory_data_deleted", bump);
+    };
+  }, []);
+  useEffect(() => {
+    if (!allLinkedItemIds.length) {
+      setArrivedItemIds(new Set());
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const res = await InventoryAPI.getHistoryBulk(allLinkedItemIds);
+        const rows = res?.rows ?? res?.data?.rows ?? {};
+        const arrived = new Set();
+        for (const id of allLinkedItemIds) {
+          const list = rows?.[id] ?? [];
+          const received = (Array.isArray(list) ? list : []).some(
+            (r) =>
+              Number(r?.nQuantity) !== 0 &&
+              ["A", "P"].includes(String(r?.cStatus || "").trim()),
+          );
+          if (received) arrived.add(id);
+        }
+        if (active) setArrivedItemIds(arrived);
+      } catch (err) {
+        console.error("Failed to load the received items:", err);
+        if (active) setArrivedItemIds(new Set());
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [allLinkedItemIds, arrivalRefreshKey]);
 
   const fetchVouchers = useCallback(
     async ({ silent = false, bustCache = false } = {}) => {
@@ -260,6 +343,26 @@ export default function useVoucher() {
 
         const supplierLinks = v.voucher_suppliers ?? [];
         const voucherTypeLabel = isAssigneeType ? "Assignee" : "Supplier";
+        // The AO (account officer) of the linked PO's transaction — used by
+        // the AO column in the voucher list.
+        const aoNickname = v.nAssignedUserId
+          ? aoNicknameMap[v.nAssignedUserId] || ""
+          : "";
+        // Some linked item already arrived and was received — the receipts
+        // and the journal behind them are posted, so a Paid voucher cannot
+        // be unpaid anymore. Read from the bulk inventory history (the same
+        // check the update page and the API's guard run), not the PO's
+        // current status letter.
+        const isReceived = isAssigneeType
+          ? false
+          : supplierLinks.some((link) =>
+              (link.purchase_order?.purchase_order_options ?? []).some(
+                (opt) => {
+                  const id = opt?.purchase_option?.nPurchaseItemId;
+                  return id ? arrivedItemIds.has(String(id)) : false;
+                },
+              ),
+            );
         // The voucher's TOTAL amount (the gross) — the same figure the update
         // page shows as the particulars grand total. NOT the net of EWT.
         // Supplier vouchers: Σ QTY × dUnitPrice over the linked POs' lines;
@@ -316,6 +419,36 @@ export default function useVoucher() {
           isPaid = linkedOptionIds.length > 0 && !isUnpaid;
         }
 
+        // Payment gates — replicated from the update page's footer buttons
+        // (VoucherUpdateView's showMarkPaid / showMarkUnpaid) so the list's
+        // pay icon enables/disables on exactly the same vouchers:
+        //   Mark as Paid   → Closed + a JEV exists + it is finalized
+        //                     (cStatus ≠ pending) + Finance Officer / Mgmt
+        //   Mark as Unpaid → Paid + a JEV exists + finalized + nothing
+        //                     received/delivered yet
+        const isClosedVoucher = String(v.cStatus) === String(voucherClosedKey);
+        const isPaidVoucher = String(v.cStatus) === String(voucherPaidKey);
+        const hasFinalizedJev =
+          Boolean(v.nJEVId) &&
+          String(v.jev?.cStatus ?? "") !== String(jevPendingKey);
+        const canMarkPaid =
+          isClosedVoucher &&
+          hasFinalizedJev &&
+          (isManagement || isFinanceOfficer);
+        const canMarkUnpaid =
+          isPaidVoucher && hasFinalizedJev && !isReceived;
+        // Why the pay icon is off — printed in the icon's tooltip.
+        const payBlockedReason =
+          canMarkPaid || canMarkUnpaid
+            ? null
+            : isClosedVoucher
+              ? hasFinalizedJev
+                ? "for Finance Officers / Management only"
+                : "needs a finalized JEV"
+              : hasFinalizedJev
+                ? "items already received or delivered"
+                : "needs a finalized JEV";
+
         return {
           _raw: v,
           id: v.nVoucherId,
@@ -335,6 +468,11 @@ export default function useVoucher() {
           isAssigneeType,
           voucherTypeLabel,
           isPaid,
+          isReceived,
+          canMarkPaid,
+          canMarkUnpaid,
+          payBlockedReason,
+          aoNickname,
           amount,
           ewt,
           freight,
@@ -352,8 +490,14 @@ export default function useVoucher() {
       voucherAssigneeTypeKey,
       voucherPaidKey, // ✅ ADDED to deps
       optionStatuses,
+      arrivedItemIds,
       addToCartKey,
       purchaseOrderKey,
+      aoNicknameMap,
+      jevPendingKey,
+      voucherClosedKey,
+      isManagement,
+      isFinanceOfficer,
     ],
   );
 
@@ -384,7 +528,7 @@ export default function useVoucher() {
     cancelledPOKey,
     forPurchaseKey,
     paidKey,
-    receivedKey,
+    forDeliveryKey,
     deliveredKey,
     chequeKey,
     jevDisbursementVoucherKey,

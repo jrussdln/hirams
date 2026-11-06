@@ -341,6 +341,16 @@ export const ITEM_PURCHASING_CONFIRM_STYLES = {
     desc: "You will be taken to Inventory's Pending JEV tab with this transaction's group opened, ready to manage its JEV title and entries.",
     confirmLabel: "Yes, Manage JEV",
   },
+  // The Manage Voucher button on a For Payment PO whose linked voucher is
+  // already CLOSED — the voucher can no longer be changed or unlinked, so
+  // the confirmation goes straight to it instead of the manage modal.
+  open_voucher: {
+    variant: "blue",
+    Icon: ReceiptLongOutlined,
+    title: "Open this Voucher?",
+    desc: "This purchase order is linked to a voucher that is Closed and can no longer be changed or unlinked. You will be taken to that voucher.",
+    confirmLabel: "Yes, Open Voucher",
+  },
 };
 // ── Inventory confirm dialogs (Pending JEV screen) ───────────────────────
 // Wired in pages/shared/inventory/InventoryView.jsx through

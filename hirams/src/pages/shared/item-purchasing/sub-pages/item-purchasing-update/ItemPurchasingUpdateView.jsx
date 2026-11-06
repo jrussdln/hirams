@@ -182,6 +182,9 @@ export default function ItemPurchasingUpdateView({
   initialOptionId,
   isLoadingPage,
   poVoucherStatus,
+  poVoucher,
+  voucherStatusResolved,
+  fetchVoucherStatus,
   cartKey,
   forApprovalKey,
   forPaymentKey,
@@ -388,6 +391,25 @@ export default function ItemPurchasingUpdateView({
   // Manage JEV confirmation — the footer button asks before jumping to
   // Inventory's Pending JEV (the jump itself lives in handleManageJev).
   const [showManageJevConfirm, setShowManageJevConfirm] = React.useState(false);
+  // Manage Voucher on a Closed voucher — asks before jumping straight to it,
+  // since the manage modal would have nothing left to do with it.
+  const [showGoToVoucherConfirm, setShowGoToVoucherConfirm] = React.useState(false);
+
+  // Always refresh the linked-voucher state before deciding: the mount-time
+  // fetch is async, so the very first click would otherwise see poVoucher
+  // as null and open the manage modal even when a Closed voucher already
+  // exists. Refreshing here makes the decision current on every click.
+  const handleManageVoucherClick = async () => {
+    await fetchVoucherStatus();
+    if (
+      poVoucher &&
+      String(poVoucher.cStatus) === String(voucherClosedKey)
+    ) {
+      setShowGoToVoucherConfirm(true);
+      return;
+    }
+    setShowManageVoucher(true);
+  };
 
   // The row edit forms no longer carry their own Save buttons — each panel
   // registers a "save every open form" runner here and the page footer
@@ -583,7 +605,9 @@ export default function ItemPurchasingUpdateView({
         />
       )}
 
-      {selectedStatusCode === forPaymentKey && !poVoucherStatus && (
+      {selectedStatusCode === forPaymentKey &&
+        voucherStatusResolved &&
+        !poVoucherStatus && (
         <BaseButton
           label="Undo Approval"
           icon={icons.open}
@@ -752,13 +776,15 @@ export default function ItemPurchasingUpdateView({
 
       {/* MANAGE VOUCHER — finance/management only, like the Approve next
           to it: the voucher is where the money settles, so an AO or AOTL
-          never opens this editor. */}
+          never opens this editor. A linked voucher that is already CLOSED
+          can no longer be changed or unlinked — ask first, then jump
+          straight to it instead of opening the manage modal. */}
       {selectedStatusCode === forPaymentKey &&
         (isFinanceOfficer || isManagement) && (
           <BaseButton
             label="Manage Voucher"
             icon={icons.manage}
-            onClick={() => setShowManageVoucher(true)}
+            onClick={handleManageVoucherClick}
             actionColor="approve"
             disabled={isLoadingPage || actionLoading}
           />
@@ -1216,6 +1242,22 @@ export default function ItemPurchasingUpdateView({
         loading={actionLoading}
         onConfirm={handleConfirm}
         onClose={() => setConfirmAction(null)}
+      />
+      {/* OPEN VOUCHER — the linked voucher is already CLOSED, so the manage
+          modal would have nothing left to do with it. Ask, then jump
+          straight to the voucher. */}
+      <PurchaseCartUpdateModal
+        open={showGoToVoucherConfirm}
+        action="open_voucher"
+        styles={ITEM_PURCHASING_CONFIRM_STYLES}
+        purchaseOrderNumber={po?.strPurchaseOrderNo}
+        loading={false}
+        onConfirm={() => {
+          setShowGoToVoucherConfirm(false);
+          if (poVoucher?.nVoucherId)
+            navigate(`/voucher-update?id=${poVoucher.nVoucherId}`);
+        }}
+        onClose={() => setShowGoToVoucherConfirm(false)}
       />
       {/* MANAGE JEV — asks before handing the transaction over to
           Inventory's Pending JEV tab. Its own slot so confirmAction,

@@ -457,7 +457,9 @@ export default function StoragePanel() {
                   >
                     <WarningAmberRounded sx={{ fontSize: 15 }} />
                     <Typography sx={{ fontSize: 11.5, fontWeight: 600 }}>
-                      Nearly full, clear caches
+                      {usagePercent >= 100
+                        ? "Storage full — caches stop saving until cleared"
+                        : "Nearly full, clear caches"}
                     </Typography>
                   </Box>
                 )}

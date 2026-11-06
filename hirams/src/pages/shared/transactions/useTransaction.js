@@ -210,12 +210,35 @@ export default function useTransaction() {
   useEffect(() => setPage(0), [filterStatus]);
 
   // ── Progress helpers ──────────────────────────────────────────────────────
-  const [txnProgressMap, setTxnProgressMap] = useState({});
-  const [txnBalanceMap, setTxnBalanceMap] = useState({});
+  // The Progress / Balance (and Collectible) maps persist too: on a revisit
+  // the columns render the last-known values instantly while fetchTxnProgress
+  // revalidates them in the background — the same cache-seed → silent-refresh
+  // pattern the transactions list itself follows. (Per user: management,
+  // procurement, finance and AO fetch different transaction sets.)
+  const progressCacheKey = useMemo(
+    () => `txn_progress_cache_${userId}`,
+    [userId],
+  );
+  const balanceCacheKey = useMemo(
+    () => `txn_balance_cache_${userId}`,
+    [userId],
+  );
+  const collectibleCacheKey = useMemo(
+    () => `txn_collectible_cache_${userId}`,
+    [userId],
+  );
+  const [txnProgressMap, setTxnProgressMap] = useState(() =>
+    getItem(progressCacheKey, {}),
+  );
+  const [txnBalanceMap, setTxnBalanceMap] = useState(() =>
+    getItem(balanceCacheKey, {}),
+  );
   // For Collection only: the chosen pricing set's total selling price — the
   // figure the collection page calls "Collectible Amount" (usePurchase reads
   // the same `bChosen === 1` set).
-  const [txnCollectibleMap, setTxnCollectibleMap] = useState({});
+  const [txnCollectibleMap, setTxnCollectibleMap] = useState(() =>
+    getItem(collectibleCacheKey, {}),
+  );
 
   /**
    * For Collection rows: the chosen pricing set's total selling price — the
@@ -254,11 +277,13 @@ export default function useTransaction() {
           }),
         );
         setTxnCollectibleMap(collectibleMap);
+        // Persist — same seed-for-next-visit rule as progress/balance.
+        setItem(collectibleCacheKey, collectibleMap);
       } catch (err) {
         console.error("fetchTxnCollectible error:", err);
       }
     },
-    [forCollectionKey],
+    [forCollectionKey, collectibleCacheKey],
   );
 
   const fetchTxnProgress = useCallback(
@@ -346,6 +371,10 @@ export default function useTransaction() {
 
         setTxnProgressMap(progressMap);
         setTxnBalanceMap(balanceMap);
+        // Persist for the next visit — the columns render instantly while
+        // the next fetch revalidates in the background.
+        setItem(progressCacheKey, progressMap);
+        setItem(balanceCacheKey, balanceMap);
       } catch (err) {
         console.error("fetchTxnProgress error:", err);
       }
@@ -363,6 +392,8 @@ export default function useTransaction() {
       pendingReceiptKey, // ✅ NEW
       forDeliveryKey, // ✅ NEW
       deliveredKey, // ✅ NEW
+      progressCacheKey, // ✅ NEW
+      balanceCacheKey, // ✅ NEW
     ],
   );
 

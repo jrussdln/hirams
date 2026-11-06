@@ -6,12 +6,12 @@ const VALID_TABS = ["general", "account", "users", "audit", "preferences", "stor
 export default function useSettings() {
   const [searchParams] = useSearchParams();
   // Deep links (e.g. the profile popper header) can open a specific tab
-  // via /settings?tab=account — anything unknown falls back to "account".
+  // via /settings?tab=account — anything unknown falls back to "general".
   const requestedTab = searchParams.get("tab");
 
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState(
-    VALID_TABS.includes(requestedTab) ? requestedTab : "account",
+    VALID_TABS.includes(requestedTab) ? requestedTab : "general",
   );
 
   const handleTabChange = useCallback((_, newTab) => {
