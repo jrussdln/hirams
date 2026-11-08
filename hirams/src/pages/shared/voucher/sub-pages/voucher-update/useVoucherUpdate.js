@@ -489,10 +489,25 @@ export default function useVoucherUpdate() {
     return [...new Set(ids)];
   }, [voucher]);
 
-  const [arrivedItemIds, setArrivedItemIds] = useState(() => new Set());
+  // Seeded from the list page's shared arrived-items cache so the amber
+  // "cannot be cancelled / unpaid" warning and the Cancel / Mark as Unpaid
+  // gates are correct on the FIRST paint — instead of flipping after the
+  // getHistoryBulk round-trip. Intersected with THIS voucher's ids: the
+  // cache also holds arrived ids of other vouchers' items.
+  // The cache is owned by the voucher LIST page (see useVoucher.js), which
+  // refreshes the full snapshot across all vouchers; this page only seeds
+  // from it, it never writes.
+  const arrivedItemsKey = `voucher_arrived_items_${user?.nUserId}`;
+
+  const [arrivedItemIds, setArrivedItemIds] = useState(() => {
+    const cached = new Set(getItem(arrivedItemsKey, []).map(String));
+    return new Set(linkedItemIds.filter((id) => cached.has(id)));
+  });
 
   useEffect(() => {
     if (isAssigneeType || !linkedItemIds.length) {
+      // Assignee vouchers carry no POs, and a full reload (no cache) has no
+      // items yet — an empty set is the honest state there.
       setArrivedItemIds(new Set());
       return;
     }
@@ -514,7 +529,9 @@ export default function useVoucherUpdate() {
         if (active) setArrivedItemIds(arrived);
       } catch (err) {
         console.error("Failed to load the received items:", err);
-        if (active) setArrivedItemIds(new Set());
+        // Keep the current set (cache seed or previous result) — wiping to
+        // empty would hide the arrival warning and ENABLE the Cancel /
+        // Mark as Unpaid buttons until the next refresh lands.
       }
     })();
     return () => {

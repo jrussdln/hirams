@@ -21,6 +21,10 @@ export default function useVoucher() {
   const currentUserId = user?.nUserId;
   const storageKey = `voucher_list_${currentUserId}`;
   const optionStatusesKey = `voucher_option_statuses_${currentUserId}`;
+  // The arrived-item ids cache the Paid rows' Unpaid gate — seeded so the
+  // pay icon paints disabled on a revisit instead of flashing ENABLED for
+  // the whole getHistoryBulk round-trip ("cannot unpay" is the safe state).
+  const arrivedItemsKey = `voucher_arrived_items_${currentUserId}`;
 
   const [itemsLoading, setItemsLoading] = useState(() => !hasItem(storageKey));
   const [vouchers, setVouchers] = useState(() => getItem(storageKey, []));
@@ -150,7 +154,11 @@ export default function useVoucher() {
     ],
     [vouchers],
   );
-  const [arrivedItemIds, setArrivedItemIds] = useState(() => new Set());
+  // Seeded from cache — like the vouchers, so a revisit does not flash the
+  // Unpaid icon ENABLED while getHistoryBulk is still in flight.
+  const [arrivedItemIds, setArrivedItemIds] = useState(() =>
+    new Set(getItem(arrivedItemsKey, [])),
+  );
   // Receipts are posted from other screens — a fresh history fetch keeps
   // the Unpaid gate honest without a reload.
   const [arrivalRefreshKey, setArrivalRefreshKey] = useState(0);
@@ -165,6 +173,9 @@ export default function useVoucher() {
   }, []);
   useEffect(() => {
     if (!allLinkedItemIds.length) {
+      // An empty voucher list cannot have arrived items — drop to an empty
+      // set but keep the cache: rewriting it here (mid-load) would wipe a
+      // good snapshot for nothing.
       setArrivedItemIds(new Set());
       return;
     }
@@ -183,10 +194,16 @@ export default function useVoucher() {
           );
           if (received) arrived.add(id);
         }
-        if (active) setArrivedItemIds(arrived);
+        if (active) {
+          setArrivedItemIds(arrived);
+          // Persist so the NEXT visit's first paint already gates the Unpaid
+          // icon — same seed-then-refresh trick the voucher list cache uses.
+          setItem(arrivedItemsKey, [...arrived]);
+        }
       } catch (err) {
         console.error("Failed to load the received items:", err);
-        if (active) setArrivedItemIds(new Set());
+        // On failure keep whatever we have (cache seed or previous result) —
+        // wiping to empty would ENABLE the Unpaid icon as the safe state.
       }
     })();
     return () => {
