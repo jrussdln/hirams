@@ -50,12 +50,28 @@ class Jev extends Model
     }
     /**
      * The transactions this journal belongs to. A Collection (C) JEV is
-     * raised against a transaction — tbltransactions points at tbljevs the
-     * same way a voucher does.
+     * raised against a transaction — the binding lives on tblcollections,
+     * which pairs the two ids the same way tblvouchers does for vouchers.
      */
-    public function transactions(): HasMany
+    public function collections(): HasMany
     {
-        return $this->hasMany(Transactions::class, 'nJEVId', 'nJEVId');
+        return $this->hasMany(Collection::class, 'nJEVId', 'nJEVId');
+    }
+    public function transactions()
+    {
+        // Jev → Collection (nJEVId) → Transactions (nTransactionId).
+        // Named `transactions` (not `collections`) because the readers —
+        // JevService above all — want the TRANSACTION the journal was
+        // raised against, e.g. for the client's name and the completed
+        // status guard.
+        return $this->hasManyThrough(
+            Transactions::class,
+            Collection::class,
+            'nJEVId',      // Foreign key on tblcollections
+            'nTransactionId', // Foreign key on tbltransactions
+            'nJEVId',      // Local key on tbljevs
+            'nTransactionId', // Local key on tblcollections
+        );
     }
     public static function generateNumber(): string
     {

@@ -61,6 +61,7 @@ export default function PrintPreviewRightPanel({
   onPrint,
   onSavePdf,
   pdfBusy,
+  pdfFileName = "document",
   onCopyImage,
   copyBusy = false,
   copied = false,
@@ -126,7 +127,7 @@ export default function PrintPreviewRightPanel({
                 color: colors.textPrimary,
               }}
             >
-              Print & Export
+              Menu
             </Typography>
           </Box>
           <Tooltip title="Close panel">
@@ -485,6 +486,39 @@ export default function PrintPreviewRightPanel({
                     </MenuItem>
                   </Select>
                 </FormControl>
+              </Box>
+
+              {/* File Title — the name the download lands under. Long
+                  names ellipsize rather than stretching the card. */}
+              <Box>
+                <Typography
+                  sx={{
+                    fontSize: "0.72rem",
+                    fontWeight: 600,
+                    color: colors.textSecondary,
+                    mb: 0.5,
+                  }}
+                >
+                  File Title
+                </Typography>
+                <Box
+                  sx={{
+                    fontSize: "0.8rem",
+                    fontStyle: "italic",
+                    bgcolor: colors.btnBg,
+                    border: 1,
+                    borderColor: colors.borderLight,
+                    borderRadius: 1.5,
+                    px: 1.25,
+                    py: 0.8,
+                    color: colors.textPrimary,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    overflowWrap: "break-word",
+                  }}
+                >
+                  {pdfFileName}.pdf
+                </Box>
               </Box>
 
               <Box

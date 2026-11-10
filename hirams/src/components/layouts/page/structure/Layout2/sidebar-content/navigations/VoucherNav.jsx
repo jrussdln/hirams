@@ -54,6 +54,26 @@ const VoucherNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
     }
   }, [location.key, firstCode, selectedCode]);
 
+  // ── Deep-link sync — the ACTIVE status is the VOUCHER's status ──
+  // /voucher-update is opened from many places (Item Purchasing's View
+  // Voucher, the voucher list's View, JEV's DV code, the manage modal's
+  // jump) and each hands the voucher's own status in route state. Without
+  // this the highlight would stay on the user's LAST-CLICKED filter — a
+  // completely different stage from the voucher on screen.
+  useEffect(() => {
+    if (mappingLoading) return;
+    const stateCode = location.state?.voucherStatusCode;
+    if (
+      stateCode !== undefined &&
+      stateCode !== null &&
+      String(stateCode) !== "" &&
+      safeVoucherStatus[stateCode]
+    ) {
+      setSelectedCode(String(stateCode));
+      setItem(SESSION_KEY, String(stateCode));
+    }
+  }, [location.key, location.state, mappingLoading, safeVoucherStatus]);
+
   // ── Sync status changes ──
   useEffect(() => {
     const handler = (e) => {
@@ -137,6 +157,7 @@ const VoucherNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
       <SidebarItem
         icon={<ReceiptLongIcon fontSize="small" />}
         label="Vouchers"
+        autoOpen={isOnPage}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}

@@ -57,6 +57,24 @@ export default function usePreviewSI() {
 
     const grandTotal = items.reduce((sum, it) => sum + (it.totalPrice || 0), 0);
 
+    // SAVED-PDF TITLE — "TXNCODE(ClientNick)-SalesInvoice(CompanyNick)",
+    // e.g. "9849H(PGOM)-SalesInvoice(HiRams)". Filesystem-illegal
+    // characters are stripped first, since a transaction code can
+    // carry slashes.
+    const company = transaction?.company || {};
+    const companyNick =
+      company.strCompanyNickName || company.strCompanyName || "";
+    const clientNick = (
+      client.strClientNickName ||
+      client.strClientName ||
+      ""
+    ).trim();
+    const pdfFileName =
+      `${transactionCode || ""}(${clientNick})-SalesInvoice(${companyNick})`
+        .replace(/[\\/:*?"<>|]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
     return {
       clientName:
         client.strClientNickName || client.strClientName || DEFAULTS.clientName,
@@ -68,6 +86,9 @@ export default function usePreviewSI() {
       code: transactionCode || "",
       items,
       grandTotal,
+
+      // Save-as-PDF file name: TXNCODE(ClientNick)-SalesInvoice(CompanyNick)
+      pdfFileName,
     };
   }, [state]);
 }

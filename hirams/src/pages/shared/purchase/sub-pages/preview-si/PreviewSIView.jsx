@@ -212,6 +212,7 @@ export default function PreviewSIView({
   code,
   items,
   grandTotal,
+  pdfFileName,
 }) {
   const navigate = useNavigate();
   const [printControls, setPrintControls] = React.useState(null);
@@ -244,7 +245,7 @@ export default function PreviewSIView({
         onControlsReady={setPrintControls}
         hideHeaderControls={true}
         showSystemGenerated={false}
-      >
+        pdfFileName={pdfFileName}>
         <div style={PAGE_CONTAINER_SX}>
           <table style={TABLE_STYLE}>
             {COLGROUP}

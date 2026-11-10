@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use App\Events\TransactionUpdated;
 use App\Models\Jev;
+use App\Models\Collection;
 use Illuminate\Support\Facades\DB;
 
 class TransactionController extends ApiController
@@ -1782,11 +1783,13 @@ class TransactionController extends ApiController
     public function getJev(int $id): JsonResponse
     {
         try {
-            $txn = Transactions::findOrFail($id);
-            if (!$txn->nJEVId) {
+            // The journal pairing lives on tblcollections — the transaction's
+            // own nJEVId column is retired.
+            $collection = Collection::where('nTransactionId', $id)->first();
+            if (!$collection) {
                 return response()->json(['jev' => null]);
             }
-            $jev = Jev::with('entries.journal_account.parent')->find($txn->nJEVId);
+            $jev = Jev::with('entries.journal_account.parent')->find($collection->nJEVId);
             return response()->json(['jev' => $jev]);
         } catch (Exception $e) {
             return $this->handleException($e, 'retrieve_failed', 'JEV');
@@ -1800,8 +1803,10 @@ class TransactionController extends ApiController
                 $txn = Transactions::lockForUpdate()->findOrFail($id);
 
                 // already has one? return it, never create a second
-                if ($txn->nJEVId) {
-                    return Jev::with('entries.journal_account.parent')->find($txn->nJEVId);
+                $existing = Collection::lockForUpdate()
+                    ->where('nTransactionId', $txn->nTransactionId)->first();
+                if ($existing) {
+                    return Jev::with('entries.journal_account.parent')->find($existing->nJEVId);
                 }
 
                 $new = Jev::create([
@@ -1813,8 +1818,11 @@ class TransactionController extends ApiController
                     'nUserId'      => auth()->id(),
                 ]);
 
-                $txn->nJEVId = $new->nJEVId;
-                $txn->save();
+                // The journal is bound on tblcollections.
+                Collection::create([
+                    'nTransactionId' => $txn->nTransactionId,
+                    'nJEVId'         => $new->nJEVId,
+                ]);
 
                 return Jev::with('entries.journal_account.parent')->find($new->nJEVId);
             });

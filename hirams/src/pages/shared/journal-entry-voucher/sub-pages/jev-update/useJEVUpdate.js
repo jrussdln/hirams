@@ -542,7 +542,11 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
   // route the voucher list's View uses.
   const openVoucher = useCallback(() => {
     if (!voucher?.nVoucherId) return;
-    navigate(`/voucher-update?id=${voucher.nVoucherId}`);
+    // voucherStatusCode → the Vouchers sidebar highlights the voucher's
+    // real status filter instead of the last-clicked one.
+    navigate(`/voucher-update?id=${voucher.nVoucherId}`, {
+      state: { voucherStatusCode: voucher.cStatus },
+    });
   }, [voucher, navigate]);
 
   // ── The brand · model opens its transaction ─────────────────────────

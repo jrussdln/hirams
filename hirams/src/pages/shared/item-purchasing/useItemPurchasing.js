@@ -176,8 +176,14 @@ export default function useItemPurchasing() {
           const map = {};
           vouchers.forEach((v) => {
             (v.voucher_suppliers ?? []).forEach((vs) => {
+              // Object shape (id + status) — the PO update view seeds its
+              // View Voucher button from this cache synchronously, so it
+              // also needs the id, not just the badge status.
               if (!map[vs.nPurchaseOrderId])
-                map[vs.nPurchaseOrderId] = v.cStatus;
+                map[vs.nPurchaseOrderId] = {
+                  voucherId: v.nVoucherId,
+                  cStatus: v.cStatus,
+                };
             });
           });
           setVouchersByPO(map);

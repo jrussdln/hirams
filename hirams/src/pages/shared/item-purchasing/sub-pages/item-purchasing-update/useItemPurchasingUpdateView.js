@@ -35,6 +35,30 @@ const hasShippingText = (html) =>
 const bustPOCache = () => {
   removeItem("cart_cache_purchaseOrders");
   removeItem("cart_cache_vouchersByPO");
+  removeItem(PO_VOUCHER_LINK_KEY);
+};
+
+// ── Per-PO linked-voucher snapshot ────────────────────────────────────
+// poId → { voucherId, cStatus } | null, written by fetchVoucherStatus on
+// every resolve. The FOR PAYMENT page seeds Undo Approval / Manage Voucher /
+// View Voucher from it, so those buttons appear WITH the content on the
+// next mount instead of a beat later. A missing entry means "never looked"
+// — buttons wait for the network. A null entry expressly records "looked,
+// this PO has no voucher" (JSON.stringify keeps nulls, so the marker
+// survives the round trip).
+const PO_VOUCHER_LINK_KEY = "po_voucher_link_cache";
+
+const readVoucherLink = (poId) =>
+  getItem(PO_VOUCHER_LINK_KEY, null)?.[String(poId)];
+
+const writeVoucherLink = (poId, voucher) => {
+  if (!poId) return;
+  setItem(PO_VOUCHER_LINK_KEY, {
+    ...(getItem(PO_VOUCHER_LINK_KEY, null) || {}),
+    [String(poId)]: voucher
+      ? { voucherId: voucher.nVoucherId, cStatus: voucher.cStatus }
+      : null,
+  });
 };
 
 // ── Line corrections ─────────────────────────────────────────────────
@@ -258,14 +282,56 @@ export default function useItemPurchasingUpdateView() {
     Array.isArray(cachedPOs) ? cachedPOs : [],
   );
   const [loading, setLoading] = useState(!initialPO);
-  const [poVoucherStatus, setPoVoucherStatus] = useState(null);
-  // True once fetchVoucherStatus() has run — before that the button must
-  // stay hidden so it never flashes and then disappears when a voucher is
-  // already linked.
-  const [voucherStatusResolved, setVoucherStatusResolved] = useState(false);
-  // The linked voucher itself (not just its status) — the Manage Voucher
-  // button needs the id to jump straight to it when it is Closed.
-  const [poVoucher, setPoVoucher] = useState(null);
+  // ── Voucher state — seeded from the LIST page's badge cache
+  // (cart_cache_vouchersByPO: poId → { voucherId, cStatus }) so the footer
+  // button knows on the VERY FIRST PAINT whether this PO already has a
+  // voucher (View Voucher) — no "Manage Voucher" flash that flips to View
+  // seconds later once the network answers. fetchVoucherStatus still runs
+  // right after and keeps the truth current. Legacy caches that stored a
+  // plain status string seed only the status; the id arrives with the
+  // fetch and the click falls back safely until then.
+  const seededVoucherEntry = (() => {
+    if (!poId) return undefined;
+    // Newest source — this page's own write-through cache. `null` is a
+    // real answer ("checked, no voucher"), not an absence, so it counts as
+    // resolved.
+    const link = readVoucherLink(poId);
+    if (link !== undefined) return link;
+    // Fallback — the list page's badge cache.
+    const cached = getItem("cart_cache_vouchersByPO", null);
+    if (cached && typeof cached === "object" && cached[String(poId)] !== undefined)
+      return cached[String(poId)];
+    return undefined;
+  })();
+  const seededVoucherRecord =
+    seededVoucherEntry && typeof seededVoucherEntry === "object"
+      ? seededVoucherEntry
+      : null;
+  const [poVoucherStatus, setPoVoucherStatus] = useState(
+    () =>
+      seededVoucherRecord?.cStatus ??
+      (typeof seededVoucherEntry === "string" ||
+      typeof seededVoucherEntry === "number"
+        ? seededVoucherEntry
+        : null),
+  );
+  // True once the status is KNOWN — from a cache seed on the first paint,
+  // or (nothing cached) once fetchVoucherStatus() has run.
+  const [voucherStatusResolved, setVoucherStatusResolved] = useState(
+    () => seededVoucherEntry !== undefined,
+  );
+  // The linked voucher itself — the button needs the id to jump straight
+  // to it when the user clicks View Voucher. Seeded lite (id + status)
+  // from the same cache; fetchVoucherStatus replaces it with the full
+  // record before any manage flow touches it.
+  const [poVoucher, setPoVoucher] = useState(() =>
+    seededVoucherRecord
+      ? {
+          nVoucherId: seededVoucherRecord.voucherId,
+          cStatus: seededVoucherRecord.cStatus,
+        }
+      : null,
+  );
   // ?status= carries the tab the card was opened from — a partially received
   // PO is listed under For Delivery while its own status is still Pending
   // Receipt.
@@ -297,10 +363,15 @@ export default function useItemPurchasingUpdateView() {
     );
     const delivered = opts.some((o) => num(optOf(o)?.nDeliveredQty) > 0);
 
-    // Nothing left to receive → the receive panel would show no rows: the
-    // goods are on their way out, so open For Delivery instead.
+    // Nothing left to receive → skip the receive panel. If nothing is left
+    // to hand over either, the PO is already fully delivered and must open on
+    // Delivered—not For Delivery.
     if (status === String(pendingReceiptKey) && !toReceive)
-      return String(forDeliveryKey);
+      return toDeliver
+        ? String(forDeliveryKey)
+        : delivered
+          ? String(deliveredKey)
+          : String(pendingReceiptKey);
     // Nothing left to hand over → Delivered when something went out, back
     // to Pending Receipt when nothing ever arrived.
     if (status === String(forDeliveryKey) && !toDeliver)
@@ -509,6 +580,9 @@ export default function useItemPurchasingUpdateView() {
       });
       setPoVoucherStatus(status);
       setPoVoucher(found);
+      // Write-through — the next mount of this PO seeds its buttons from
+      // this snapshot and they render with the content, no waiting.
+      writeVoucherLink(poId, found);
     } catch (err) {
       console.error("Failed to fetch voucher status:", err);
     } finally {

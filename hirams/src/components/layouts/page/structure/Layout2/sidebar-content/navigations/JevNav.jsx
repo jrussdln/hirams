@@ -126,6 +126,7 @@ const JevNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
       <SidebarItem
         icon={<DescriptionIcon fontSize="small" />}
         label="Journal Entry Voucher"
+        autoOpen={isOnPage}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}

@@ -111,6 +111,7 @@ const UserNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
       <SidebarItem
         icon={<PeopleIcon fontSize="small" />}
         label="Users"
+        autoOpen={isOnPage}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}

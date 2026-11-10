@@ -4,6 +4,7 @@ import { Box, Typography, useTheme } from "@mui/material";
 import { ArrowBack, TrendingUp, ReceiptLong, Save } from "@mui/icons-material";
 import PageLayout from "../../../components/layouts/page/content-page";
 import BaseButton from "../../../components/ui/form/BaseButton";
+import MiniBaseButton from "../../../components/ui/form/MiniBaseButton";
 import AlertStructure from "../../../components/ui/structure/AlertStructure";
 import TransactionDetails from "../transactions/components/TransactionDetails";
 import TransactionItemsTable from "../canvas/components/TransactionItemsTable";
@@ -106,18 +107,6 @@ export default function PricingView(props) {
           disabled={panelState.itemsLoading || !!statusChangedAlert}
         />
         <BaseButton
-          label="Cost Breakdown"
-          icon={icons.breakdown}
-          variant="contained"
-          actionColor="breakdown"
-          onClick={() => pricingPanelRef.current?.openCostBreakdown()}
-          disabled={
-            panelState.itemsLoading ||
-            !!statusChangedAlert ||
-            !panelState.allItemsHavePrices
-          }
-        />
-        <BaseButton
           label={panelState.saving ? "Saving..." : "Save Changes"}
           icon={icons.save}
           variant="contained"
@@ -132,6 +121,9 @@ export default function PricingView(props) {
         />
       </Box>
     ) : null;
+
+  const showCostBreakdownSubFooter =
+    activeTab === "pricing" && panelState.allItemsHavePrices;
 
   return (
     <PageLayout
@@ -151,6 +143,7 @@ export default function PricingView(props) {
           {["info", "canvas", "pricing"].map((tab) => (
             <button
               key={tab}
+              data-active={activeTab === tab}
               onClick={() => setActiveTab(tab)}
               style={{
                 padding: "3px 10px",
@@ -174,6 +167,52 @@ export default function PricingView(props) {
       }
       footerLActions={footerLActions}
       footerRActions={footerRActions}
+      subFooter={
+        showCostBreakdownSubFooter ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+              height: "100%",
+              padding: "0 1rem",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                pr: 1,
+              }}
+            >
+              <ReceiptLong sx={{ fontSize: "0.8rem", color: "white" }} />
+              <Typography
+                sx={{
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  color: "white",
+                  letterSpacing: "0.025em",
+                }}
+              >
+                COST BREAKDOWN IS NOW AVAILABLE!
+              </Typography>
+            </Box>
+            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <MiniBaseButton
+                label="VIEW"
+                icon={icons.view}
+                color="white"
+                bg="rgba(255, 255, 255, 0.15)"
+                border="rgba(255, 255, 255, 0.3)"
+                hoverBg="rgba(255, 255, 255, 0.25)"
+                onClick={() => pricingPanelRef.current?.openCostBreakdown()}
+              />
+            </Box>
+          </div>
+        ) : null
+      }
       loading={props.loading || panelState.itemsLoading}
     >
       {statusChangedAlert && (

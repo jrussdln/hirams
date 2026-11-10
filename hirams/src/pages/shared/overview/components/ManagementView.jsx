@@ -20,14 +20,13 @@ import ChartStructure from "../../../../components/ui/structure/ChartStructure";
 import { fmtDate } from "../../../../utils/helpers/timeZone";
 import { getDueDateColor } from "../../../../utils/helpers/dueDateColor";
 import useKeysLabels from "../../../../hooks/useKeysLabels";
-import { getItem, setItem, hasItem } from "../../../../utils/storage/localStorage";
+import { getItem, setItem } from "../../../../utils/storage/localStorage";
 import { cardSx, cardVariants } from "./overviewStyles";
 import {
   XAxis,
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  BarChart,
   Bar,
   AreaChart,
   Area,
@@ -71,21 +70,6 @@ const chart = getThemeColors(false).chart;
 const PIE_COLORS = [chart.pie.blue, chart.pie.amber, chart.pie.gray, chart.pie.green];
 
 const STAGE_PALETTE = chart.stage;
-
-const MONTH_LABELS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
 
 // ─── Shared Styles — cardSx / cardVariants live in ./overviewStyles ─────────
 
@@ -441,212 +425,6 @@ function OngoingTransactionsPanel({
   );
 }
 
-/** Transactions by Month — year selector + Jan-Dec bar chart + peak month */
-function TransactionsByMonthCard({
-  monthlyTxnCounts,
-  peakMonth,
-  availableYears,
-  selectedYear,
-  onYearChange,
-  theme,
-}) {
-  return (
-    <Card sx={{ ...cardSx(theme), p: 2, height: "100%" }}>
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          mb: 1,
-        }}
-      >
-        <Typography variant="subtitle2" fontWeight={700}>
-          Transactions by Month
-        </Typography>
-        <FormControl size="small" sx={{ minWidth: 90 }}>
-          <Select
-            value={selectedYear}
-            onChange={(e) => onYearChange(Number(e.target.value))}
-            sx={{ fontSize: "0.75rem", height: 32 }}
-          >
-            {availableYears.map((y) => (
-              <MenuItem key={y} value={y} sx={{ fontSize: "0.75rem" }}>
-                {y}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-
-      <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", mb: 1 }}>
-        Peak: <strong>{peakMonth.month}</strong> ({peakMonth.count}{" "}
-        transactions)
-      </Typography>
-
-      <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={monthlyTxnCounts}>
-          <XAxis
-            dataKey="month"
-            tick={{ fontSize: 11 }}
-            stroke={theme.palette.text.secondary}
-          />
-          <YAxis
-            allowDecimals={false}
-            tick={{ fontSize: 11 }}
-            stroke={theme.palette.text.secondary}
-            label={{
-              value: "Transactions",
-              angle: -90,
-              position: "insideLeft",
-              style: { fontSize: 10, fill: theme.palette.text.secondary },
-            }}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: theme.palette.background.paper,
-              border: `1px solid ${theme.palette.divider}`,
-              borderRadius: 1,
-            }}
-          />
-          <Bar dataKey="count" fill={chart.bar} radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </Card>
-  );
-}
-
-function ProfitByMonthCard({
-  data,
-  availableYears,
-  selectedYear,
-  onYearChange,
-  theme,
-}) {
-  const isDark = theme.palette.mode === "dark";
-  const colors = useColors(getThemeColors(isDark));
-
-  const totals = data.reduce(
-    (acc, m) => ({
-      revenue: acc.revenue + (m.revenue || 0),
-      expenses: acc.expenses + (m.expenses || 0),
-      profit: acc.profit + (m.profit || 0),
-    }),
-    { revenue: 0, expenses: 0, profit: 0 },
-  );
-
-  const fmtPHP = (n) =>
-    `₱ ${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-  return (
-    <Card sx={{ ...cardSx(theme), p: 2, height: "100%" }}>
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          mb: 1,
-        }}
-      >
-        <Typography variant="subtitle2" fontWeight={700}>
-          Revenue, Expenses & Profit
-        </Typography>
-        <FormControl size="small" sx={{ minWidth: 90 }}>
-          <Select
-            value={selectedYear}
-            onChange={(e) => onYearChange(Number(e.target.value))}
-            sx={{ fontSize: "0.75rem", height: 32 }}
-          >
-            {availableYears.map((y) => (
-              <MenuItem key={y} value={y} sx={{ fontSize: "0.75rem" }}>
-                {y}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-      </Box>
-
-      <Box sx={{ display: "flex", gap: 1.5, mb: 1, flexWrap: "wrap" }}>
-        <Typography sx={{ fontSize: "0.65rem", color: "text.secondary" }}>
-          Revenue:{" "}
-          <strong style={{ color: colors.revenueText }}>
-            {fmtPHP(totals.revenue)}
-          </strong>
-        </Typography>
-        <Typography sx={{ fontSize: "0.65rem", color: "text.secondary" }}>
-          Expenses:{" "}
-          <strong style={{ color: colors.expenseText }}>
-            {fmtPHP(totals.expenses)}
-          </strong>
-        </Typography>
-        <Typography sx={{ fontSize: "0.65rem", color: "text.secondary" }}>
-          Profit:{" "}
-          <strong
-            style={{
-              color: totals.profit >= 0 ? colors.profitPos : colors.profitNeg,
-            }}
-          >
-            {fmtPHP(totals.profit)}
-          </strong>
-        </Typography>
-      </Box>
-
-      <ResponsiveContainer width="100%" height={200}>
-        <ComposedChart data={data}>
-          <XAxis
-            dataKey="month"
-            tick={{ fontSize: 11 }}
-            stroke={theme.palette.text.secondary}
-          />
-          <YAxis
-            tick={{ fontSize: 11 }}
-            stroke={theme.palette.text.secondary}
-          />
-          <Tooltip
-            formatter={(value) => fmtPHP(value)}
-            contentStyle={{
-              backgroundColor: theme.palette.background.paper,
-              border: `1px solid ${theme.palette.divider}`,
-              borderRadius: 1,
-            }}
-          />
-          <Legend
-            wrapperStyle={{
-              fontSize: "0.7rem",
-              color: theme.palette.text.primary,
-            }}
-          />
-          <Bar
-            dataKey="revenue"
-            name="Revenue"
-            fill={chart.revenue}
-            radius={[3, 3, 0, 0]}
-          />
-          <Bar
-            dataKey="expenses"
-            name="Expenses"
-            fill={chart.expenses}
-            radius={[3, 3, 0, 0]}
-          />
-          <Bar
-            dataKey="profit"
-            name="Profit"
-            fill={chart.profit}
-            radius={[3, 3, 0, 0]}
-          />
-          <Line
-            type="monotone"
-            dataKey="profit"
-            name="Profit Trend"
-            stroke={chart.profitTrend}
-            strokeWidth={2}
-            dot={{ r: 3 }}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </Card>
-  );
-}
-
 function EmployeeChart({
   data,
   availableYears,
@@ -961,7 +739,6 @@ export default function ManagementView() {
     metrics: "overview_metrics_cache",
     ongoingTxns: "overview_ongoing_txns_cache",
     employee: (year) => `overview_employee_performance_${year}`,
-    profit: (year) => `overview_profit_${year}`,
   };
   const currentYear = new Date().getFullYear();
 
@@ -1011,17 +788,6 @@ export default function ManagementView() {
   );
   const [allTxns, setAllTxns] = useState(() =>
     getItem(cacheKey.ongoingTxns, []),
-  );
-  const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [profitData, setProfitData] = useState(() =>
-    getItem(
-      cacheKey.profit(currentYear),
-      MONTH_LABELS.map((m) => ({ month: m, revenue: 0, expenses: 0, profit: 0 })),
-    ),
-  );
-  const [profitYear, setProfitYear] = useState(currentYear);
-  const [profitLoading, setProfitLoading] = useState(
-    () => !hasItem(cacheKey.profit(currentYear)),
   );
   const [employeeData, setEmployeeData] = useState(() =>
     getItem(cacheKey.employee(currentYear), []),
@@ -1125,53 +891,14 @@ export default function ManagementView() {
     return years.sort((a, b) => b - a);
   }, [allTxns]);
 
-  const monthlyTxnCounts = useMemo(() => {
-    const counts = MONTH_LABELS.map((label) => ({ month: label, count: 0 }));
-    allTxns.forEach((t) => {
-      if (!t.dtOccur) return;
-      const d = new Date(t.dtOccur);
-      if (isNaN(d.getTime()) || d.getFullYear() !== selectedYear) return;
-      counts[d.getMonth()].count++;
-    });
-    return counts;
-  }, [allTxns, selectedYear]);
-
-  useEffect(() => {
-    let mounted = true;
-    const key = cacheKey.profit(profitYear);
-    // Cached for this year → paint instantly, refresh silently;
-    // else the skeleton shows while the chart loads.
-    if (hasItem(key)) setProfitData(getItem(key, profitData));
-    else setProfitLoading(true);
-    OverviewAPI.getProfitByMonth(profitYear)
-      .then((res) => {
-        if (!mounted) return;
-        const data = res.monthly || [];
-        setProfitData(data);
-        setItem(key, data);
-      })
-      .catch((err) => console.error("Failed to load profit chart", err))
-      .finally(() => mounted && setProfitLoading(false));
-    return () => {
-      mounted = false;
-    };
-  }, [profitYear]);
-
-  const peakMonth = useMemo(() => {
-    return monthlyTxnCounts.reduce(
-      (max, m) => (m.count > max.count ? m : max),
-      { month: "—", count: 0 },
-    );
-  }, [monthlyTxnCounts]);
-
   return (
     <div className="space-y-6">
-      {/* Overview Metrics */}
-      <Grid container spacing={1.5}>
+      {/* Overview Metrics — commented out for now */}
+      {/* <Grid container spacing={1.5}>
         {metrics.map((item, i) => (
           <SummaryCard key={i} item={item} index={i} theme={theme} />
         ))}
-      </Grid>
+      </Grid> */}
 
       {/* Ongoing Transactions */}
       <Grid container spacing={2}>
@@ -1181,28 +908,6 @@ export default function ManagementView() {
             stageOrder={stageOrder}
             navigate={navigate}
             sessionKey="selectedStatusCode"
-            theme={theme}
-          />
-        </Grid>
-      </Grid>
-
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={6}>
-          <TransactionsByMonthCard
-            monthlyTxnCounts={monthlyTxnCounts}
-            peakMonth={peakMonth}
-            availableYears={availableYears}
-            selectedYear={selectedYear}
-            onYearChange={setSelectedYear}
-            theme={theme}
-          />
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <ProfitByMonthCard
-            data={profitData}
-            availableYears={availableYears}
-            selectedYear={profitYear}
-            onYearChange={setProfitYear}
             theme={theme}
           />
         </Grid>

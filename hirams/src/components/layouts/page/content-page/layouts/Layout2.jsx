@@ -20,6 +20,7 @@ import {
   useMediaQuery,
 } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import { useTheme } from "@mui/material/styles";
 import SettingsIcon from "@mui/icons-material/Settings";
 import LogoutIcon from "@mui/icons-material/Logout";
@@ -120,6 +121,30 @@ const collectActionItems = (node, results = []) => {
   return results;
 };
 
+// Header navigation is passed in as JSX by each page. Read the native tab
+// buttons once and render them as one compact menu in the shared header.
+const collectHeaderTabItems = (node, results = []) => {
+  if (node == null || typeof node === "boolean") return results;
+  if (Array.isArray(node)) {
+    node.forEach((child) => collectHeaderTabItems(child, results));
+    return results;
+  }
+  if (React.isValidElement(node)) {
+    if (node.type === "button") {
+      results.push({
+        label: extractLabelText(node) || "Page",
+        icon: extractIcon(node),
+        onClick: node.props?.onClick,
+        disabled: Boolean(node.props?.disabled),
+        active: Boolean(node.props?.["data-active"]),
+      });
+      return results;
+    }
+    collectHeaderTabItems(node.props?.children, results);
+  }
+  return results;
+};
+
 const useColors = (c) => ({
   surfaceBg: c.slate.outerBg,
   borderColor: c.slate.border,
@@ -214,6 +239,17 @@ const Layout2 = ({
     userTypes[user?.cUserType] ?? defaultUserType?.[user?.cUserType] ?? "";
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [actionsAnchorEl, setActionsAnchorEl] = useState(null);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [headerMenuAnchorEl, setHeaderMenuAnchorEl] = useState(null);
+  const headerTabItems = useMemo(
+    () => collectHeaderTabItems(headerRight),
+    [headerRight],
+  );
+
+  const handleHeaderMenuClick = (event) => {
+    setHeaderMenuAnchorEl(event.currentTarget);
+    setHeaderMenuOpen((prev) => !prev);
+  };
 
   const handleActionsClick = (event) => {
     setActionsAnchorEl(event.currentTarget);
@@ -328,7 +364,139 @@ const Layout2 = ({
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
-            {headerRight && <div>{headerRight}</div>}
+            {headerTabItems.length > 0 && (
+              <ClickAwayListener onClickAway={() => setHeaderMenuOpen(false)}>
+                <div>
+                  <Box
+                    component="button"
+                    type="button"
+                    onClick={handleHeaderMenuClick}
+                    aria-label="Change page tab"
+                    aria-expanded={headerMenuOpen}
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 0.25,
+                      justifyContent: "space-between",
+                      minHeight: 24,
+                      minWidth: 120,
+                      px: 0.75,
+                      border: `1px solid ${colors.borderColor}`,
+                      borderRadius: "7px",
+                      bgcolor: headerMenuOpen
+                        ? colors.blueBg
+                        : colors.surfaceBg,
+                      color: colors.textPrimary,
+                      fontFamily: "inherit",
+                      fontSize: "0.58rem",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      whiteSpace: "nowrap",
+                      cursor: "pointer",
+                      transition: "background-color 0.15s, border-color 0.15s",
+                      "&:hover": {
+                        bgcolor: colors.hoverSubtle,
+                        borderColor: colors.blueText,
+                      },
+                      "&:focus-visible": {
+                        outline: `2px solid ${colors.blueText}`,
+                        outlineOffset: 1,
+                      },
+                    }}
+                  >
+                    <MenuIcon
+                      sx={{
+                        fontSize: 15,
+                        color: headerMenuOpen
+                          ? colors.blueText
+                          : colors.textSecondary,
+                      }}
+                    />
+                    <span style={{ flex: 1, textAlign: "right" }}>
+                      {headerTabItems.find((item) => item.active)?.label ||
+                        headerTabItems[0]?.label}
+                    </span>
+                    <ArrowDropDownIcon
+                      sx={{
+                        fontSize: 16,
+                        color: headerMenuOpen
+                          ? colors.blueText
+                          : colors.textSecondary,
+                      }}
+                    />
+                  </Box>
+                  <Popper
+                    open={headerMenuOpen}
+                    anchorEl={headerMenuAnchorEl}
+                    placement="bottom-end"
+                    style={{ zIndex: 1300 }}
+                    modifiers={[{ name: "offset", options: { offset: [0, 6] } }]}
+                  >
+                    <Paper
+                      elevation={8}
+                      sx={{
+                        p: 0.5,
+                        minWidth: 150,
+                        borderRadius: 2,
+                        border: `1px solid ${colors.borderColor}`,
+                        bgcolor: "background.paper",
+                      }}
+                    >
+                      <Box sx={{ display: "flex", flexDirection: "column", gap: 0.25 }}>
+                        {headerTabItems.map((item, index) => (
+                          <Box
+                            component="button"
+                            type="button"
+                            key={`${item.label}-${index}`}
+                            disabled={item.disabled}
+                            onClick={() => {
+                              if (item.disabled) return;
+                              item.onClick?.();
+                              setHeaderMenuOpen(false);
+                            }}
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 0.75,
+                              width: "100%",
+                              px: 0.75,
+                              py: 0.5,
+                              border: "none",
+                              borderRadius: 1.5,
+                              bgcolor: item.active ? colors.blueBg : "transparent",
+                              color: item.active
+                                ? colors.blueText
+                                : colors.textPrimary,
+                              fontFamily: "inherit",
+                              fontSize: 11,
+                              fontWeight: item.active ? 700 : 600,
+                              textTransform: "uppercase",
+                              textAlign: "left",
+                              cursor: item.disabled ? "not-allowed" : "pointer",
+                              opacity: item.disabled ? 0.5 : 1,
+                              "&:hover": !item.disabled
+                                ? { bgcolor: colors.hoverSubtle }
+                                : undefined,
+                              "&:focus-visible": {
+                                outline: `2px solid ${colors.blueText}`,
+                                outlineOffset: 1,
+                              },
+                            }}
+                          >
+                            {item.icon && (
+                              <Box sx={{ display: "inline-flex", "& svg": { fontSize: 16 } }}>
+                                {item.icon}
+                              </Box>
+                            )}
+                            <span>{item.label}</span>
+                          </Box>
+                        ))}
+                      </Box>
+                    </Paper>
+                  </Popper>
+                </div>
+              </ClickAwayListener>
+            )}
 
             {headerIconButton(
               isFullscreen ? "Exit full screen" : "Full screen",
@@ -356,7 +524,7 @@ const Layout2 = ({
                 >
                   <AutoAwesomeIcon
                     sx={{
-                      fontSize: 18,
+                      fontSize: 16,
                       color: colors.blueText,
                       transition: "color 0.2s",
                     }}
@@ -854,3 +1022,4 @@ const Layout2 = ({
 };
 
 export default Layout2;
+

@@ -19,6 +19,7 @@ import RestartAltOutlined from "@mui/icons-material/RestartAltOutlined";
 import MiniBaseButton from "../form/MiniBaseButton.jsx";
 import { EditableCell, PrintEditableContext } from "./EditableCell.jsx";
 import ModalContainer from "../../layouts/modal/ModalContainer.jsx";
+import ExportSpinnerContent from "../content/ExportSpinnerContent.jsx";
 import {
   PRINT_PREVIEW_CONFIRM_STYLES,
   resolveConfirmStyle,
@@ -195,7 +196,7 @@ export default function PrintPreview({
   const PAGE_H = isLandscape ? size.wPx : size.hPx;
   const PRINT_W_MM = isLandscape ? size.hMm : size.wMm;
   const PRINT_H_MM = isLandscape ? size.wMm : size.hMm;
-  const [dragEnabled, setDragEnabled] = useState(true);
+  const [dragEnabled, setDragEnabled] = useState(false);
 
   const syncPageStyleTag = () => {
     let styleTag = document.getElementById("rtp-dynamic-page-style");
@@ -302,6 +303,11 @@ export default function PrintPreview({
   );
   const [pdfConfirmOpen, setPdfConfirmOpen] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  // The EXPORT ANIMATION (the graduated progress + green tick the Excel
+  // exporter used to play) — it takes over once the Save-as-PDF
+  // confirmation is answered Yes, and drops after the download resolves.
+  const [exportAnimOpen, setExportAnimOpen] = useState(false);
+  const [exportAnimDone, setExportAnimDone] = useState(false);
 
   // ── Copy as Image ── captures the full document as a PNG and writes it to
   // the clipboard (falls back to downloading the .png when the async
@@ -405,6 +411,11 @@ export default function PrintPreview({
     const nodes = pdfPageRefs.current.slice(0, totalPages).filter(Boolean);
     if (pdfBusy || nodes.length === 0) return;
     setPdfBusy(true);
+    // The confirmation has been answered — hand the show over to the
+    // export animation and drop the dialog behind it.
+    setPdfConfirmOpen(false);
+    setExportAnimOpen(true);
+    setExportAnimDone(false);
     try {
       const captureOptions = {
         pixelRatio: 2,
@@ -449,9 +460,19 @@ export default function PrintPreview({
         );
       }
       pdf.save(`${pdfFileName}.pdf`);
-      setPdfConfirmOpen(false);
+      // Success: snap the animation to 100% + green tick, hold it briefly,
+      // then drop the overlay to the document.
+      setExportAnimDone(true);
+      setTimeout(() => {
+        setExportAnimOpen(false);
+        setExportAnimDone(false);
+      }, 1600);
     } catch (err) {
       console.error("Failed to generate PDF:", err);
+      // Failure: no fake ticks / checkmark — close the overlay straight
+      // away so the user is back on the document.
+      setExportAnimOpen(false);
+      setExportAnimDone(false);
     } finally {
       setPdfBusy(false);
     }
@@ -933,7 +954,11 @@ export default function PrintPreview({
             </div>
           </ThemeProvider>
         </Box>
-        {pdfConfirmOpen && (
+        {/* The hidden PDF pages must stay mounted while they are being
+            captured — the confirmation dialog (and now the export
+            animation that follows it) keeps them alive; unmounting
+            mid-capture produces detached nodes and invalid PNGs. */}
+        {(pdfConfirmOpen || pdfBusy || exportAnimOpen) && (
           <Box
             sx={{
               position: "fixed",
@@ -1038,6 +1063,7 @@ export default function PrintPreview({
               setPdfConfirmOpen(true);
             }}
             pdfBusy={pdfBusy}
+            pdfFileName={pdfFileName}
             onCopyImage={handleCopyImage}
             copyBusy={copyBusy}
             copied={copied}
@@ -1208,6 +1234,16 @@ export default function PrintPreview({
           </Box>
         </ModalContainer>
       )}
+
+      {/* THE EXPORT ANIMATION — the same graduated progress + green tick
+          the Excel exporter plays. It takes over from the confirmation
+          once it is answered Yes, mirrors the PDF generation, and drops
+          itself a beat after the file lands. */}
+      <ExportSpinnerContent
+        open={exportAnimOpen}
+        done={exportAnimDone}
+        fileName={`${pdfFileName}.pdf`}
+      />
     </PrintEditableContext.Provider>
   );
 }

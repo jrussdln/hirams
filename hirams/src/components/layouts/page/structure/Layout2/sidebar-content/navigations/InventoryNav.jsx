@@ -183,6 +183,7 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
       <SidebarItem
         icon={<Inventory2Icon fontSize="small" />}
         label="Inventory"
+        autoOpen={isOnPage}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}

@@ -113,6 +113,7 @@ const SupplierNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
       <SidebarItem
         icon={<LocalShippingIcon fontSize="small" />}
         label="Suppliers"
+        autoOpen={isOnPage}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}

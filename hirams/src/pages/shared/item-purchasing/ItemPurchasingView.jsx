@@ -264,7 +264,16 @@ export default function ItemPurchasingView({
     onUpdateClick: handleUpdateClick,
     collapsed: allCollapsed,
     onRemoved: () => fetchAllPurchaseOrders({ bustCache: true }),
-    voucherStatus: vouchersByPO[po.nPurchaseOrderId] ?? null,
+    // The cache entry is { voucherId, cStatus } now (the PO update view
+    // seeds its View Voucher button from it) — but accept a legacy cached
+    // plain status string so nothing breaks on the first load after deploy.
+    voucherStatus:
+      (() => {
+        const entry = vouchersByPO[po.nPurchaseOrderId];
+        return entry == null ? null : typeof entry === "object"
+          ? entry.cStatus ?? null
+          : entry;
+      })(),
     voucherActiveKey: voucherActiveKey ?? "",
     voucherClosedKey: voucherClosedKey ?? "",
   });

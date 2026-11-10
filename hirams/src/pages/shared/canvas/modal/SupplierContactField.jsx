@@ -415,7 +415,9 @@ export default function SupplierContactField({
               disabled={noSupplier}
               value={contactSearch}
               placeholder={
-                noSupplier ? "Select a supplier first" : "Search contact..."
+                noSupplier
+                  ? "Select a supplier first"
+                  : "Search contact..."
               }
               onChange={(e) => {
                 setContactSearch(e.target.value);

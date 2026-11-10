@@ -896,7 +896,7 @@ function TransactionView(props) {
   // The FOR PURCHASE / FOR DELIVERY stages are where an included option's
   // price is renegotiated, so the requests panel opens from those views.
   const [isPriceChangeModalOpen, setIsPriceChangeModalOpen] = useState(false);
-  const [pendingPriceChangeCount, setPendingPriceChangeCount] = useState(0);
+  const [pendingPriceChangeTransactions, setPendingPriceChangeTransactions] = useState(new Set());
   // The Add flow's two-step gate: the confirm dialog ("Pre-Canvass or
   // Normal Transaction?") runs first, its answer becomes the AEModal's
   // initialPreCanvas. View-local — the edit flow never touches it.
@@ -913,7 +913,11 @@ function TransactionView(props) {
         const pendingRequests = requests.filter(
           (r) => String(r.cPurchaseUnitPriceStatus ?? "").toUpperCase() === "P"
         );
-        setPendingPriceChangeCount(pendingRequests.length);
+        const txnIds = new Set();
+        pendingRequests.forEach(r => {
+          if (r.nTransactionId != null) txnIds.add(String(r.nTransactionId));
+        });
+        setPendingPriceChangeTransactions(txnIds);
       } catch (err) {
         console.error("Failed to fetch price change requests count:", err);
       }
@@ -1109,6 +1113,11 @@ function TransactionView(props) {
                     <span className="line-clamp-2 whitespace-normal text-[0.75rem] font-normal leading-[1.1] mt-px">
                       {val}
                     </span>
+                    {pendingPriceChangeTransactions.has(String(row.id)) && (
+                      <span className="block text-[0.625rem] font-bold leading-tight mt-px uppercase animate-pulse" style={{ color: colors.amber.warnText }}>
+                        {pendingPriceChangeTransactions.size} {pendingPriceChangeTransactions.size === 1 ? "Pending Price Change Approval" : "Pending Price Change Approvals"}
+                      </span>
+                    )}
                   </div>
                 );
               },
@@ -1479,7 +1488,7 @@ function TransactionView(props) {
               }}
             >
               <Badge
-                badgeContent={pendingPriceChangeCount}
+                badgeContent={pendingPriceChangeTransactions.size}
                 color="error"
                 sx={{
                   "& .MuiBadge-badge": {

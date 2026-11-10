@@ -208,6 +208,7 @@ function DataTable({
   rowKey,
   rowSx,
   wrapRow,
+  onRowClick,
   footer,
 }) {
   // ✅ Standard wiring — PROMPT 1 pattern
@@ -545,10 +546,25 @@ function DataTable({
                     borderTop: "none",
                     bgcolor: isEven ? colors.slateOuterBg : colors.slateStripeBg, // ✅ from slate
                     overflow: "visible",
+                    cursor: onRowClick ? "pointer" : "default",
                     "&:hover": { bgcolor: colors.slateRowHover }, // ✅ slate hover only
                     transition: "background 0.15s ease",
                     ...extraSx,
                   }}
+                  onClick={
+                    onRowClick
+                      ? (event) => {
+                          if (
+                            event.target.closest(
+                              "button, input, textarea, select, a, [role=button]",
+                            )
+                          ) {
+                            return;
+                          }
+                          onRowClick(row, rowIndex);
+                        }
+                      : undefined
+                  }
                 >
                   <Grid container alignItems="stretch">
                     {columns.map((col, ci) => (

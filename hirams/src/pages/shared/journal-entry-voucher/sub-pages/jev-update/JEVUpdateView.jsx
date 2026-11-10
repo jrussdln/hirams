@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { Tooltip } from "@mui/material";
 import PageLayout from "../../../../../components/layouts/page/content-page";
 import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
 import JEVUpdatePanel from "../../components/JEVUpdatePanel.jsx";
+import JEVConfirmationModal from "../../modal/JEVConfirmationModal.jsx";
+import { JEV_CONFIRM_STYLES } from "../../../../../utils/style/sharedConfirmStyles.jsx";
 import icons from "../../../../../utils/style/iconFormatStyles.jsx";
+import { withSpinner } from "../../../../../utils/helpers/swal.jsx";
 import useJEVUpdate from "./useJEVUpdate";
 
 // ── /jev-update — the full-page JEV viewer / updater route ───────────────
@@ -57,6 +61,10 @@ export default function JEVUpdateView() {
     openInventoryRowTransaction,
   } = useJEVUpdate();
 
+  // Finalize / undo-finalize asks first — the same confirm shell as the
+  // For Collection footer's toggle.
+  const [finalizeConfirmOpen, setFinalizeConfirmOpen] = useState(false);
+
   // ── Footer + the layout's own loading ────────────────────────────────
   // The layout's `loading` (footer skeleton + a pointer-events lock over
   // the content) stays off: with no entry form of our own there is no
@@ -105,7 +113,7 @@ export default function JEVUpdateView() {
                   : "Undo Finalize"
             }
             icon={isPendingJev ? icons.finalize : icons.revert}
-            onClick={toggleJevFinalize}
+            onClick={() => setFinalizeConfirmOpen(true)}
             actionColor={isPendingJev ? "approve" : "delete"}
             disabled={
               finalizingJev ||
@@ -168,6 +176,16 @@ export default function JEVUpdateView() {
         openVoucher={openVoucher}
         openTransactionForPurchase={openTransactionForPurchase}
         openInventoryRowTransaction={openInventoryRowTransaction}
+      />
+      <JEVConfirmationModal
+        open={finalizeConfirmOpen}
+        style={isPendingJev ? JEV_CONFIRM_STYLES.finalize : JEV_CONFIRM_STYLES.undo_finalize}
+        loading={finalizingJev}
+        onConfirm={() => {
+          setFinalizeConfirmOpen(false);
+          withSpinner("JEV", () => toggleJevFinalize());
+        }}
+        onClose={() => setFinalizeConfirmOpen(false)}
       />
     </PageLayout>
   );

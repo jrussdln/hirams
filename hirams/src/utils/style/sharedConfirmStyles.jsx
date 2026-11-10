@@ -383,6 +383,46 @@ export const JEV_CONFIRM_STYLES = {
     desc: "A new No Type JEV will be created and opened so you can add its entries. It stays Pending until it is finalized.",
     confirmLabel: "Yes, Create JEV",
   },
+  // The For Collection workspace's create — the journal is raised against
+  // the transaction and linked through tblcollections.
+  create_collection_jev: {
+    variant: "green",
+    Icon: BadgeOutlined,
+    title: "Create JEV for this Transaction?",
+    desc: "A new Collection (C) JEV will be created for this transaction and linked to it. It stays Pending until it is finalized.",
+    confirmLabel: "Yes, Create JEV",
+  },
+  // Finalize / undo-finalize of the transaction's Collection JEV.
+  finalize_collection_jev: {
+    variant: "blue",
+    Icon: BadgeOutlined,
+    title: "Finalize JEV?",
+    desc: "Upon Finalizing this JEV, it will become the Active JEV for this transaction.",
+    confirmLabel: "Yes, Finalize",
+  },
+  undo_finalize_collection_jev: {
+    variant: "red",
+    Icon: CloseOutlined,
+    title: "Undo Finalize JEV?",
+    desc: "This action will mark this JEV as Pending for this transaction.",
+    confirmLabel: "Yes, Undo Finalize",
+  },
+  // The /jev-update page's own toggle — generic wording, the journal could
+  // be a C, V, R or D type.
+  finalize: {
+    variant: "blue",
+    Icon: BadgeOutlined,
+    title: "Finalize JEV?",
+    desc: "Upon Finalizing this JEV, it will become the Active JEV. Its entries will no longer be editable.",
+    confirmLabel: "Yes, Finalize",
+  },
+  undo_finalize: {
+    variant: "red",
+    Icon: CloseOutlined,
+    title: "Undo Finalize JEV?",
+    desc: "This will mark this JEV as Pending again and make its entries editable.",
+    confirmLabel: "Yes, Undo Finalize",
+  },
 };
 
 // ── Transaction confirm dialogs (transactions listing) ───────────────────

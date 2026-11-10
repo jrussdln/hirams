@@ -39,7 +39,6 @@ class Transactions extends Model
         'strDocOpening_Venue',
         'dtDelivery',
         'strDeliveryPlace',
-        'nJEVId',
         'strOfficeName',
         'strOfficeNickName',
         'bIsPreCanvas',
@@ -76,9 +75,13 @@ class Transactions extends Model
         return $this->hasOne(TransactionHistory::class, 'nTransactionId')
             ->latestOfMany('dtOccur'); // fetch the latest history
     }
-    public function jev()
+    /**
+     * The Collection row that binds this transaction to its journal — the
+     * JEV link lives on tblcollections, not on the transaction itself.
+     */
+    public function collection()
     {
-        return $this->belongsTo(Jev::class, 'nJEVId', 'nJEVId');
+        return $this->hasOne(Collection::class, 'nTransactionId', 'nTransactionId');
     }
     public function latestHistoryByStatus($status)
     {

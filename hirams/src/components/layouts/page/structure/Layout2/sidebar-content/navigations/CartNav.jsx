@@ -167,6 +167,7 @@ const CartNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
       <SidebarItem
         icon={<ShoppingCartIcon fontSize="small" />}
         label="Purchase Cart"
+        autoOpen={isOnPage}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}

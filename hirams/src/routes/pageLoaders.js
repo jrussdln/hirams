@@ -56,6 +56,8 @@ const pageLoaders = {
   // ── Preview / print ───────────────────────────────────────────────────
   "/preview-po": () =>
     import("../pages/shared/item-purchasing/sub-pages/preview-po"),
+  "/preview-pricing": () =>
+    import("../pages/shared/pricing/sub-pages/preview-pricing"),
   "/preview-voucher": () =>
     import("../pages/shared/voucher/sub-pages/preview-voucher"),
   "/preview-cheque": () =>

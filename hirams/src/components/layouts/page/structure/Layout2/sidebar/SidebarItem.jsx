@@ -1,4 +1,4 @@
-import React, { useState, useMemo, cloneElement } from "react";
+import React, { useState, useMemo, cloneElement, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Collapse } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
@@ -68,6 +68,13 @@ const SidebarItem = ({
   onParentClick,
   // Opt-in: only submenus that explicitly pass showSearch get the row.
   showSearch = false,
+  // Route-driven auto-open: when the app lands on one of this section's
+  // pages while the section is collapsed, it pops open so the user can see
+  // where they ended up (e.g. "I was browsing Item Purchasing, navigated to
+  // a Voucher — the Vouchers section must uncollapse, or the highlighted
+  // item hides behind the closed section"). It only OPENS — a route change
+  // never collapses a section, and the manual open state stays persisted.
+  autoOpen = false,
 }) => {
   const theme = useTheme(),
     isDark = theme.palette.mode === "dark";
@@ -93,6 +100,19 @@ const SidebarItem = ({
       return next;
     });
   };
+
+  useEffect(() => {
+    if (storageKey && autoOpen) {
+      // Only opens — the guard inside the updater means a route change can
+      // never collapse a section the user closed, it just re-opens THIS
+      // section the moment the app lands on one of its pages again.
+      setOpen((prev) => {
+        if (prev) return prev;
+        localStorage.setItem(storageKey, true);
+        return true;
+      });
+    }
+  }, [storageKey, autoOpen]);
 
   const active = to ? pathname === to || pathname.startsWith(to + "/") : false;
 
@@ -220,6 +240,9 @@ const SidebarItem = ({
       onClick={handleLinkClick}
       className={rowBase}
       style={rowStyle}
+      // Marker for the sidebar scroll-reveal — the container scrolls the
+      // active row into view after route changes / auto-opens.
+      data-sidebar-active={active ? "true" : undefined}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onTouchStart={() => preloadRoute(to)}

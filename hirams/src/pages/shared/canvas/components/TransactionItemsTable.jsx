@@ -464,9 +464,16 @@ function TransactionItemsTable({
   // mode + purchase-only props
   mode = "canvas",
   forCollection = false,
+  showPurchasedBadge = false,
   totalPurchaseProgress,
   totalPurchaseBalance,
   totalCollectibleValue = 0,
+  collectionRetention = 0,
+  // The journal behind the collection — surfaced through
+  // CollectionPaymentDetails, or its "not yet added" placeholder.
+  jev = null,
+  jevPendingKey,
+  jevBalance = {},
   optionStatuses = {},
   latestHistories = {},
   onRefreshOptionData,
@@ -477,6 +484,16 @@ function TransactionItemsTable({
   /* FINANCE READS THE PURCHASE TABLE — no option authoring, so the
      flag rides along to hide the Get Suggestions / Option buttons. */
   isFinanceOfficer,
+  /* ARCHIVED TRANSACTION — the workspace is a frozen reference of the
+     stage it completed from: no option authoring either. */
+  isArchiveView = false,
+  /* THE STAGE ITSELF can forbid option authoring — the For Collection
+     workspace passes this so its purchase-side tabs never print the
+     Get Suggestions / + Option buttons (the stage is past canvassing). */
+  hideOptionActions = false,
+  /* Read-only purchase views (for example, For Purchase from Collection)
+     still expose the option action column so the View Cart eye is visible. */
+  showPurchaseOptionActionColumn = false,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -573,82 +590,135 @@ function TransactionItemsTable({
     crudItemsEnabled || showPurchaseOptions || isManagement;
 
   // ⚠️ MUI <Grid container> moves a cell to a SECOND ROW whenever a row's xs
-  // values exceed 12, so every branch below must total exactly 12.
-  // Canvas (non-purchase) row = desc + qty + [abc:3] + [action:1]
+  // values exceed 12, so every branch below must total exactly 12 — the
+  // numbering column ("#") holds 0.5 of them for both modes (a full unit
+  // reads far too wide for a 1–2 digit number; MUI Grid accepts fractions).
+  // Canvas (non-purchase) row = num + desc + qty + [abc:3] + [action:1]
   const descXs = showPurchaseOptions
     ? anyItemHasABC
-      ? 3
-      : 7
-    : 12 - qtyXs - (anyItemHasABC ? 3 : 0) - (showActionColumn ? 1 : 0);
+      ? 2.5
+      : 6.5
+    : 11.5 - qtyXs - (anyItemHasABC ? 3 : 0) - (showActionColumn ? 1 : 0);
+
+  // The item's number in its own narrow column — it used to print inside
+  // the description ("2. Chair"), crowding longer names.
+  const numColumn = {
+    key: "num",
+    label: "#",
+    xs: 0.5,
+    align: "center",
+    render: (item) => (
+      <Typography
+        sx={{
+          fontSize: ".7rem",
+          lineHeight: 1.3,
+          textAlign: "center",
+          width: "100%",
+        }}
+      >
+        {item.nItemNumber}
+      </Typography>
+    ),
+  };
 
   const descColumn = {
     key: "desc",
     label: "Description",
-    xs: isPurchase ? 5 : descXs,
+    xs: isPurchase ? 4.5 : descXs,
     headerAlign: "center",
     cellSxExtra: { pl: 1.5 },
-    render: (item) => (
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          width: "100%",
-          minWidth: 0,
-        }}
-      >
-        <Typography
-          fontWeight={500}
+    render: (item) => {
+      const hasPendingPrice = (item.purchaseOptions || []).some(
+        (o) =>
+          o.dPurchaseUnitPrice != null &&
+          o.dPurchaseUnitPrice !== "" &&
+          String(o.cPurchaseUnitPriceStatus || "").toUpperCase() === "P"
+      );
+      return (
+        <Box
           sx={{
-            fontSize: ".70rem",
-            lineHeight: 1.3,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flexGrow: 1,
+            display: "flex",
+            flexDirection: "column",
+            width: "100%",
+            minWidth: 0,
           }}
         >
-          <Box component="span" sx={{ fontWeight: 600 }}>
-            {item.nItemNumber}.
-          </Box>{" "}
-          {item.name || "—"}
-        </Typography>
-        <Box
-          sx={{ flexShrink: 0, mr: 3, display: "flex", alignItems: "center" }}
-        >
           <Box
-            component="button"
-            title="Specs"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleSpecsRow(item.id);
-            }}
             sx={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              p: 0.5,
               display: "flex",
               alignItems: "center",
+              width: "100%",
+              minWidth: 0,
             }}
           >
-            <ArrowDropDownIcon
+            <Typography
+              fontWeight={500}
               sx={{
-                transform: expandedRows[item.id]?.specs
-                  ? "rotate(180deg)"
-                  : "rotate(0deg)",
-                transition: "transform 0.2s ease",
-                fontSize: "1.2rem",
-                color: colors.textSecondary,
+                fontSize: ".70rem",
+                lineHeight: 1.3,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flexGrow: 1,
               }}
-            />
+            >
+              {item.name || "—"}
+            </Typography>
+            <Box
+              sx={{ flexShrink: 0, mr: 3, display: "flex", alignItems: "center" }}
+            >
+              <Box
+                component="button"
+                title="Specs"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleSpecsRow(item.id);
+                }}
+                sx={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  p: 0.5,
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <ArrowDropDownIcon
+                  sx={{
+                    transform: expandedRows[item.id]?.specs
+                      ? "rotate(180deg)"
+                      : "rotate(0deg)",
+                    transition: "transform 0.2s ease",
+                    fontSize: "1.2rem",
+                    color: colors.textSecondary,
+                  }}
+                />
+              </Box>
+            </Box>
           </Box>
+          {hasPendingPrice && (
+            <Typography
+              sx={{
+                fontSize: "0.55rem",
+                fontWeight: 700,
+                color: "#ed6c02",
+                lineHeight: 1,
+                mt: "1px",
+                textTransform: "uppercase",
+                animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+              }}
+            >
+              PENDING PRICE CHANGE APPROVAL
+            </Typography>
+          )}
         </Box>
-      </Box>
-    ),
+      );
+    },
   };
 
   /* ── Canvas-mode columns (ABC / balance-vs-ABC) ── */
   const canvasColumns = [
+    numColumn,
     descColumn,
     {
       key: "qty",
@@ -880,6 +950,7 @@ function TransactionItemsTable({
 
   /* ── Purchase-mode columns (Progress / unpaid balance) ── */
   const purchaseColumns = [
+    numColumn,
     descColumn,
     {
       key: "progress",
@@ -1011,7 +1082,14 @@ function TransactionItemsTable({
 
   const activeColumns = isPurchase ? purchaseColumns : canvasColumns;
 
-  const getRowSx = () => ({ borderLeft: `4px solid ${colors.primaryMain}` });
+  const getRowSx = () => ({
+    // The accent is a SHADOW, not a border-left: a 4px border consumes
+    // layout width, shrinking every row column ~3px against the header's
+    // (which keeps a 1px border) and drifting the column dividers out of
+    // line. The inset shadow paints the same stripe without touching
+    // width, so header borders and row borders align.
+    boxShadow: `inset 4px 0 0 0 ${colors.primaryMain}`,
+  });
 
   /* ── Row wrapper (specs + options panels) ── */
   const wrapRow = (item, rowIndex, paperNode, isLastRow) => {
@@ -1028,8 +1106,7 @@ function TransactionItemsTable({
     const visibleOptions =
       isPurchase && isChosenOnly(item.id)
         ? item.purchaseOptions.filter(
-            (o) =>
-              Number(o.bPurchaseIncluded) === 1 || Number(o.bIncluded) === 1,
+            (o) => Number(o.bPurchaseIncluded) === 1,
           )
         : item.purchaseOptions;
 
@@ -1310,9 +1387,12 @@ function TransactionItemsTable({
                       even when the item is fully covered (12 / 12) or an
                       add-on was just added — the options of an item can
                       always grow. Only a read-only view, a status change
-                      (the transaction moved on) or a finance reader (no
-                      option authoring) hides them. */}
+                      (the transaction moved on), an archived transaction
+                      or a finance reader (no option authoring) hides
+                      them. */}
                   {!isFinanceOfficer &&
+                    !isArchiveView &&
+                    !hideOptionActions &&
                     (checkboxOptionsEnabled || isPurchase) &&
                     !statusChangedAlert &&
                     !readOnly &&
@@ -1347,7 +1427,18 @@ function TransactionItemsTable({
                   {isPurchase && (
                     <MiniBaseButton
                       icon={<ListAlt />}
-                      label={isChosenOnly(item.id) ? "Show all" : "Chosen only"}
+                      /* The count is what the toggle lands ON: "Show all"
+                         prints the item's total option count, "Chosen only"
+                         prints how many rows are actually chosen. */
+                      label={
+                        isChosenOnly(item.id)
+                          ? `Show all (${item.purchaseOptions.length})`
+                          : `Chosen only (${
+                              item.purchaseOptions.filter(
+                                (o) => Number(o.bPurchaseIncluded) === 1,
+                              ).length
+                            })`
+                      }
                       variant="blue"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1402,6 +1493,7 @@ function TransactionItemsTable({
                   </Box>
                 ))}
                 {(checkboxOptionsEnabled ||
+                  showPurchaseOptionActionColumn ||
                   /* PROCUREMENT / PROC TL — their full cart column is
                      folded away, so the header only stands while an
                      option is at the money-review stages (cart / For
@@ -1453,14 +1545,6 @@ function TransactionItemsTable({
                     Number(option.bAddOn) === 1 &&
                     (index === 0 ||
                       Number(visibleOptions[index - 1].bAddOn) !== 1);
-                  const displayIndex =
-                    Number(option.bAddOn) === 1
-                      ? visibleOptions
-                          .slice(0, index)
-                          .filter((o) => Number(o.bAddOn) === 1).length + 1
-                      : visibleOptions
-                          .slice(0, index)
-                          .filter((o) => Number(o.bAddOn) !== 1).length + 1;
 
                   const latestStatus =
                     isPurchase && latestHistories[option.nPurchaseItemId]
@@ -1496,11 +1580,11 @@ function TransactionItemsTable({
                       ewtTypeLabels={ewtBypassType}
                       pendingStatusLetter={pendingStatusLetter}
                       index={index}
-                      displayIndex={displayIndex}
                       isLastOption={index === item.purchaseOptions.length - 1}
                       itemId={item.id}
                       item={item}
                       checkboxOptionsEnabled={checkboxOptionsEnabled}
+                      showPurchasedBadge={showPurchasedBadge}
                       expandedOptions={expandedOptions}
                       optionErrors={optionErrors}
                       onToggleInclude={handleToggleInclude}
@@ -1545,6 +1629,7 @@ function TransactionItemsTable({
                       isProcurement={isProcurement}
                       isProcurementTL={isProcurementTL}
                       isFinanceOfficer={isFinanceOfficer}
+                      showActionColumn={showPurchaseOptionActionColumn}
                     />
                   );
                 })
@@ -1929,6 +2014,11 @@ function TransactionItemsTable({
                 rowKey={(row) => row.id}
                 rowSx={getRowSx}
                 columns={activeColumns}
+                onRowClick={
+                  showPurchaseOptions
+                    ? (item) => toggleOptionsRow(item.id)
+                    : undefined
+                }
                 wrapRow={wrapRow}
                 emptyText="No items available."
               />
@@ -1951,6 +2041,8 @@ function TransactionItemsTable({
     <CollectionPaymentDetails
       collectibleAmount={totalCollectibleValue}
       totalSales={totalCollectibleValue}
+      cItemType={cItemType}
+      retentionAmount={collectionRetention}
       companyName={transaction?.company?.strCompanyName}
       clientName={transaction?.client?.strClientName}
       clientAddress={transaction?.client?.strAddress}
@@ -1959,6 +2051,11 @@ function TransactionItemsTable({
       transactionTitle={transaction?.strTitle}
       date={transaction?.dtDelivery ?? new Date().toISOString()}
       nTransactionId={transaction?.nTransactionId}
+      jev={jev}
+      jevPendingKey={jevPendingKey}
+      jevBalance={jevBalance}
+      isFinanceOfficer={isFinanceOfficer}
+      isManagement={isManagement}
     />
   ) : (
     content

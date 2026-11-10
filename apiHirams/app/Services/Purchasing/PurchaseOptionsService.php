@@ -359,20 +359,18 @@ class PurchaseOptionsService extends CrudService
     }
 
     /**
-     * SYNC one pending price change from the option row itself — the owner
-     * adopts the renegotiated (pending) price straight on the line: dUnitPrice
-     * is moved onto the pending value and the backend DETECTS the adoption
-     * (the value it just wrote is the pending one, so they are the same) —
-     * which closes the cycle: the pending fields (cPurchaseUnitPriceStatus +
-     * dPurchaseUnitPrice) are REMOVED and dtCanvass moves to the moment the
-     * adopted price took effect.
+     * CLEAR one pending price change from the option row itself.
+     *
+     * This action removes the requested purchase price only. The original
+     * canvassed price (dUnitPrice) and its canvass date remain unchanged;
+     * clearing a request must not adopt or rewrite the transaction price.
      */
-    public function syncUnitPrice(int $id): PurchaseOptions
+    public function clearPriceChange(int $id): PurchaseOptions
     {
         $option = $this->newQuery()->findOrFail($id);
 
         if ((int) ($option->bIncluded ?? 0) !== 1) {
-            throw new Exception('Only an included option has a price change to sync.');
+            throw new Exception('Only an included option has a price change to clear.');
         }
 
         if (
@@ -382,29 +380,12 @@ class PurchaseOptionsService extends CrudService
             throw new Exception('This option has no pending price change.');
         }
 
-        $pendingPrice = (float) ($option->getRawOriginal('dPurchaseUnitPrice') ?? 0);
-
-        // Adopt the pending price — the canvassed value is replaced by the
-        // proposed one.
+        // Clear the request completely. Keep dUnitPrice and dtCanvass as-is:
+        // the requested value is discarded rather than adopted.
         $option->update([
-            'dUnitPrice' => $pendingPrice,
+            'cPurchaseUnitPriceStatus' => null,
+            'dPurchaseUnitPrice'       => null,
         ]);
-
-        $option->refresh();
-
-        // The backend detects that the written value came from the pending
-        // price — i.e. the update in dPurchaseUnitPrice IS the dUnitPrice —
-        // and resolves the renegotiation: drop the proposal, move on.
-        if ((float) $option->getRawOriginal('dUnitPrice') === $pendingPrice) {
-            $option->update([
-                // The proposal is resolved — removed outright.
-                'cPurchaseUnitPriceStatus' => null,
-                'dPurchaseUnitPrice'       => null,
-                // The adopted price took effect — the canvass date moves
-                // with it, exactly like an approval would.
-                'dtCanvass'                 => now(),
-            ]);
-        }
 
         $this->broadcast('updated', $option);
 

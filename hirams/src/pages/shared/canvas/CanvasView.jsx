@@ -5,6 +5,8 @@ import { Box, Typography, Alert } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { Replay } from "@mui/icons-material";
 import BaseButton from "../../../components/ui/form/BaseButton";
+import MiniBaseButton from "../../../components/ui/form/MiniBaseButton";
+import { ReceiptLongOutlined } from "@mui/icons-material";
 import TransactionDetails from "../transactions/components/TransactionDetails";
 import TransactionItemsTable from "./components/TransactionItemsTable";
 import PricingPanel from "../pricing/components/PricingPanel";
@@ -254,6 +256,12 @@ export default function CanvasView(props) {
     showCostBreakdown &&
     Number(transaction?.bIsPreCanvas) === 1;
 
+  const showExportSubFooter =
+    (!isCompareActive &&
+      forCanvasKey.includes(selectedStatusCode) &&
+      totalIncludedQty === totalItemQty) ||
+    (isPreCanvasAwardExport && pricingSet);
+
   return (
     <PageLayout
       title={isArchiveView ? "Transaction Archived" : "Transaction"}
@@ -277,7 +285,8 @@ export default function CanvasView(props) {
             }}
           >
             <button
-              onClick={() => setActiveTab("info")}
+              data-active={activeTab === "info"}
+               onClick={() => setActiveTab("info")}
               style={{
                 padding: "3px 10px",
                 background:
@@ -296,7 +305,8 @@ export default function CanvasView(props) {
               Information
             </button>
             <button
-              onClick={() => setActiveTab("canvas")}
+              data-active={activeTab === "canvas"}
+               onClick={() => setActiveTab("canvas")}
               style={{
                 padding: "3px 10px",
                 background:
@@ -326,7 +336,8 @@ export default function CanvasView(props) {
             }}
           >
             <button
-              onClick={() => setActiveTab("canvas")}
+              data-active={activeTab === "canvas"}
+               onClick={() => setActiveTab("canvas")}
               style={{
                 padding: "3px 10px",
                 background:
@@ -344,7 +355,8 @@ export default function CanvasView(props) {
               Canvas
             </button>
             <button
-              onClick={() => setActiveTab("pricing")}
+              data-active={activeTab === "pricing"}
+               onClick={() => setActiveTab("pricing")}
               style={{
                 padding: "3px 10px",
                 background:
@@ -362,7 +374,8 @@ export default function CanvasView(props) {
               Pricing
             </button>
             <button
-              onClick={() => setActiveTab("info")}
+              data-active={activeTab === "info"}
+               onClick={() => setActiveTab("info")}
               style={{
                 padding: "3px 10px",
                 background:
@@ -428,38 +441,6 @@ export default function CanvasView(props) {
               actionColor="approve"
             />
           )}
-          {forCanvasKey.includes(selectedStatusCode) && !isCompareActive && (
-            <BaseButton
-              label="Export"
-              icon={icons.export}
-              onClick={() => setIsExportCanvasOpen(true)}
-              disabled={
-                statusChangedAlert ||
-                itemsLoading ||
-                totalIncludedQty !== totalItemQty
-              }
-              actionColor="save"
-              tooltip={
-                totalIncludedQty !== totalItemQty
-                  ? "All quantities must be fulfilled before exporting"
-                  : ""
-              }
-            />
-          )}
-          {isPreCanvasAwardExport && (
-            <BaseButton
-              label="Export Pre-Canvass"
-              icon={icons.export}
-              onClick={() => setIsExportCanvasOpen(true)}
-              disabled={
-                itemsLoading || statusChangedAlert || !pricingSet
-              }
-              actionColor="save"
-              tooltip={
-                !pricingSet ? "No chosen pricing set yet" : "Export Canvas"
-              }
-            />
-          )}
           {showVerify && (
             <BaseButton
               label="Verify"
@@ -511,6 +492,54 @@ export default function CanvasView(props) {
             />
           )}
         </>
+      }
+      subFooter={
+        showExportSubFooter ? (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+              height: "100%",
+              padding: "0 1rem",
+            }}
+          >
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                pr: 1,
+              }}
+            >
+              <ReceiptLongOutlined sx={{ fontSize: "0.8rem", color: "white" }} />
+              <Typography
+                sx={{
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  color: "white",
+                  letterSpacing: "0.025em",
+                }}
+              >
+                {isPreCanvasAwardExport
+                  ? "PRE-CANVASS PRICING REPORT IS NOW AVAILABLE!"
+                  : "TRANSACTION PRICINGS IS NOW AVAILABLE!"}
+              </Typography>
+            </Box>
+            <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+              <MiniBaseButton
+                label="VIEW"
+                icon={icons.view}
+                color="white"
+                bg="rgba(255, 255, 255, 0.15)"
+                border="rgba(255, 255, 255, 0.3)"
+                hoverBg="rgba(255, 255, 255, 0.25)"
+                onClick={() => setIsExportCanvasOpen(true)}
+              />
+            </Box>
+          </div>
+        ) : null
       }
     >
       <Box>
@@ -619,6 +648,7 @@ export default function CanvasView(props) {
                   ? Number(transaction.dTotalABC)
                   : items.reduce((s, i) => s + Number(i.abc || 0), 0)
               }
+              onRefreshOptionData={() => fetchItems({ restoreScroll: true })}
               fmtDateTime={fmtDateTime}
               getDueDateVariant={getDueDateVariant}
               onSpecsChange={(newSpecs) => {

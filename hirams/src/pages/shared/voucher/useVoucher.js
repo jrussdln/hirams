@@ -92,7 +92,13 @@ export default function useVoucher() {
 
   const handleViewClick = useCallback(
     (voucher) => {
-      navigate(`/voucher-update?id=${voucher.nVoucherId}`);
+      // voucherStatusCode rides in state so the Vouchers sidebar highlights
+      // the status this voucher belongs to, not the user's LAST clicked
+      // filter (the persisted selection would otherwise point at a
+      // completely different stage on return).
+      navigate(`/voucher-update?id=${voucher.nVoucherId}`, {
+        state: { voucherStatusCode: voucher.cStatus },
+      });
     },
     [navigate],
   );

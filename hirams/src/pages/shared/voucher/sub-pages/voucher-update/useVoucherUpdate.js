@@ -264,7 +264,19 @@ export default function useVoucherUpdate() {
       }, 0);
 
   // ── JEV entries (single source of truth — also reused for the preview nav) ──
-  const [jevEntries, setJevEntries] = useState([]);
+  const [jevEntries, setJevEntries] = useState(() => {
+    const jevId = voucher?.nJEVId;
+    if (!jevId) return [];
+    // The app's storage util — JSON + the hirams_ prefix, read back PARSED.
+    // (A raw localStorage.getItem/key pair here stored a plain JSON string
+    // that read back non-array and crashed the preview's .map.)
+    try {
+      const cached = getItem(`jev_entries_${jevId}`, null);
+      if (Array.isArray(cached)) return cached;
+    } catch (e) {}
+    return voucher?.jev?.entries ?? [];
+  });
+  
   useEffect(() => {
     const jevId = voucher?.nJEVId;
     if (!jevId) {
@@ -279,11 +291,14 @@ export default function useVoucherUpdate() {
         if (!active) return;
         const list = Array.isArray(res) ? res : (res?.data ?? []);
         setJevEntries(list);
+        try {
+          // Parsed JSON under the hirams_ prefix — see the seed above.
+          setItem(`jev_entries_${jevId}`, list);
+        } catch (e) {}
       })
       .catch((err) => {
         if (!active) return;
         console.error("useVoucherUpdate — jevEntries fetch failed:", err);
-        setJevEntries([]);
       });
 
     return () => {
@@ -855,6 +870,11 @@ export default function useVoucherUpdate() {
         state: {
           cheque: voucher?.cheque ?? null,
           payeeName,
+          // The file name inputs: supplier nickname and the company —
+          // the cheque's Save-as-PDF name reads
+          // "SupplierNick-Cheque(CompanyNick)".
+          payeeNickName,
+          company,
           amount: chequeAmount,
         },
       });

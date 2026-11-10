@@ -11,7 +11,8 @@ import {
   RemoveShoppingCart,
   ShoppingCart,
   Visibility,
-  SyncOutlined,
+  RestoreOutlined,
+  CheckCircle,
 } from "@mui/icons-material";
 import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import BaseButton from "../../../../components/ui/form/BaseButton";
@@ -26,7 +27,10 @@ import {
 } from "../../../../utils/formatters/formatter.js";
 import MiniBaseButton from "../../../../components/ui/form/MiniBaseButton";
 import { CART_STATUS_STYLES } from "../../../../utils/style/sharedConfirmStyles.jsx";
-import { getOptionArrival } from "../../../../utils/helpers/purchaseProgress.js";
+import {
+  getOptionArrival,
+  getOptionStep,
+} from "../../../../utils/helpers/purchaseProgress.js";
 import { ewtOfOption } from "../../../../utils/helpers/calculateEWT.js";
 // ── PROMPT 1 — inline color map, only tokens this component uses ──
 const useColors = (c) => ({
@@ -191,35 +195,52 @@ function SuccessTick({ colors }) {
   );
 }
 
-function StatusStamp({ children, color, bg, border, pct, colors }) {
+function StatusStamp({ children, color, bg, border, inner, pct }) {
   return (
     <Box
       sx={{
         width: 24,
         height: 24,
+        borderRadius: "50%",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
+        border: `2px solid ${border}`,
+        outline: `1px solid ${border}`,
+        outlineOffset: "2px",
+        boxShadow: `0 0 0 1px ${inner}`,
+        backgroundColor: bg,
       }}
     >
-      <Box
-        sx={{
-          ...STAMP_BASE_SX,
-          color: pct != null ? colors.textOnFill : color,
-          backgroundColor: pct != null ? color : bg,
-          border: `2px solid ${color}`,
-          boxShadow: `inset 0 0 0 1px ${border}`,
-          ...(pct != null && {
-            fontSize: "0.38rem",
-            fontWeight: 800,
+      {pct != null ? (
+        <Box
+          sx={{
+            fontSize: "0.42rem",
+            fontWeight: 900,
+            color,
+            lineHeight: 1,
             letterSpacing: "-0.02em",
-            transform: "none",
-          }),
-        }}
-      >
-        {pct != null ? `${pct}%` : children}
-      </Box>
+            transform: "rotate(-12deg)",
+          }}
+        >
+          {pct}
+        </Box>
+      ) : (
+        <Box
+          sx={{
+            ...STAMP_BASE_SX,
+            color,
+            backgroundColor: bg,
+            border: `2px solid ${border}`,
+            borderRadius: "4px",
+            boxShadow: `inset 0 0 0 1px ${inner}`,
+            transform: "rotate(-15deg)",
+          }}
+        >
+          {children}
+        </Box>
+      )}
     </Box>
   );
 }
@@ -249,18 +270,38 @@ function CartActionButtons({
   isAssignedToMe,
   readOnly,
   colors,
+  isPurchase = false,
 }) {
   const [cartPhase, setCartPhase] = useState("idle");
 
-  const progressLabel = latestHistory
-    ? ({
-        [String(forApprovalKey)]: "For Approval",
-        [String(forPaymentKey)]: "For Payment",
-        [String(pendingReceiptKey)]: "Pending Receipt",
-        [String(forDeliveryKey)]: "For Delivery",
-        [String(deliveredKey)]: "Delivered",
-      }[String(latestHistory.nStatus)] ?? "")
-    : "";
+  /* Use the same quantity-aware status progression as the purchase table.
+     A stale option history can still say Pending Receipt even after all
+     ordered quantity has been delivered, which made the eye tooltip lie. */
+  const displayStatus =
+    eyeViewCart && option
+      ? getOptionStep(latestHistory?.nStatus, option, {
+          cartKey,
+          forApprovalKey,
+          forPaymentKey,
+          pendingReceiptKey,
+          forDeliveryKey,
+          deliveredKey,
+        })
+      : null;
+  const progressLabel =
+    displayStatus === 6
+      ? "Delivered"
+      : displayStatus === 5
+        ? "For Delivery"
+        : displayStatus === 4
+          ? "Pending Receipt"
+          : displayStatus === 3
+            ? "For Payment"
+            : displayStatus === 2
+              ? "For Approval"
+              : displayStatus === 1
+                ? "Cart"
+                : "";
 
   const isDisabled = readOnly || isAssignedToMe;
   const canRemove = isInCart && !isDisabled;
@@ -305,7 +346,9 @@ function CartActionButtons({
       // button used to carry it.
       tooltip={progressLabel ? `${progressLabel} — View Cart` : "View Cart"}
       onClick={onViewCart}
-      disabled={isDisabled}
+      /* Viewing an existing cart is read-only navigation and should remain
+         available to readers; assignment only gates edit/cart mutations. */
+      disabled={readOnly}
       size="small"
     />
   );
@@ -489,7 +532,7 @@ function PurchaseStatusIcon({
         color={colors.voidColor}
         bg={colors.voidBg}
         border={colors.voidBorder}
-        colors={colors}
+        inner={colors.rowBorder}
       >
         VOID
       </StatusStamp>
@@ -564,30 +607,17 @@ function PurchaseStatusIcon({
         {badges
           .filter((b) => b.label)
           .map(({ pct, label, color, bg, border, tip }, i) => (
-            <Box
+            <StatusStamp
               key={i}
               title={tip}
-              sx={{
-                ...STAMP_BASE_SX,
-                color,
-                backgroundColor: bg,
-                border: `2px solid ${color}`,
-                boxShadow: `inset 0 0 0 1px ${border}`,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                lineHeight: 1.2,
-              }}
+              color={color}
+              bg={bg}
+              border={border}
+              inner={colors.rowBorder}
+              pct={pct}
             >
-              {pct && (
-                <span
-                  style={{ fontSize: "0.5rem", fontWeight: 800, lineHeight: 1 }}
-                >
-                  {pct}
-                </span>
-              )}
-              <span>{label}</span>
-            </Box>
+              {label}
+            </StatusStamp>
           ))}
       </Box>
     );
@@ -658,6 +688,7 @@ const PurchaseOptionRow = ({
   isLastOption,
   itemId,
   checkboxOptionsEnabled,
+  showPurchasedBadge = false,
   expandedOptions,
   optionErrors,
   onToggleInclude,
@@ -669,7 +700,6 @@ const PurchaseOptionRow = ({
   isManagement,
   isFirstAddOn,
   hasNoRegularOptions,
-  displayIndex,
   statusChangedAlert,
   readOnly = false,
   mode = "canvas",
@@ -692,6 +722,8 @@ const PurchaseOptionRow = ({
   isProcurement = false,
   isProcurementTL = false,
   isFinanceOfficer = false,
+  /* Read-only purchase tabs can still expose View Cart in the action column. */
+  showActionColumn = false,
 }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -707,6 +739,7 @@ const PurchaseOptionRow = ({
             color: getColor(base, val.colorKey),
             bg: getColor(base, val.bgKey),
             border: getColor(base, val.borderKey),
+            inner: base.slate.stampRing,
           },
         ]),
       ),
@@ -783,7 +816,14 @@ const PurchaseOptionRow = ({
   const isIncluded = isPurchase
     ? Number(option.bPurchaseIncluded) === 1
     : !!option.bIncluded;
-  const rowDisabled = isPurchase && (readOnly || !isAssignedToMe);
+  // On the Canvas tab, keep purchase-only selections visible as a checked,
+  // read-only green checkbox so it is clear that this option is already in
+  // the purchase flow even when it is not selected for canvassing.
+  const isPurchaseIncluded = Number(option.bPurchaseIncluded) === 1;
+  // Opening an existing cart is read-only navigation, so it is available to
+  // readers even when they are not assigned to the transaction. The
+  // assignment restriction remains applied to edit/cart mutations below.
+  const rowDisabled = isPurchase && readOnly;
 
   // PURCHASE STAGES — the money-review trio. Viewers whose full cart
   // column is folded away (procurement / procurement TL) get ONE thing:
@@ -839,32 +879,25 @@ const PurchaseOptionRow = ({
     }
   };
 
-  // ── SYNC — adopt the pending (renegotiated) price straight from the row.
-  // The owner sees the PENDING tag on the unit price and can take the
-  // proposal as-is: the backend writes the pending value into dUnitPrice,
-  // detects the adoption and clears the pending fields + stamps dtCanvass.
-  const [syncingUnitPrice, setSyncingUnitPrice] = useState(false);
-  const [adoptedSync, setAdoptedSync] = useState(null);
+  // ── CLEAR — remove the requested price without changing the canvassed one.
+  const [clearingUnitPrice, setClearingUnitPrice] = useState(false);
+  const [clearedPriceRequest, setClearedPriceRequest] = useState(null);
 
-  const handleSyncUnitPrice = async () => {
-    if (!hasPendingPrice || syncingUnitPrice) return;
-    setSyncingUnitPrice(true);
+  const handleClearUnitPrice = async () => {
+    if (!hasPendingPrice || clearingUnitPrice) return;
+    setClearingUnitPrice(true);
     try {
-      const res = await PurchaseOptionAPI.syncPriceChange(
+      const res = await PurchaseOptionAPI.clearPriceChange(
         option.nPurchaseItemId,
       );
-      const adopted = res?.data?.item;
-      if (adopted) {
-        setAdoptedSync({
-          nPurchaseItemId: option.nPurchaseItemId,
-          dUnitPrice: adopted.dUnitPrice ?? adopted.dPurchaseUnitPrice,
-          dtCanvass: adopted.dtCanvass,
-        });
+      if (res?.item) {
+        setClearedPriceRequest(option.nPurchaseItemId);
+        await onAddedToCart?.(option.nPurchaseItemId);
       }
     } catch (err) {
-      console.error("PurchaseOptionRow: sync failed:", err);
+      console.error("PurchaseOptionRow: clear requested price failed:", err);
     } finally {
-      setSyncingUnitPrice(false);
+      setClearingUnitPrice(false);
     }
   };
 
@@ -970,6 +1003,46 @@ const PurchaseOptionRow = ({
                     colors={colors}
                     stamps={stamps}
                   />
+                ) : showPurchasedBadge && isPurchaseIncluded ? (
+                  <Box
+                    component="span"
+                    aria-label="Purchased"
+                    title="Purchased"
+                    sx={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: "50%",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      border: `2px solid ${stamps.PAID.border}`,
+                      outline: `1px solid ${stamps.PAID.border}`,
+                      outlineOffset: "2px",
+                      boxShadow: `0 0 0 1px ${stamps.PAID.border}`,
+                      backgroundColor: stamps.PAID.bg,
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        minWidth: 20,
+                        height: 16,
+                        px: 0.25,
+                        py: 0.15,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: stamps.PAID.color,
+                        backgroundColor: stamps.PAID.bg,
+                        border: `2px solid ${stamps.PAID.border}`,
+                        borderRadius: "4px",
+                        boxShadow: `inset 0 0 0 1px ${stamps.PAID.border}`,
+                        transform: "rotate(-15deg)",
+                      }}
+                    >
+                      <CheckCircle sx={{ fontSize: 11 }} />
+                    </Box>
+                  </Box>
                 ) : (
                   <Checkbox
                     checked={isIncluded}
@@ -1065,11 +1138,33 @@ const PurchaseOptionRow = ({
               </Box>
 
               {/* SUPPLIER — the nickname in caps. */}
-              <Typography sx={{ fontSize: "0.75rem", fontWeight: 500 }}>
-                {displayIndex}.{" "}
+              <Typography
+                sx={{
+                  fontSize: "0.75rem",
+                  fontWeight: 500,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.6,
+                }}
+              >
                 {String(
                   option.supplierNickName || option.strSupplierNickName || "",
                 ).toUpperCase()}
+                {Number(option.bIncluded) === 1 && (
+                  <Box
+                    component="span"
+                    aria-label="Included in canvas"
+                    title="Included in canvas"
+                    sx={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      backgroundColor: colors.actionBtnText,
+                      display: "inline-block",
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
               </Typography>
             </Box>
 
@@ -1153,11 +1248,9 @@ const PurchaseOptionRow = ({
           {/* UNIT PRICE, with the price-updated date under it — the same
               tight line spacing as the brand · model, but right aligned.
 
-              A PENDING purchase price takes the lead every other second:
-              the request is called out, and the price that actually
-              counts stays on screen the rest of the time. While it is
-              pending the owner can also SYNC — take the proposed price as
-              their own straight from the row. */}
+              A PENDING purchase price is called out above the original
+              canvassed price. The clear action removes the request and
+              leaves the original price unchanged. */}
           <Box
             sx={{
               flex: isPurchase ? 2 : 1.5,
@@ -1171,7 +1264,7 @@ const PurchaseOptionRow = ({
             }}
           >
             {hasPendingPrice &&
-              adoptedSync?.nPurchaseItemId !== option.nPurchaseItemId ? (
+              clearedPriceRequest !== option.nPurchaseItemId ? (
               // A small tag ABOVE the price — always there. The REQUESTED
               // price is in its tooltip: the price on the row never moves.
               <Tooltip
@@ -1204,21 +1297,19 @@ const PurchaseOptionRow = ({
             >
               <Typography sx={{ fontSize: "0.7rem", lineHeight: 1.15 }}>
                 {fmtPHP(
-                  adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
-                    ? adoptedSync.dUnitPrice
-                    : option.dUnitPrice,
+                  option.dUnitPrice,
                 )}
               </Typography>
               {hasPendingPrice &&
-                adoptedSync?.nPurchaseItemId !== option.nPurchaseItemId && (
+                clearedPriceRequest !== option.nPurchaseItemId && (
                 <Tooltip
-                  title="Sync — adopt this pending price. The backend clears the proposal and stamps the canvass date."
+                  title="Revert requested price — discard the proposal and keep the canvassed price."
                 >
                   <IconButton
                     size="small"
-                    onClick={handleSyncUnitPrice}
-                    disabled={syncingUnitPrice}
-                    aria-label="Sync pending price"
+                    onClick={handleClearUnitPrice}
+                    disabled={clearingUnitPrice}
+                    aria-label="Revert requested price"
                     sx={{
                       width: 20,
                       height: 20,
@@ -1226,7 +1317,7 @@ const PurchaseOptionRow = ({
                       "&:hover": { backgroundColor: colors.rowHoverBg },
                     }}
                   >
-                    <SyncOutlined fontSize="small" />
+                    <RestoreOutlined fontSize="small" />
                   </IconButton>
                 </Tooltip>
               )}
@@ -1238,25 +1329,17 @@ const PurchaseOptionRow = ({
                 color: colors.textSecondary,
               }}
             >
-              {adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
-                ? fmtDate(adoptedSync.dtCanvass)
-                : option.dtCanvass
-                  ? fmtDate(option.dtCanvass)
-                  : "—"}
+              {option.dtCanvass ? fmtDate(option.dtCanvass) : "—"}
             </Typography>
           </Box>
 
           <Box sx={{ flex: isPurchase ? 2 : 1.5, textAlign: "right" }}>
             <Typography sx={{ fontSize: "0.7rem", color: colors.textPrimary }}>
-              {/* The line amount follows the unit price it belongs to —
-                  the request and the price that counts switch together,
-                  so the row never shows a unit price that does not add
-                  up. */}
+              {/* The line amount uses the original canvassed unit price.
+                  Clearing a request does not change the amount. */}
               {fmtPHP(
                 option.nQuantity *
-                  (adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
-                    ? adoptedSync.dUnitPrice
-                    : option.dUnitPrice),
+                  option.dUnitPrice,
               )}
             </Typography>
           </Box>
@@ -1279,9 +1362,7 @@ const PurchaseOptionRow = ({
                 ewtOfOption({
                   ...option,
                   dUnitPrice:
-                    adoptedSync?.nPurchaseItemId === option.nPurchaseItemId
-                      ? adoptedSync.dUnitPrice
-                      : option.dUnitPrice,
+                    option.dUnitPrice,
                 }),
               )}
             </Typography>
@@ -1298,7 +1379,7 @@ const PurchaseOptionRow = ({
             )}
           </Box>
 
-          {(checkboxOptionsEnabled || isEditOnly) && (
+          {(checkboxOptionsEnabled || isEditOnly || showActionColumn) && (
             <Box
               sx={{
                 flex: 1,

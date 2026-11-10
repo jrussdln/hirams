@@ -61,6 +61,7 @@ const JEVUpdate = lazyPage("/jev-update");
 const ItemPurchasingView = lazyPage("/item-purchasing"); //DONE - NV
 const ItemPurchasingUpdateView = lazyPage("/item-purchasing-update"); //DONE - NV
 const PreviewPO = lazyPage("/preview-po");
+const PreviewPricing = lazyPage("/preview-pricing");
 const PreviewVoucher = lazyPage("/preview-voucher");
 const PreviewCheque = lazyPage("/preview-cheque");
 const PreviewDR = lazyPage("/preview-dr");
@@ -273,6 +274,7 @@ export default function AppRoute() {
                       },
 
                       { path: "/preview-po", element: <PreviewPO /> },
+                      { path: "/preview-pricing", element: <PreviewPricing /> },
                       { path: "/preview-voucher", element: <PreviewVoucher /> },
                       { path: "/preview-cheque", element: <PreviewCheque /> },
                       { path: "/preview-dr", element: <PreviewDR /> },

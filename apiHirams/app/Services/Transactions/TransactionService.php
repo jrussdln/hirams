@@ -5,6 +5,7 @@ namespace App\Services\Transactions;
 use App\Events\TransactionUpdated;
 use App\Models\ItemPricings;
 use App\Models\Jev;
+use App\Models\Collection;
 use App\Models\PricingSet;
 use App\Models\PurchaseOptions;
 use App\Models\TransactionHistory;
@@ -88,7 +89,8 @@ class TransactionService
 
     /**
      * Create the transaction's JEV (or return the existing one) inside a DB
-     * transaction with the transaction row locked for update.
+     * transaction with the transaction row locked for update. The journal is
+     * bound via tblcollections — the transaction's own nJEVId is retired.
      */
     public function createJev(int $id): ?Jev
     {
@@ -96,8 +98,10 @@ class TransactionService
             $txn = Transactions::lockForUpdate()->findOrFail($id);
 
             // already has one? return it, never create a second
-            if ($txn->nJEVId) {
-                return Jev::with('entries.journal_account.parent')->find($txn->nJEVId);
+            $existing = Collection::lockForUpdate()
+                ->where('nTransactionId', $txn->nTransactionId)->first();
+            if ($existing) {
+                return Jev::with('entries.journal_account.parent')->find($existing->nJEVId);
             }
 
             $new = Jev::create([
@@ -109,8 +113,11 @@ class TransactionService
                 'nUserId'      => auth()->id(),
             ]);
 
-            $txn->nJEVId = $new->nJEVId;
-            $txn->save();
+            // The journal is bound on tblcollections.
+            Collection::create([
+                'nTransactionId' => $txn->nTransactionId,
+                'nJEVId'         => $new->nJEVId,
+            ]);
 
             return Jev::with('entries.journal_account.parent')->find($new->nJEVId);
         });

@@ -137,6 +137,15 @@ function NewOptionModal({
   const optionIsAddOn =
     Number(editingOption?.bAddOn ?? formData.bAddOn) === 1;
 
+  // Once a selected option has entered For Purchase, its supplier and ordered
+  // quantity identify the purchase line and must stay unchanged. The supplier
+  // contact remains editable. New options are still editable; this lock applies
+  // only to an existing option that is already included in the canvass.
+  const lockPurchaseLineFields =
+    stage === "purchase" &&
+    Boolean(editingOption) &&
+    (Number(editingOption.bIncluded) === 1 || editingOption.bIncluded === true);
+
   // The Add-On switch is locked ON when the item's quantity is already
   // filled by its selection — there is nothing left of that item for the
   // line to be part of, so it can only be an extra.
@@ -249,6 +258,7 @@ function NewOptionModal({
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
+    if (lockPurchaseLineFields && name === "quantity") return;
     setFormData((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
@@ -256,6 +266,7 @@ function NewOptionModal({
   };
 
   const handleSupplierChange = (value) => {
+    if (lockPurchaseLineFields) return;
     const selectedSupplier = suppliers.find((s) => s.value === Number(value));
     setFormData((prev) => ({
       ...prev,
@@ -359,10 +370,6 @@ function NewOptionModal({
     onClose();
   };
 
-  // The option's fields are ALWAYS editable — the For Purchase stage used
-  // to lock the ones already on the order, but a line can be corrected
-  // at any time.
-
   const fields = [
     { name: "brand", label: "Brand", xs: 4 },
     { name: "model", label: "Model", xs: 4 },
@@ -374,6 +381,7 @@ function NewOptionModal({
       xs: 4,
       value: formData.nSupplierId,
       onChange: handleSupplierChange,
+      disabled: lockPurchaseLineFields,
     },
     {
       name: "_supplierLink",
@@ -429,6 +437,7 @@ function NewOptionModal({
       // row (4 × xs3). Add-On OFF: back to the 3-field row (3 × xs4).
       xs: formData.bAddOn ? 3 : 4,
       numberOnly: true,
+      disabled: lockPurchaseLineFields,
     },
     // The UOM field exists ONLY for add-ons — an extra carries its own
     // unit (typed here). A normal option rides the ITEM's unit, so the

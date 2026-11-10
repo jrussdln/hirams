@@ -396,12 +396,21 @@ export default function ItemPurchasingUpdateView({
   // since the manage modal would have nothing left to do with it.
   const [showGoToVoucherConfirm, setShowGoToVoucherConfirm] = React.useState(false);
 
-  // Always refresh the linked-voucher state before deciding: the mount-time
-  // fetch is async, so the very first click would otherwise see poVoucher
-  // as null and open the manage modal even when a Closed voucher already
-  // exists. Refreshing here makes the decision current on every click.
-  const handleManageVoucherClick = async () => {
-    await fetchVoucherStatus();
+  // Manage Voucher — open the editor INSTANTLY. The old flow awaited a
+  // full getVouchers() round-trip before showing anything, which read as
+  // "nothing happens" on slow connections. Nothing needs deciding here
+  // anymore (the jump / confirm logic lives on the View Voucher side), the
+  // button state is cache-seeded, and the modal loads its own data — so
+  // the click just opens and the background fetches stay where they are.
+  const handleManageVoucherClick = () => {
+    setShowManageVoucher(true);
+  };
+
+  // View Voucher — the linked voucher is already fetched on load, so the
+  // status here is current. A voucher that is already CLOSED can no longer
+  // be changed or unlinked — confirm before jumping straight to it;
+  // anything else opens directly.
+  const handleViewVoucherClick = () => {
     if (
       poVoucher &&
       String(poVoucher.cStatus) === String(voucherClosedKey)
@@ -409,7 +418,13 @@ export default function ItemPurchasingUpdateView({
       setShowGoToVoucherConfirm(true);
       return;
     }
-    setShowManageVoucher(true);
+    if (poVoucher?.nVoucherId != null) {
+      // voucherStatusCode → the Vouchers sidebar highlights this voucher's
+      // real status filter instead of the last-clicked one.
+      navigate(`/voucher-update?id=${poVoucher.nVoucherId}`, {
+        state: { voucherStatusCode: poVoucher.cStatus },
+      });
+    }
   };
 
   // The row edit forms no longer carry their own Save buttons — each panel
@@ -767,20 +782,40 @@ export default function ItemPurchasingUpdateView({
 
 
 
-      {/* MANAGE VOUCHER — finance/management only, like the Approve next
-          to it: the voucher is where the money settles, so an AO or AOTL
-          never opens this editor. A linked voucher that is already CLOSED
-          can no longer be changed or unlinked — ask first, then jump
-          straight to it instead of opening the manage modal. */}
+      {/* VOUCHER — finance/management only, like the Approve next to it:
+          the voucher is where the money settles, so an AO or AOTL never
+          opens this editor. Nothing renders until the linked-voucher state
+          is KNOWN (seeded from the list page's cache on the first paint,
+          otherwise the mount fetch) — that is what prevents the button
+          flashing one label and flipping to another a beat later. A PO
+          WITHOUT a voucher gets Manage Voucher — the creation/link editor;
+          one that already HAS a voucher gets View Voucher: a straight jump
+          to it, with the closed-voucher confirmation on the View side. */}
       {selectedStatusCode === forPaymentKey &&
-        (isFinanceOfficer || isManagement) && (
-          <BaseButton
-            label="Manage Voucher"
-            icon={icons.manage}
-            onClick={handleManageVoucherClick}
-            actionColor="approve"
-            disabled={isLoadingPage || actionLoading}
-          />
+        (isFinanceOfficer || isManagement) &&
+        voucherStatusResolved &&
+        (poVoucherStatus ? (
+            <BaseButton
+              label="View Voucher"
+              icon={icons.view}
+              tooltip={
+                String(poVoucher?.cStatus) === String(voucherClosedKey)
+                  ? "This voucher is closed — confirm to view it"
+                  : "Open the voucher linked to this PO"
+              }
+              onClick={handleViewVoucherClick}
+              actionColor="approve"
+              disabled={isLoadingPage || actionLoading}
+            />
+          ) : (
+            <BaseButton
+              label="Manage Voucher"
+              icon={icons.manage}
+              onClick={handleManageVoucherClick}
+              actionColor="approve"
+              disabled={isLoadingPage || actionLoading}
+            />
+          )
         )}
 
       {selectedStatusCode === forApprovalKey &&
@@ -1282,9 +1317,9 @@ export default function ItemPurchasingUpdateView({
         onConfirm={handleConfirm}
         onClose={() => setConfirmAction(null)}
       />
-      {/* OPEN VOUCHER — the linked voucher is already CLOSED, so the manage
-          modal would have nothing left to do with it. Ask, then jump
-          straight to the voucher. */}
+      {/* VIEW VOUCHER — jump-to-voucher confirmation. Fires when the linked
+          voucher is already CLOSED: it can no longer be changed or
+          unlinked, so View asks once and then goes straight to it. */}
       <PurchaseCartUpdateModal
         open={showGoToVoucherConfirm}
         action="open_voucher"
@@ -1293,8 +1328,13 @@ export default function ItemPurchasingUpdateView({
         loading={false}
         onConfirm={() => {
           setShowGoToVoucherConfirm(false);
-          if (poVoucher?.nVoucherId)
-            navigate(`/voucher-update?id=${poVoucher.nVoucherId}`);
+          if (poVoucher?.nVoucherId) {
+            // voucherStatusCode → the Vouchers sidebar highlights this
+            // voucher's real status filter.
+            navigate(`/voucher-update?id=${poVoucher.nVoucherId}`, {
+              state: { voucherStatusCode: poVoucher.cStatus },
+            });
+          }
         }}
         onClose={() => setShowGoToVoucherConfirm(false)}
       />

@@ -17,8 +17,8 @@ export const PurchaseOptionAPI = {
     api.put(`purchase-options/${id}/approve-price-change`),
   rejectPriceChange: (id) =>
     api.put(`purchase-options/${id}/reject-price-change`),
-  syncPriceChange: (id) =>
-    api.put(`purchase-options/${id}/sync-price-change`),
+  clearPriceChange: (id) =>
+    api.put(`purchase-options/${id}/clear-price-change`),
   delete: (id) => api.delete(`purchase-options/${id}`),
 };
 

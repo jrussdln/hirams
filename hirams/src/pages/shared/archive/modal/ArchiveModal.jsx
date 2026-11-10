@@ -29,7 +29,7 @@ function ArchiveModal({
 
   // ── Mode-driven copy ──────────────────────────────────────────────
   const modalTitle = isComplete
-    ? "Mark as Collected and Completed"
+    ? "Transaction Completed"
     : isUnarchive
       ? "Unarchive Transaction"
       : "Archive Transaction";

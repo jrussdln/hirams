@@ -1,357 +1,201 @@
-// components/transaction-purchase/CollectionPaymentDetails.jsx
-import React, { useState, useEffect, useMemo } from "react";
-import { Box, Typography, Divider, useTheme } from "@mui/material";
-import { numberToWords } from "../../../../utils/helpers/numberToWords";
-import { fmtDate, fmtPHP } from "../../../../utils/formatters/formatter.js";
+// pages/shared/collection/components/CollectionPaymentDetails.jsx
+//
+// The For Collection payment summary: the receipt (CollectionReceiptCard)
+// followed by the JEV journal — a dashed placeholder while finance has not
+// created one, then the journal itself. The same receipt is handed into
+// the Add / Edit Entry modal as its reference panel.
+import React, { useMemo, useState } from "react";
+import { Box, useTheme } from "@mui/material";
+import {
+  WarningAmberOutlined,
+  CloseOutlined,
+} from "@mui/icons-material";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import JevViewPanel from "../../journal-entry-voucher/components/JEVViewPanel.jsx";
+import CollectionReceiptCard from "./CollectionReceiptCard.jsx";
 
 // ── Color map: only tokens actually used in this component ──
 const useColors = (c) => ({
   border: {
     default: c.slate.border,
-    divider: c.slate.divider,
-    borderStrong: c.slate.totalBorder,
   },
   text: {
-    primary: c.gray.textPrimary,
     secondary: c.gray.textSecondary,
-    muted: c.gray.textMuted,
-    heading: c.gray.textHeading,
-    label: c.gray.label,
-  },
-  green: {
-    textDark: c.green.textDark,
-    paid: c.green.paid,
-  },
-  amber: {
-    warnText: c.amber.warnText,
-  },
-  navyText: c.navy.text, // brand navy — section title (was theme.palette.primary.main)
-  slate: {
-    mutedBorder: c.slate.mutedBorder,
   },
 });
 
-const Field = ({ label, value, mono = false, sx = {}, valueSx = {} }) => {
-  const theme = useTheme();
-  const isDark = theme.palette.mode === "dark";
-  const base = useMemo(() => getThemeColors(isDark), [isDark]);
-  const colors = useMemo(() => useColors(base), [base]);
-
-  return (
-    <Box sx={{ minWidth: 0 }}>
-      <Typography
-        sx={{
-          fontSize: "0.58rem",
-          fontWeight: 700,
-          color: colors.text.muted,
-          textTransform: "uppercase",
-          letterSpacing: "0.07em",
-          lineHeight: 1,
-          mb: 0.5,
-        }}
-      >
-        {label}
-      </Typography>
-      <Typography
-        sx={{
-          fontSize: "0.8rem",
-          fontWeight: 600,
-          color: colors.text.heading,
-          lineHeight: 1.3,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          textTransform: "uppercase",
-          fontFamily: mono ? "monospace" : "inherit",
-          ...sx,
-          ...valueSx,
-        }}
-        title={typeof value === "string" ? value : undefined}
-      >
-        {value || "—"}
-      </Typography>
-    </Box>
-  );
-};
-
 export default function CollectionPaymentDetails({
   collectibleAmount = 0,
-  totalSales = 0,
   clientName,
   clientAddress,
   clientTIN,
   businessStyle,
   companyName,
   transactionTitle,
-  date,
   nTransactionId,
+  cItemType,
+  retentionAmount: fetchedRetentionAmount,
+  // The journal behind this collection — rendered below the payment
+  // details, or a placeholder when finance has not created one yet.
+  jev,
+  jevPendingKey,
+  jevBalance = {},
+  isFinanceOfficer,
+  isManagement,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useMemo(() => useColors(base), [base]);
+  const [dismissedMsg, setDismissedMsg] = useState(null);
 
-  const [ewtAmount, setEwtAmount] = useState(0);
-  const [taxAmount, setTaxAmount] = useState(0);
-  const [retentionAmount, setRetentionAmount] = useState(0);
-  const [deductionsLoading, setDeductionsLoading] = useState(false);
-
-  // EWT / TAX / Retention deliberately stay at ZERO for now — no fetching.
-  // The "Less:" rows below still render (as muted dashes when 0). When the
-  // amounts go live again, restore the fetches here:
-  //   EWT + Retention → DirectCostAPI.getDirectCosts({ nTransactionID,
-  //   withEWT: 1 }), TAX → PricingAPI.getPricingSets + getItemPricings.
-  useEffect(() => {
-    if (!nTransactionId) return;
-    setEwtAmount(0);
-    setTaxAmount(0);
-    setRetentionAmount(0);
-    setDeductionsLoading(false);
-  }, [nTransactionId]);
-
-  const netAmount =
-    Number(collectibleAmount || 0) - ewtAmount - taxAmount - retentionAmount;
-  const amountInWords = numberToWords(netAmount);
+  // The receipt — one element shared by the page mount and the JEV Entry
+  // modal, so both always show the same figures. The modal gets a compact
+  // (scaled-down) render so it does not dominate the form.
+  const receipt = (
+    <CollectionReceiptCard
+      eventName={companyName}
+      collectibleAmount={collectibleAmount}
+      cItemType={cItemType}
+      retentionAmount={fetchedRetentionAmount}
+      clientName={clientName}
+      clientAddress={clientAddress}
+      clientTIN={clientTIN}
+      businessStyle={businessStyle}
+      transactionTitle={transactionTitle}
+    />
+  );
+  const receiptCompact = (
+    <CollectionReceiptCard
+      compact
+      eventName={companyName}
+      collectibleAmount={collectibleAmount}
+      cItemType={cItemType}
+      retentionAmount={fetchedRetentionAmount}
+      clientName={clientName}
+      clientAddress={clientAddress}
+      clientTIN={clientTIN}
+      businessStyle={businessStyle}
+      transactionTitle={transactionTitle}
+    />
+  );
 
   return (
-    <Box sx={{ mb: 2 }}>
-      <Box
-        sx={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          mb: 1,
-        }}
-      >
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "baseline",
-            gap: 0.75,
-            minWidth: 0,
-          }}
-        >
-          <Typography
-            variant="caption"
-            sx={{
-              fontWeight: 700,
-              color: colors.navyText,
-              textTransform: "uppercase",
-              display: "flex",
-              alignItems: "center",
-              gap: 0.75,
-              ml: 1,
-              flexShrink: 0,
-            }}
-          >
-            Collection Details
-          </Typography>
-          {companyName && (
-            <Typography
-              sx={{
-                fontSize: "0.68rem",
-                fontWeight: 600,
-                color: colors.text.secondary,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                textTransform: "uppercase",
-                fontStyle: "italic",
-              }}
-              title={companyName}
-            >
-              — {companyName}
-            </Typography>
-          )}
-        </Box>
-        <Typography
-          sx={{
-            fontSize: "0.68rem",
-            fontWeight: 600,
-            color: colors.text.secondary,
-            flexShrink: 0,
-            textTransform: "uppercase",
-            mr: 1,
-          }}
-        >
-          {fmtDate(date)}
-        </Typography>
-      </Box>
+    <Box sx={{ mb: 1.5 }}>
+      {receipt}
 
-      <Box
-        sx={{
-          borderTop: `2px solid ${colors.text.heading}`,
-          borderBottom: `2px solid ${colors.text.heading}`,
-        }}
-      >
-        <Box
-          sx={{
-            py: 2,
-            textAlign: "center",
-            borderBottom: `1px dashed ${colors.border.divider}`,
-          }}
-        >
-          <Typography
-            sx={{
-              fontSize: "0.6rem",
-              fontWeight: 700,
-              color: colors.text.secondary,
-              textTransform: "uppercase",
-              letterSpacing: "0.1em",
-              mb: 0.5,
-            }}
-          >
-            Collectible Amount
-          </Typography>
-          <Typography
-            sx={{
-              fontSize: "2.5rem",
-              fontWeight: 800,
-              color: colors.green.paid,
-              lineHeight: 1.1,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            {deductionsLoading ? "…" : `${fmtPHP(netAmount)}`}
-          </Typography>
-          <Typography
-            sx={{
-              mt: 1,
-              fontSize: "0.72rem",
-              fontStyle: "italic",
-              color: colors.text.secondary,
-              lineHeight: 1.5,
-              maxWidth: 480,
-              mx: "auto",
-            }}
-          >
-            {!deductionsLoading && amountInWords}
-          </Typography>
-        </Box>
+      {/* ── The journal behind this collection — always visible ──────────
+          Voucher-style: a dashed placeholder while finance has not created
+          the JEV, then the journal itself (number, title, type, status and
+          the From / To columns). */}
+      {(() => {
+        const balance = jevBalance || {};
+        const isPending = String(jev?.cStatus) === String(jevPendingKey);
+        const showBanner =
+          isPending &&
+          !balance.loading &&
+          !!balance.message &&
+          dismissedMsg !== balance.message;
 
-        <Box sx={{ px: 2.5, py: 2 }}>
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-              gap: 1.75,
-              mb: 2,
-            }}
-          >
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <Field label="Amount" value={`${fmtPHP(collectibleAmount)}`} />
-              <Field
-                label="Less: EWT"
-                value={
-                  deductionsLoading
-                    ? "…"
-                    : ewtAmount > 0
-                      ? `${fmtPHP(ewtAmount)}`
-                      : "₱ 00.00"
-                }
-                valueSx={{
-                  color:
-                    ewtAmount > 0 ? colors.amber.warnText : colors.text.muted,
+        return (
+          <>
+            {showBanner && (
+              <Box
+                sx={{
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  px: 4,
+                  py: 0.75,
+                  mt: 1,
+                  borderRadius: "8px",
+                  bgcolor: base.amber.warnBg,
+                  border: `1px dashed ${base.amber.warnBorder}`,
                 }}
-              />
-              <Field
-                label="Less: Tax"
-                value={
-                  deductionsLoading
-                    ? "…"
-                    : taxAmount > 0
-                      ? `${fmtPHP(taxAmount)}`
-                      : "₱ 00.00"
-                }
-                valueSx={{
-                  color:
-                    taxAmount > 0 ? colors.amber.warnText : colors.text.muted,
+              >
+                <WarningAmberOutlined
+                  sx={{ fontSize: "1rem", color: base.amber.warnText, flexShrink: 0 }}
+                />
+                <Box
+                  sx={{
+                    fontSize: "0.72rem",
+                    color: base.amber.warnText,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <strong>{balance.message}</strong>
+                </Box>
+                <Box
+                  component="button"
+                  onClick={() => setDismissedMsg(balance.message)}
+                  aria-label="Dismiss banner"
+                  sx={{
+                    position: "absolute",
+                    right: 8,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    display: "flex",
+                    p: 0.4,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    color: base.amber.warnText,
+                  }}
+                >
+                  <CloseOutlined sx={{ fontSize: "0.9rem" }} />
+                </Box>
+              </Box>
+            )}
+
+            {!jev ? (
+              <Box
+                sx={{
+                  py: 3,
+                  mt: 2,
+                  textAlign: "center",
+                  fontSize: "0.75rem",
+                  fontStyle: "italic",
+                  color: colors.text.secondary,
+                  border: `1px dashed ${colors.border.default}`,
+                  borderRadius: "10px",
                 }}
-              />
-              <Field
-                label="Less: Retention"
-                value={
-                  deductionsLoading
-                    ? "…"
-                    : retentionAmount > 0
-                      ? `${fmtPHP(retentionAmount)}`
-                      : "₱ 00.00"
-                }
-                valueSx={{
-                  color:
-                    retentionAmount > 0
-                      ? colors.amber.warnText
-                      : colors.text.muted,
-                }}
-              />
-              <Field
-                label="Net Amount"
-                value={deductionsLoading ? "…" : `${fmtPHP(netAmount)}`}
-                valueSx={{ color: colors.green.paid, fontWeight: 800 }}
-              />
-            </Box>
-
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.5 }}>
-              <Field
-                label="Received From"
-                value={clientName}
-                sx={{ fontStyle: "italic" }}
-              />
-              <Field
-                label="Business Style"
-                value={businessStyle}
-                sx={{ fontStyle: "italic" }}
-              />
-              <Field
-                label="Address"
-                value={clientAddress}
-                sx={{ fontStyle: "italic" }}
-              />
-              <Field
-                label="TIN"
-                value={clientTIN}
-                sx={{ fontStyle: "italic" }}
-              />
-            </Box>
-          </Box>
-
-          <Divider
-            sx={{
-              borderStyle: "dashed",
-              borderColor: colors.border.divider,
-              mb: 2,
-            }}
-          />
-
-          <Box>
-            <Typography
-              sx={{
-                fontSize: "0.58rem",
-                fontWeight: 700,
-                color: colors.text.muted,
-                textTransform: "uppercase",
-                letterSpacing: "0.07em",
-                mb: 0.5,
-              }}
-            >
-              In partial / full payment of account due us
-            </Typography>
-            <Typography
-              sx={{
-                fontSize: "0.85rem",
-                fontWeight: 500,
-                color: colors.text.heading,
-                lineHeight: 1.4,
-                textTransform: "uppercase",
-                fontStyle: "italic",
-              }}
-            >
-              {transactionTitle || "—"}
-            </Typography>
-          </Box>
-        </Box>
-      </Box>
+              >
+                JEV Entries not yet added.
+              </Box>
+            ) : (
+              <Box sx={{ mt: 1 }}>
+                <JevViewPanel
+                  key={jev.nJEVId}
+                  jev={(() => {
+                    // strip entries so JevViewPanel fetches the full account
+                    // paths itself
+                    // eslint-disable-next-line no-unused-vars
+                    const { entries, ...jevWithoutEntries } = jev;
+                    return jevWithoutEntries;
+                  })()}
+                  particularsGrandTotal={collectibleAmount}
+                  // The full receipt, scaled down for the modal — the
+                  // Add / Edit Entry modal prints it as its reference, so
+                  // the figures are visible while the entry amounts are
+                  // typed in.
+                  collectionDetailsPanel={receiptCompact}
+                  jevPendingKey={jevPendingKey}
+                  isFinanceOfficer={isFinanceOfficer}
+                  isManagement={isManagement}
+                  isJevBalanced={balance.balanced}
+                  jevBalanceLoading={balance.loading}
+                  isAssigneeType={false}
+                  assigneeLinks={[]}
+                  supplierLinks={[]}
+                  panelTitle="Collection Details"
+                  flowType="collected"
+                />
+              </Box>
+            )}
+          </>
+        );
+      })()}
     </Box>
   );
 }

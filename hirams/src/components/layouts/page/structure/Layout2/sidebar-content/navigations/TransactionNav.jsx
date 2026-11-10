@@ -88,12 +88,32 @@ const TransactionNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   // Archive sidebar — Transactions must not highlight anything for them.
   const isArchiveView = location.state?.isArchiveView === true;
 
+  // Refresh / direct-URL open on the pricing preview — route state is wiped,
+  // so the stage code is restored from the payload the preview was opened
+  // with (parked in sessionStorage by ExportCanvasModal / CostBreakdownModal).
+  function readPreviewPricingCode() {
+    try {
+      return (
+        JSON.parse(
+          sessionStorage.getItem("previewPricingState") || "null",
+        )?.selectedStatusCode ?? null
+      );
+    } catch {
+      return null;
+    }
+  }
+
   useEffect(() => {
     if (mappingLoading || isArchiveView) return;
     const stateCode = location.state?.selectedStatusCode;
-    if (stateCode && statusMap[stateCode]) {
-      setSelectedCode(stateCode);
-      setItem(sessionKey, stateCode);
+    const restoredCode =
+      !stateCode && location.pathname === "/preview-pricing"
+        ? readPreviewPricingCode()
+        : null;
+    const code = stateCode ?? restoredCode;
+    if (code && statusMap[code]) {
+      setSelectedCode(code);
+      setItem(sessionKey, code);
     }
   }, [
     location.pathname,
@@ -132,12 +152,29 @@ const TransactionNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
     if (firstCode) handleSelect(firstCode);
   }, [statusMap, handleSelect]);
 
+  // Any of the transaction workspace pages — the SAME membership the
+  // TransactionSubItems highlight uses (kept in sync by hand). Feeds the
+  // section's route-driven auto-open: landing on any of these while the
+  // section is collapsed pops it open.
+  const autoOpen =
+    !isArchiveView &&
+    [
+      "/transaction",
+      "/transaction-canvas",
+      "/transaction-pricing-set",
+      "/transaction-pricing",
+      "/transaction-for-purchase",
+      "/transaction-for-collection",
+      "/preview-pricing",
+    ].includes(location.pathname);
+
   return (
     <div className="flex flex-col w-full ">
       <SidebarItem
         icon={<AccountBalanceIcon fontSize="small" />}
         label="Transactions"
         showSearch
+        autoOpen={autoOpen}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={

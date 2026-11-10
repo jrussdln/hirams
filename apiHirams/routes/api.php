@@ -221,7 +221,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('price-change-requests', [PurchaseOptionsController::class, 'priceChangeRequests']);
         Route::put('{id}/approve-price-change', [PurchaseOptionsController::class, 'approvePriceChange']);
         Route::put('{id}/reject-price-change', [PurchaseOptionsController::class, 'rejectPriceChange']);
-        Route::put('{id}/sync-price-change', [PurchaseOptionsController::class, 'syncPriceChange']);
+        Route::put('{id}/clear-price-change', [PurchaseOptionsController::class, 'clearPriceChange']);
     });
     Route::apiResource('purchase-options', PurchaseOptionsController::class);
 

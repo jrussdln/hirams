@@ -141,6 +141,7 @@ export default function PreviewDRView({
   contactNumber,
   code,
   items,
+  pdfFileName,
 }) {
   const navigate = useNavigate();
   const [printControls, setPrintControls] = React.useState(null);
@@ -173,7 +174,7 @@ export default function PreviewDRView({
         onControlsReady={setPrintControls}
         hideHeaderControls={true}
         showSystemGenerated={false}
-      >
+        pdfFileName={pdfFileName}>
         <div style={{ padding: "24px 32px", boxSizing: "border-box" }}>
           <table style={TABLE_STYLE}>
             {COLGROUP}

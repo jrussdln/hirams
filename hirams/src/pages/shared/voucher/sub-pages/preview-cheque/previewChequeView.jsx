@@ -121,18 +121,16 @@ export default function PreviewChequeView({
   payeeName = DEFAULTS.payeeName,
   amount = DEFAULTS.amount,
   amountInWords = DEFAULTS.amountInWords,
+  pdfFileName,
 }) {
   const rows = Array.from({ length: TOTAL_ROWS }, (_, i) => i + 1);
   const navigate = useNavigate();
   const [printControls, setPrintControls] = React.useState(null);
 
-  // Saved-PDF title: "PayeeName MMDDYYYY" (e.g. "John Smith 11042026").
-  // Strips characters that are illegal in file names, so a payee like
-  // "ABC, Inc." stays valid on disk.
-  const pdfFileName = `${payeeName} ${date}`
-    .replace(/[\\/:*?"<>|]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  // THE FILE NAME itself is built in usePreviewCheque — everything the
+  // "SupplierNick-Cheque(CompanyNick)" name needs rides in the
+  // route state, so nothing is recomputed here. It reaches PrintPreview
+  // below and labels both the download and the export animation.
 
   const footerLActions = (
     <BaseButton

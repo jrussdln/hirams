@@ -1,9 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import TransactionAPI from "../../../api/endpoints/transaction.api.js";
-import PricingAPI from "../../../api/endpoints/pricing.api.js";
-import DirectCostOptionAPI from "../../../api/endpoints/direct-cost-option.api.js";
-import DirectCostAPI from "../../../api/endpoints/direct-cost.api.js";
 import { fmtDateTime, fmtDate } from "../../../utils/helpers/timeZone.js";
 import { getItem, setItem, hasItem } from "../../../utils/storage/localStorage.js";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
@@ -27,8 +24,6 @@ export default function useArchive() {
   const [transactions, setTransactions] = useState(() =>
     getItem(ARCHIVE_CACHE_KEY, []),
   );
-  // { [transactionId]: { collectible, ewt, tax, retention } }
-  const [collectibleMap, setCollectibleMap] = useState({});
   const [loading, setLoading] = useState(() => !hasItem(ARCHIVE_CACHE_KEY));
   const [initialLoading, setInitialLoading] = useState(() =>
     !hasItem(ARCHIVE_CACHE_KEY),
@@ -48,6 +43,8 @@ export default function useArchive() {
     itemType,
     procMode,
     procSource,
+    forCollectionKey,
+    proc_status,
     loading: mappingLoading,
     //Labels
     isManagement,
@@ -93,98 +90,6 @@ export default function useArchive() {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(t);
   }, [search]);
-
-  // ── Collection Amount ───────────────────────────────────────────────────
-  // The Completed tab mirrors the transactions page's For Collection layout,
-  // so it needs the same figures: collectible less EWT, TAX and retention.
-  // Mirrors fetchTxnCollectible in useTransaction.js.
-  const fetchCollectible = useCallback(
-    async (txnList) => {
-      if (!txnList?.length) return;
-
-      const collectionTxns = txnList.filter(
-        (t) => String(t.status_code) === String(completedKey),
-      );
-      if (!collectionTxns.length) return;
-
-      try {
-        // Direct-cost option names are shared by every row — fetched (and
-        // cached) once rather than per transaction.
-        let options;
-        const cached = getItem("direct_cost_options_cache", null);
-        if (cached) {
-          options = cached;
-        } else {
-          const r = await DirectCostOptionAPI.getDirectCostOptions();
-          options = r.data || r || [];
-          setItem("direct_cost_options_cache", options);
-        }
-
-        const nameOf = (id) => {
-          const f = options.find((o) => (o.nDirectCostOptionID || o.id) === id);
-          return (f?.strName || f?.name || "").toLowerCase();
-        };
-
-        const map = {};
-        await Promise.all(
-          collectionTxns.map(async (t) => {
-            try {
-              const setsRes = await PricingAPI.getPricingSets(t.id);
-              const chosen = (setsRes.data ?? []).find(
-                (s) => s.bChosen === 1 || s.bChosen === true,
-              );
-              const collectible = Number(chosen?.totalSellingPrice ?? 0);
-
-              // TAX — sum of the chosen set's item pricings.
-              let tax = 0;
-              const pricingSetId = chosen?.nPricingSetId ?? chosen?.id;
-              if (pricingSetId) {
-                const pricingsRes = await PricingAPI.getItemPricings(
-                  pricingSetId,
-                );
-                (pricingsRes.itemPricings || []).forEach((p) => {
-                  tax += Number(p.tax || 0);
-                });
-              }
-
-              // EWT + Retention — from the transaction's direct costs.
-              let ewt = 0;
-              let ewtFound = false;
-              let retention = 0;
-              const costsRes = await DirectCostAPI.getDirectCosts({
-                nTransactionID: t.id,
-                withEWT: 1,
-              });
-              const costs =
-                costsRes.directCosts || costsRes.data || costsRes || [];
-              const totalEWT = Number(costsRes.totalEWT) || 0;
-              costs.forEach((c) => {
-                const name = nameOf(c.nDirectCostOptionID);
-                const amt = Number(c.dAmount || 0);
-                if (name === "ewt") {
-                  ewt += amt;
-                  ewtFound = true;
-                } else if (name.startsWith("ret")) retention += amt;
-              });
-
-              map[t.id] = {
-                collectible,
-                ewt: ewtFound && ewt > 0 ? ewt : totalEWT,
-                tax,
-                retention,
-              };
-            } catch {
-              map[t.id] = { collectible: 0, ewt: 0, tax: 0, retention: 0 };
-            }
-          }),
-        );
-        setCollectibleMap(map);
-      } catch (err) {
-        console.error("fetchCollectible error:", err);
-      }
-    },
-    [completedKey],
-  );
 
   // ── Fetch ───────────────────────────────────────────────────────────────
   const fetchTransactions = useCallback(
@@ -239,7 +144,6 @@ export default function useArchive() {
 
         setTransactions(formatted);
         setItem(ARCHIVE_CACHE_KEY, formatted);
-        fetchCollectible(formatted);
       } catch (err) {
         console.error("Error fetching archived transactions:", err);
       } finally {
@@ -254,7 +158,6 @@ export default function useArchive() {
       userId,
       isProcurementTL,
       archiveStatus,
-      fetchCollectible,
     ],
   );
 
@@ -318,6 +221,50 @@ export default function useArchive() {
   const handleRowClick = useCallback(
     (row) => {
       const statusCode = String(row.status_code ?? "");
+
+      // "Transaction Completed" archives open the SAME collection workspace
+      // the transaction sat in before it was completed — the five stage tabs
+      // (Details / Canvas / Pricing / Purchase / Collection) with every
+      // action disabled. The stage is reassembled from
+      // previous_status_code, i.e. the live status the transaction
+      // completed FROM (For Collection).
+      if (
+        statusCode === String(completedKey) &&
+        row.previous_status_code != null
+      ) {
+        return navigate("/transaction-for-collection", {
+          state: {
+            transaction: row,
+            selectedStatusCode: String(row.previous_status_code),
+            currentStatusLabel:
+              (statusTransaction || {})[row.previous_status_code] ?? "",
+            transactionCode: row.transactionId,
+            forCollectionKey,
+            currentUserId: userId,
+
+            isManagement,
+            isAOTL,
+            isProcurementTL,
+            isProcurement,
+            itemType,
+            procMode,
+            procSource,
+            statusTransaction,
+            proc_status,
+            archiveStatus,
+
+            // Parks the workspace in read-only: no mutation buttons, no
+            // realtime status-change redirects — mirrors isArchiveView
+            // in useCanvas.
+            isArchiveView: true,
+            // Sidebar highlight: the archive submenu the row lives in
+            // (selectedStatusCode above is the live stage code the
+            // workspace reassembles).
+            archiveStatusCode: statusCode,
+          },
+        });
+      }
+
       navigate("/transaction-canvas", {
         state: {
           transactionId: row.id,
@@ -333,7 +280,22 @@ export default function useArchive() {
         },
       });
     },
-    [navigate, userId, statusTransaction, itemType, procMode, procSource],
+    [
+      navigate,
+      userId,
+      statusTransaction,
+      itemType,
+      procMode,
+      procSource,
+      completedKey,
+      forCollectionKey,
+      proc_status,
+      isManagement,
+      isAOTL,
+      isProcurementTL,
+      isProcurement,
+      archiveStatus,
+    ],
   );
 
   return {
@@ -346,7 +308,6 @@ export default function useArchive() {
     setRowsPerPage,
     transactions,
     filteredTransactions,
-    collectibleMap,
     loading,
     initialLoading,
     selectedArchiveStatusCode,

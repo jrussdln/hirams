@@ -108,6 +108,7 @@ const ClientNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
       <SidebarItem
         icon={<PersonIcon fontSize="small" />}
         label="Clients"
+        autoOpen={isOnPage}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}

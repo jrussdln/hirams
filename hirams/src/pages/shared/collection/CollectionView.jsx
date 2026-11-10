@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Box, Typography, useTheme } from "@mui/material";
 import { Replay } from "@mui/icons-material";
@@ -13,13 +13,16 @@ import TransactionActionModal from "../transactions/modal/TransactionActionModal
 import GetSuggestionsModal from "../canvas/modal/GetSuggestionsModal";
 import DirectCostModal from "../transactions/modal/DirectCostModal";
 import ArchiveModal from "../archive/modal/ArchiveModal";
-import AlertStructure from "../../../components/ui/structure/AlertStructure";
+import JEVConfirmationModal from "../journal-entry-voucher/modal/JEVConfirmationModal";
+import { JEV_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
+import { withSpinner } from "../../../utils/helpers/swal.jsx";
 import TransactionItemsTable from "../canvas/components/TransactionItemsTable";
 import PricingPanel from "../pricing/components/PricingPanel";
 import AssignAOModal from "../canvas/modal/AssignAOModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import icons from "../../../utils/style/iconFormatStyles";
-import JevViewSection from "./components/JevViewSection.jsx";
+import ForPurchasePanel from "../purchase/components/ForPurchasePanel.jsx";
+import CollectionPanel from "./components/CollectionPanel.jsx";
 
 const useColors = (c) => ({
   slateBorderLight: c.slate.borderLight,
@@ -123,6 +126,8 @@ export default function CollectionView(props) {
     crudItemsEnabled,
     showPurchaseOptions,
     canvasCheckboxOptionsEnabled,
+    purchaseCheckboxOptionsEnabled,
+    cancelledPOKey,
     anyItemHasABC,
     isManagement,
     isAccountOfficer,
@@ -147,6 +152,10 @@ export default function CollectionView(props) {
     setActionModal,
     directCostModalOpen,
     setDirectCostModalOpen,
+    createJevConfirmOpen,
+    setCreateJevConfirmOpen,
+    finalizeJevConfirmOpen,
+    setFinalizeJevConfirmOpen,
     completeConfirmOpen,
     setCompleteConfirmOpen,
     completeModalOpen,
@@ -172,7 +181,6 @@ export default function CollectionView(props) {
     optionStatuses,
     latestHistories,
 
-    fmtPHP,
     fmtDate,
     getDueDateVariant,
     getEffectiveABC,
@@ -213,33 +221,22 @@ export default function CollectionView(props) {
     jev,
     jevLoading,
     creatingJev,
-    showJev,
-    setShowJev,
     handleCreateJev,
     jevPendingKey,
     isFinanceOfficer,
     handleToggleJevFinalize,
     jevToggling,
-    collectionTax,
     jevBalance,
 
-    collectionEwt,
     collectionRetention,
+    isArchiveView,
   } = props;
 
+  const [unarchiveOpen, setUnarchiveOpen] = useState(false);
+
   if (!transaction) return null;
-  const isJevFinalized = !!jev && String(jev.cStatus) !== String(jevPendingKey);
-  const collectionAmount =
-    Math.round((Number(totalCollectibleValue || 0) + Number.EPSILON) * 100) /
-    100;
-  const collectionNet =
-    collectionAmount -
-    collectionEwt -
-    Number(collectionTax || 0) -
-    collectionRetention;
   // The collection page always sits at the collection stage — the status is
   // what routed us here — so it drives the layout outright.
-  const showingJev = !!jev && showJev && !isCompareActive;
   const txnDetailsProps = {
     details: transaction,
     statusTransaction,
@@ -250,8 +247,12 @@ export default function CollectionView(props) {
 
   return (
     <PageLayout
-      title="Transaction"
-      subtitle={`${currentStatusLabel || ""} / ${transactionCode || ""}`}
+      title={isArchiveView ? "Transaction Archived" : "Transaction"}
+      subtitle={
+        isArchiveView
+          ? `Transaction Completed (Archived) / ${transactionCode || ""}`
+          : `${currentStatusLabel || ""} / ${transactionCode || ""}`
+      }
       scrollRef={scrollRef}
       headerRight={
         !limitedContent ? (
@@ -269,15 +270,19 @@ export default function CollectionView(props) {
               ["info", "Details"],
               ["canvas", "Canvas"],
               ["pricing", "Pricing"],
-              ["purchase", "For Collection"],
+              ["purchase", "Purchase"],
+              ["collection", "Collection"],
             ].map(([tab, label], i, arr) => (
               <button
                 key={tab}
+                data-active={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 style={{
                   padding: "3px 10px",
                   background:
-                    activeTab === tab ? colors.blue.active : colors.slateOuterBg,
+                    activeTab === tab
+                      ? colors.blue.active
+                      : colors.slateOuterBg,
                   color:
                     activeTab === tab
                       ? colors.blue.text
@@ -301,10 +306,10 @@ export default function CollectionView(props) {
           label="Back"
           icon={icons.back}
           onClick={
-            showingJev
-              ? () => setShowJev(false)
-              : isCompareActive
-                ? handleBackFromCompare
+            isCompareActive
+              ? handleBackFromCompare
+              : isArchiveView
+                ? () => navigate(-1)
                 : () => navigate("/transaction")
           }
           actionColor="back"
@@ -312,51 +317,21 @@ export default function CollectionView(props) {
       }
       footerRActions={
         <>
-          {!isCompareActive && isAssignedToMe && (
-            <>
-              {!showJev && (
-                <BaseButton
-                  label="Direct Cost"
-                  icon={icons.quote}
-                  onClick={() => setDirectCostModalOpen(true)}
-                  actionColor="breakdown"
-                />
-              )}
-              {isJevFinalized && !showJev && (
-                <BaseButton
-                  label="Mark as Collected and Completed"
-                  icon={icons.check}
-                  onClick={() => setCompleteConfirmOpen(true)}
-                  actionColor="submit"
-                />
-              )}
-            </>
+         {!isCompareActive && isAssignedToMe && (
+            <BaseButton
+              label="Direct Cost"
+              icon={icons.quote}
+              onClick={() => setDirectCostModalOpen(true)}
+              actionColor="breakdown"
+            />
           )}
+          {/* Finalize / Undo Finalize sits BEFORE the complete button — an
+              active JEV must be undoable right beside "Transaction
+              Completed". */}
           {!statusChangedAlert &&
-            !isCompareActive &&
-            (isManagement || isFinanceOfficer) &&
-            (jev ? (
-              !showJev && (
-                <BaseButton
-                  label="View JEV"
-                  icon={icons.view}
-                  onClick={() => setShowJev(true)}
-                  actionColor="info"
-                />
-              )
-            ) : (
-              <BaseButton
-                label={creatingJev ? "Creating..." : "Create JEV"}
-                icon={icons.submit}
-                onClick={handleCreateJev}
-                actionColor="approve"
-                disabled={creatingJev || jevLoading}
-              />
-            ))}
-          {!statusChangedAlert &&
+            !isArchiveView &&
             !isCompareActive &&
             jev &&
-            showJev &&
             (isManagement || isFinanceOfficer) && (
               <BaseButton
                 label={
@@ -369,7 +344,7 @@ export default function CollectionView(props) {
                     ? icons.finalize
                     : icons.revert
                 }
-                onClick={handleToggleJevFinalize}
+                onClick={() => setFinalizeJevConfirmOpen(true)}
                 actionColor={
                   String(jev.cStatus) === String(jevPendingKey)
                     ? "approve"
@@ -389,6 +364,32 @@ export default function CollectionView(props) {
                 }
               />
             )}
+          {!isCompareActive && isAssignedToMe && (
+            <>
+              {jev && String(jev.cStatus) !== String(jevPendingKey) && (
+                <BaseButton
+                  label="Transaction Completed"
+                  icon={icons.check}
+                  onClick={() => setCompleteModalOpen(true)}
+                  actionColor="submit"
+                />
+              )}
+            </>
+          )}
+          {!statusChangedAlert &&
+            !isArchiveView &&
+            !isCompareActive &&
+            (isManagement || isFinanceOfficer) &&
+            !jev && (
+              <BaseButton
+                label={creatingJev ? "Creating..." : "Create JEV"}
+                icon={icons.submit}
+                onClick={() => setCreateJevConfirmOpen(true)}
+                actionColor="approve"
+                disabled={creatingJev || jevLoading}
+              />
+            )}
+         
           {!statusChangedAlert && showReassignAO && (
             <BaseButton
               // An AO that is not on the transaction yet is ASSIGNED; one
@@ -401,200 +402,178 @@ export default function CollectionView(props) {
               actionColor={hasAssignedAO ? "reassign" : "assign"}
             />
           )}
+          {isArchiveView && isManagement && (
+            <BaseButton
+              label="Unarchive"
+              icon={icons.unarchived}
+              onClick={() => setUnarchiveOpen(true)}
+              actionColor="revert"
+            />
+          )}
         </>
       }
       loading={itemsLoading}
     >
-      {!showingJev && (
-        <Box>
-          <StatusChangedBanner countdown={countdown} colors={colors} />
-          {limitedContent && <TransactionDetails {...txnDetailsProps} />}
-          {!limitedContent && (
-            <>
-              {activeTab === "info" && (
-                <TransactionDetails {...txnDetailsProps} />
-              )}
-              {activeTab === "canvas" && (
-                <TransactionItemsTable
-                  mode="canvas"
-                  items={items}
-                  itemsLoading={itemsLoading}
-                  expandedRows={expandedRows}
-                  expandedOptions={expandedOptions}
-                  optionErrors={optionErrors}
-                  crudItemsEnabled={crudItemsEnabled}
-                  showAddButton={crudItemsEnabled}
-                  showPurchaseOptions={showPurchaseOptions}
-                  checkboxOptionsEnabled={canvasCheckboxOptionsEnabled}
-                  anyItemHasABC={anyItemHasABC}
-                  statusChangedAlert={statusChangedAlert}
-                  isManagement={isManagement}
-                  isAccountOfficer={isAccountOfficer}
-                  suppliers={suppliers}
-                  cItemType={cItemType}
-                  currentStatusLabel={currentStatusLabel}
-                  transaction={transaction}
-                  transactionCode={transactionCode}
-                  currentUserId={currentUserId}
-                  abcValue={abcValue}
-                  abcSub={abcSub}
-                  abcValidation={abcValidation}
-                  totalCanvas={totalCanvas}
-                  totalABC={totalABC}
-                  totalPurchaseProgress={totalPurchaseProgress}
-                  totalPurchaseBalance={totalPurchaseBalance}
-                  totalCollectibleValue={totalCollectibleValue}
-                  forCanvasKey={forCanvasKey}
-                  optionStatuses={optionStatuses}
-                  latestHistories={latestHistories}
-                  getEffectiveABC={getEffectiveABC}
-                  handleCollapseAllToggle={handleCollapseAllToggle}
-                  toggleSpecsRow={toggleSpecsRow}
-                  toggleOptionsRow={toggleOptionsRow}
-                  toggleOptionSpecs={toggleOptionSpecs}
-                  handleToggleInclude={handleToggleInclude}
-                  setEditingItem={setEditingItem}
-                  setAddingNewItem={setAddingNewItem}
-                  setEntityToDelete={setEntityToDelete}
-                  setSuggestionsItem={setSuggestionsItem}
-                  setIsSuggestionsModalOpen={setIsSuggestionsModalOpen}
-                  setEditingOption={setEditingOption}
-                  setOptionModalItemId={setOptionModalItemId}
-                  setOptionModalItem={setOptionModalItem}
-                  setExpandedRows={setExpandedRows}
-                  getDueDateVariant={getDueDateVariant}
-                  forCollection={true}
-                  isAssignedToMe={isAssignedToMe}
-                  isProcurement={isProcurement}
-                  isProcurementTL={isProcurementTL}
-                />
-              )}
-              {activeTab === "pricing" && (
-                <PricingPanel
-                  transaction={transaction}
-                  selectedStatusCode={statusCode}
-                  isManagement={isManagement}
-                  isProcurementTL={isProcurementTL}
-                  transacstatus={transacstatus}
-                  forPricingKey={forPricingKey}
-                  priceVerificationKey={priceVerificationKey}
-                  priceApprovalKey={priceApprovalKey}
-                  priceSettingKey={priceSettingKey}
-                  priceFinalizeVerificationKey={priceFinalizeVerificationKey}
-                  isPricingSetting={false}
-                  currentStatusLabel={currentStatusLabel}
-                  currentUserId={currentUserId}
-                  itemType={itemType}
-                  procMode={procMode}
-                  procSource={procSourceLabel}
-                  statusTransaction={statusTransaction}
-                  clientNickName={transaction?.clientName || "—"}
-                  statusChangedAlert={statusChangedAlert}
-                />
-              )}
-              {activeTab === "purchase" && (
-                <>
-                  {!isCompareActive && !itemsLoading && abcValidation && (
-                    <Typography
-                      sx={{
-                        mb: 2,
-                        fontSize: "0.78rem",
-                        color: colors.grayTextSecondary,
-                      }}
-                    >
-                      {abcValidation}
-                    </Typography>
-                  )}
-                  {itemsLoading ? (
-                    <PurchasePageSkeleton />
-                  ) : isCompareActive && compareData ? (
-                    <CompareView
-                      compareData={compareData}
-                      forCanvasKey={forCanvasKey}
-                      onSpecsChange={(newSpecs) =>
-                        updateSpecs(compareData.itemId, newSpecs, "item")
-                      }
-                      onOptionSpecsChange={(optionId, newSpecs) =>
-                        updateSpecs(optionId, newSpecs)
-                      }
-                    />
-                  ) : (
-                    <TransactionItemsTable
-                      mode="purchase"
-                      items={items}
-                      itemsLoading={itemsLoading}
-                      expandedRows={expandedRows}
-                      expandedOptions={expandedOptions}
-                      optionErrors={optionErrors}
-                      crudItemsEnabled={crudItemsEnabled}
-                      showAddButton={crudItemsEnabled}
-                      showPurchaseOptions={showPurchaseOptions}
-                      anyItemHasABC={anyItemHasABC}
-                      statusChangedAlert={statusChangedAlert}
-                      isManagement={isManagement}
-                      isAccountOfficer={isAccountOfficer}
-                      suppliers={suppliers}
-                      cItemType={cItemType}
-                      currentStatusLabel={currentStatusLabel}
-                      transaction={transaction}
-                      transactionCode={transactionCode}
-                      currentUserId={currentUserId}
-                      abcValue={abcValue}
-                      abcSub={abcSub}
-                      abcValidation={abcValidation}
-                      totalCanvas={totalCanvas}
-                      totalABC={totalABC}
-                      totalPurchaseProgress={totalPurchaseProgress}
-                      totalPurchaseBalance={totalPurchaseBalance}
-                      totalCollectibleValue={totalCollectibleValue}
-                      forCanvasKey={forCanvasKey}
-                      optionStatuses={optionStatuses}
-                      latestHistories={latestHistories}
-                      getEffectiveABC={getEffectiveABC}
-                      handleCollapseAllToggle={handleCollapseAllToggle}
-                      toggleSpecsRow={toggleSpecsRow}
-                      toggleOptionsRow={toggleOptionsRow}
-                      toggleOptionSpecs={toggleOptionSpecs}
-                      handleToggleInclude={handleToggleInclude}
-                      setEditingItem={setEditingItem}
-                      setAddingNewItem={setAddingNewItem}
-                      setEntityToDelete={setEntityToDelete}
-                      setSuggestionsItem={setSuggestionsItem}
-                      setIsSuggestionsModalOpen={setIsSuggestionsModalOpen}
-                      setEditingOption={setEditingOption}
-                      setOptionModalItemId={setOptionModalItemId}
-                      setOptionModalItem={setOptionModalItem}
-                      setExpandedRows={setExpandedRows}
-                      getDueDateVariant={getDueDateVariant}
-                      forCollection={true}
-                      isAssignedToMe={isAssignedToMe}
-                      isProcurement={isProcurement}
-                      isProcurementTL={isProcurementTL}
-                    />
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </Box>
-      )}
-
-      {showingJev && (
-        <JevViewSection
-          jev={jev}
-          fmtPHP={fmtPHP}
-          amount={collectionAmount}
-          ewt={collectionEwt}
-          tax={Number(collectionTax || 0)}
-          retention={collectionRetention}
-          net={collectionNet}
-          particularsGrandTotal={collectionAmount}
-          jevPendingKey={jevPendingKey}
-          isFinanceOfficer={isFinanceOfficer}
-          isManagement={isManagement}
-          balance={jevBalance}
-        />
-      )}
+      <Box>
+        <StatusChangedBanner countdown={countdown} colors={colors} />
+        {limitedContent && <TransactionDetails {...txnDetailsProps} />}
+        {!limitedContent && (
+          <>
+            {activeTab === "info" && (
+              <TransactionDetails {...txnDetailsProps} />
+            )}
+            {activeTab === "canvas" && (
+              <TransactionItemsTable
+                mode="canvas"
+                showPurchasedBadge={true}
+                items={items}
+                itemsLoading={itemsLoading}
+                expandedRows={expandedRows}
+                expandedOptions={expandedOptions}
+                optionErrors={optionErrors}
+                crudItemsEnabled={crudItemsEnabled}
+                showAddButton={crudItemsEnabled}
+                showPurchaseOptions={showPurchaseOptions}
+                checkboxOptionsEnabled={canvasCheckboxOptionsEnabled}
+                anyItemHasABC={anyItemHasABC}
+                statusChangedAlert={statusChangedAlert}
+                isManagement={isManagement}
+                isAccountOfficer={isAccountOfficer}
+                suppliers={suppliers}
+                cItemType={cItemType}
+                currentStatusLabel={currentStatusLabel}
+                transaction={transaction}
+                transactionCode={transactionCode}
+                currentUserId={currentUserId}
+                abcValue={abcValue}
+                abcSub={abcSub}
+                abcValidation={abcValidation}
+                totalCanvas={totalCanvas}
+                totalABC={totalABC}
+                totalPurchaseProgress={totalPurchaseProgress}
+                totalPurchaseBalance={totalPurchaseBalance}
+                totalCollectibleValue={totalCollectibleValue}
+                forCanvasKey={forCanvasKey}
+                optionStatuses={optionStatuses}
+                latestHistories={latestHistories}
+                getEffectiveABC={getEffectiveABC}
+                handleCollapseAllToggle={handleCollapseAllToggle}
+                toggleSpecsRow={toggleSpecsRow}
+                toggleOptionsRow={toggleOptionsRow}
+                toggleOptionSpecs={toggleOptionSpecs}
+                handleToggleInclude={handleToggleInclude}
+                setEditingItem={setEditingItem}
+                setAddingNewItem={setAddingNewItem}
+                setEntityToDelete={setEntityToDelete}
+                setSuggestionsItem={setSuggestionsItem}
+                setIsSuggestionsModalOpen={setIsSuggestionsModalOpen}
+                setEditingOption={setEditingOption}
+                setOptionModalItemId={setOptionModalItemId}
+                setOptionModalItem={setOptionModalItem}
+                setExpandedRows={setExpandedRows}
+                getDueDateVariant={getDueDateVariant}
+                forCollection={true}
+                isArchiveView={isArchiveView}
+                isAssignedToMe={isAssignedToMe}
+                isProcurement={isProcurement}
+                isProcurementTL={isProcurementTL}
+              />
+            )}
+            {activeTab === "pricing" && (
+              <PricingPanel
+                transaction={transaction}
+                selectedStatusCode={statusCode}
+                isManagement={isManagement}
+                isProcurementTL={isProcurementTL}
+                transacstatus={transacstatus}
+                forPricingKey={forPricingKey}
+                priceVerificationKey={priceVerificationKey}
+                priceApprovalKey={priceApprovalKey}
+                priceSettingKey={priceSettingKey}
+                priceFinalizeVerificationKey={priceFinalizeVerificationKey}
+                isPricingSetting={false}
+                currentStatusLabel={currentStatusLabel}
+                currentUserId={currentUserId}
+                itemType={itemType}
+                procMode={procMode}
+                procSource={procSourceLabel}
+                statusTransaction={statusTransaction}
+                clientNickName={transaction?.clientName || "—"}
+                statusChangedAlert={statusChangedAlert}
+              />
+            )}
+            {activeTab === "purchase" && (
+              <ForPurchasePanel
+                forCollection={false}
+                isArchiveView={isArchiveView}
+                /* The purchase tab inside the For Collection workspace is a
+                   stage reference — never an authoring surface — so the
+                   Get Suggestions / + Option buttons are hidden here
+                   unconditionally (the genuinely live purchase list lives
+                   on the For Purchase page, which doesn't set this). */
+                hideOptionActions
+                items={items}
+                itemsLoading={itemsLoading}
+                expandedRows={expandedRows}
+                expandedOptions={expandedOptions}
+                optionErrors={optionErrors}
+                crudItemsEnabled={crudItemsEnabled}
+                showPurchaseOptions={showPurchaseOptions}
+                purchaseCheckboxOptionsEnabled={purchaseCheckboxOptionsEnabled}
+                statusChangedAlert={statusChangedAlert}
+                anyItemHasABC={anyItemHasABC}
+                isManagement={isManagement}
+                isAccountOfficer={isAccountOfficer}
+                isFinanceOfficer={isFinanceOfficer}
+                isProcurement={isProcurement}
+                isProcurementTL={isProcurementTL}
+                suppliers={suppliers}
+                cItemType={cItemType}
+                currentStatusLabel={currentStatusLabel}
+                transaction={transaction}
+                transactionCode={transactionCode}
+                currentUserId={currentUserId}
+                abcValue={abcValue}
+                abcSub={abcSub}
+                abcValidation={abcValidation}
+                totalCanvas={totalCanvas}
+                totalABC={totalABC}
+                totalPurchaseProgress={totalPurchaseProgress}
+                totalPurchaseBalance={totalPurchaseBalance}
+                totalCollectibleValue={totalCollectibleValue}
+                cancelledPOKey={cancelledPOKey}
+                forCanvasKey={forCanvasKey}
+                optionStatuses={optionStatuses}
+                latestHistories={latestHistories}
+                getEffectiveABC={getEffectiveABC}
+                handleCollapseAllToggle={handleCollapseAllToggle}
+                toggleSpecsRow={toggleSpecsRow}
+                toggleOptionsRow={toggleOptionsRow}
+                toggleOptionSpecs={toggleOptionSpecs}
+                handleToggleInclude={handleToggleInclude}
+                setEditingItem={setEditingItem}
+                setAddingNewItem={setAddingNewItem}
+                setEntityToDelete={setEntityToDelete}
+                setSuggestionsItem={setSuggestionsItem}
+                setIsSuggestionsModalOpen={setIsSuggestionsModalOpen}
+                setEditingOption={setEditingOption}
+                setOptionModalItemId={setOptionModalItemId}
+                setOptionModalItem={setOptionModalItem}
+                setExpandedRows={setExpandedRows}
+                getDueDateVariant={getDueDateVariant}
+                isAssignedToMe={isAssignedToMe}
+                isCompareActive={isCompareActive}
+                compareData={compareData}
+                updateSpecs={updateSpecs}
+                onRefreshOptionData={() => fetchItems({ restoreScroll: true })}
+              />
+            )}
+            {activeTab === "collection" && (
+              <CollectionPanel {...props} />
+            )}
+          </>
+        )}
+      </Box>
       <DeleteVerificationModal
         open={entityToDelete !== null}
         entityToDelete={entityToDelete}
@@ -657,27 +636,29 @@ export default function CollectionView(props) {
         isManagement={isManagement || isAccountOfficer}
         isPricingSetting={true}
       />
-      <AlertStructure
-        open={completeConfirmOpen}
-        title="Mark as Collected and Completed"
-        type="warning"
-        headerTitle="Confirm Completion"
-        confirmText="Yes, Mark as Completed"
-        cancelLabel="Cancel"
-        message={
-          <Typography
-            sx={{ fontSize: "0.78rem", color: colors.grayTextSecondary }}
-          >
-            Remember, this action cannot be reverted. Once confirmed, this
-            transaction will be moved and stored in the Transaction Archives.
-          </Typography>
-        }
+      <JEVConfirmationModal
+        open={createJevConfirmOpen}
+        style={JEV_CONFIRM_STYLES.create_collection_jev}
+        loading={creatingJev}
         onConfirm={() => {
-          setCompleteConfirmOpen(false);
-          setCompleteModalOpen(true);
+          setCreateJevConfirmOpen(false);
+          withSpinner("JEV", () => handleCreateJev());
         }}
-        onCancel={() => setCompleteConfirmOpen(false)}
-        onClose={() => setCompleteConfirmOpen(false)}
+        onClose={() => setCreateJevConfirmOpen(false)}
+      />
+      <JEVConfirmationModal
+        open={finalizeJevConfirmOpen}
+        style={
+          String(jev?.cStatus) === String(jevPendingKey)
+            ? JEV_CONFIRM_STYLES.finalize_collection_jev
+            : JEV_CONFIRM_STYLES.undo_finalize_collection_jev
+        }
+        loading={jevToggling}
+        onConfirm={() => {
+          setFinalizeJevConfirmOpen(false);
+          withSpinner("JEV", () => handleToggleJevFinalize());
+        }}
+        onClose={() => setFinalizeJevConfirmOpen(false)}
       />
       <ArchiveModal
         open={completeModalOpen}
@@ -692,6 +673,21 @@ export default function CollectionView(props) {
           handleAfterAction();
         }}
       />
+      {unarchiveOpen && (
+        <ArchiveModal
+          open={unarchiveOpen}
+          onClose={() => setUnarchiveOpen(false)}
+          transaction={transaction}
+          transactionId={transaction?.nTransactionId}
+          transactionCode={transactionCode}
+          mode="unarchive"
+          archiveStatus={archiveStatus}
+          onSuccess={() => {
+            setUnarchiveOpen(false);
+            navigate(-1);
+          }}
+        />
+      )}
       <AssignAOModal
         open={!!assignMode}
         mode={assignMode}

@@ -163,17 +163,22 @@ export default function usePreviewPO() {
         return String(code);
     }
   })();
-  // The PDF export's file name: SupplierNickname-POCODE (filesystem-
-  // unsafe characters stripped, since the PO no. can contain slashes).
-  const poCode = String(po?.strPurchaseOrderNo ?? "PO");
-  const pdfFileName = `${supplierNickname}-${poCode}`.replace(
-    /[\\/:*?"<>|]/g,
-    "",
-  );
+  // The PDF export's file name: PONUMBER(SupplierNick)-PurchaseOrder(
+  // CompanyNick), e.g. "PO2026-0061(PRIMA)-PurchaseOrder(HiRams)".
+  // Filesystem-unsafe characters are stripped, since the PO no. can
+  // contain slashes.
+  const poCode = String(po?.strPurchaseOrderNo ?? "");
+  const companyNick =
+    company?.strCompanyNickName || company?.strCompanyName || "";
+  const pdfFileName =
+    `${poCode}(${supplierNickname})-PurchaseOrder(${companyNick})`.replace(
+      /[\\/:*?"<>|]/g,
+      "",
+    );
   return {
     poNo: po?.strPurchaseOrderNo ?? "—",
 
-    // Save-as-PDF file name: SupplierNickname-POCODE
+    // Save-as-PDF file name: PONUMBER(SupplierNick)-PurchaseOrder(CompanyNick)
     pdfFileName,
 
     // The page subtitle: "POCODE - SupplierNickname"

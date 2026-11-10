@@ -20,7 +20,7 @@ import TransactionHistoryModal from "../transactions/modal/TransactionHistoryMod
 import ArchiveModal from "./modal/ArchiveModal";
 import useArchive from "./useArchive";
 import getThemeColors from "../../../utils/style/getThemeColors";
-import { OPEN_DATE } from "../../../constants/tableDataFallbacks";
+import { OPEN_DATE, NO_TRANSACTION_ABC } from "../../../constants/tableDataFallbacks";
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — consistent with BankModal & ContactModal pattern
@@ -110,7 +110,6 @@ export default function ArchiveView() {
     userId,
     lostKey,
     completedKey,
-    collectibleMap,
     fetchTransactions,
     handleRowClick,
   } = useArchive();
@@ -119,8 +118,9 @@ export default function ArchiveView() {
     {
       key: "transactionName",
       label: "Transaction",
-      // Completed mirrors the For Collection layout, where the title carries
-      // the code and the client ➟ company pair and takes the wider share.
+      // Completed now mirrors the transactions page's DRAFT layout: the code
+      // carries the client ➟ company badge on the wider share, with an ABC
+      // column and the PO block beside it.
       xs: selectedArchiveStatusCode === completedKey ? 6 : 4,
       title: true,
       render: (val, row) => {
@@ -154,7 +154,11 @@ export default function ArchiveView() {
             <span className="line-clamp-2 whitespace-normal text-[0.75rem] font-normal leading-[1.1] mt-px">
               {val}
             </span>
-            {selectedArchiveStatusCode !== lostKey && (
+            {/* No PREVIOUS caption on Transaction Completed — the draft-like
+                layout keeps its rows clean, and the stage it completed from
+                is already obvious from the workspace it opens. */}
+            {selectedArchiveStatusCode !== lostKey &&
+              selectedArchiveStatusCode !== completedKey && (
               // The caption and the status now read as one label: upright and
               // the same weight, so the whole line is legible at this size.
               <span className="block truncate text-[0.5625rem] font-medium not-italic leading-tight text-gray-500 dark:text-gray-400 mt-px">
@@ -168,143 +172,143 @@ export default function ArchiveView() {
     // { key: "clientName", label: "Client" },
     // { key: "companyName", label: "Company" },
 
-    // Transaction Completed mirrors the transactions page's For Collection
-    // layout: the officer column is replaced by the Collection Amount block.
+    // Transaction Completed reads like the transactions page's DRAFT layout
+    // now: an ABC column beside the title — NOT the Collection Amount figure
+    // the live For Collection stage carries (that figure only exists while
+    // the transaction is still running).
     ...(selectedArchiveStatusCode === completedKey
       ? [
           {
-            key: "collectionAmount",
-            label: "Collection Amount",
+            // Transaction-level ABC (dTotalABC) — optional, so completed
+            // transactions without one fall back to the shared placeholder,
+            // same as the Draft view.
+            key: "dTotalABC",
+            label: "ABC",
             align: "right",
-            xs: 2.5,
-            render: (_, row) => {
-              const data = collectibleMap[row.id];
-              if (!data)
-                return (
-                  <span
-                    style={{ color: colors.textMuted, fontSize: "0.7rem" }}
-                  >
-                    —
-                  </span>
-                );
-
-              const peso = (v) =>
-                Number(v ?? 0).toLocaleString(undefined, {
+            xs: 1.5,
+            render: (val) =>
+              val == null || val === "" ? (
+                <span
+                  className="text-xs font-light italic"
+                  style={{ color: colors.textMuted }}
+                >
+                  {NO_TRANSACTION_ABC}
+                </span>
+              ) : (
+                `₱ ${Number(val).toLocaleString(undefined, {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
-                });
-
-              // One clean figure — the collectible amount itself, same
-              // style as the transactions page's For Collection column:
-              // no Less-EWT/TAX/Retention lines, no NET.
-              return (
-                <div className="flex min-w-0 justify-end">
-                  <span className="text-[0.75rem] font-semibold leading-tight whitespace-nowrap">
-                    ₱ {peso(data.collectible)}
-                  </span>
-                </div>
-              );
-            },
+                })}`
+              ),
           },
         ]
-      : [
-          {
-            key: "createdBy",
-            label: "AO / PO",
-            align: "left",
-            xs: 1.5,
-            render: (_, row) => {
-              const prevCode = Number(row.previous_status_code ?? 0);
-              const isAoStage = prevCode >= 200 && prevCode <= 245;
-              const isForPurchaseStage = prevCode === 340;
+      : []),
+    // The officer column is shared by EVERY archive status (it used to be
+    // swapped out for Collection Amount on Completed). A Completed row's
+    // previous status is For Collection, so its render falls through to the
+    // PO + Submission Date branch — the same shape the Draft view prints.
+    // Spread it: CustomTable maps over columns directly, so a nested array
+    // would be read as ONE broken column (undefined key/label/xs) instead
+    // of a real one.
+    ...[
+      {
+        key: "createdBy",
+        // Transaction Completed reads like the Draft view, whose officer
+        // column is labeled just "PO"; the other statuses carry the
+        // AO-or-PO either/or label.
+        label: selectedArchiveStatusCode === completedKey ? "PO" : "AO / PO",
+        align: "left",
+        xs: 1.5,
+        render: (_, row) => {
+          const prevCode = Number(row.previous_status_code ?? 0);
+          const isAoStage = prevCode >= 200 && prevCode <= 245;
+          const isForPurchaseStage = prevCode === 340;
 
-              if (isAoStage) {
-                const hasName = Boolean(row.aoName?.trim());
-                const formattedDate =
-                  row.date && row.date !== "—" ? row.date : OPEN_DATE;
+          if (isAoStage) {
+            const hasName = Boolean(row.aoName?.trim());
+            const formattedDate =
+              row.date && row.date !== "—" ? row.date : OPEN_DATE;
 
-                // The second line shows ONE date: the delivery date on the For
-                // Purchase stage, otherwise the AO due date — each falling
-                // back to the document-submission date, and finally to the
-                // "Open date" placeholder.
-                //
-                // The colour has to come from the date that is actually
-                // printed. Before, the colour came from the raw due date
-                // while the text could be the placeholder, so "Open date"
-                // came out RED.
-                const shownDate = isForPurchaseStage
-                  ? row.dtDelivery
-                  : row.dtAODueDate || row.dtDocSubmission;
-                const hasSecond = Boolean(shownDate);
-                const secondValue = isForPurchaseStage
-                  ? row.dtDelivery
-                    ? row.deliveryDate
-                    : formattedDate
-                  : row.dtAODueDate
-                    ? row.aoDueDate
-                    : formattedDate;
-                // Same rule as the live transactions list: red once the date
-                // has passed, orange when it is within 3 business days.
-                const secondColor = hasSecond
-                  ? getDueDateColor(shownDate)
-                  : null;
+            // The second line shows ONE date: the delivery date on the For
+            // Purchase stage, otherwise the AO due date — each falling
+            // back to the document-submission date, and finally to the
+            // "Open date" placeholder.
+            //
+            // The colour has to come from the date that is actually
+            // printed. Before, the colour came from the raw due date
+            // while the text could be the placeholder, so "Open date"
+            // came out RED.
+            const shownDate = isForPurchaseStage
+              ? row.dtDelivery
+              : row.dtAODueDate || row.dtDocSubmission;
+            const hasSecond = Boolean(shownDate);
+            const secondValue = isForPurchaseStage
+              ? row.dtDelivery
+                ? row.deliveryDate
+                : formattedDate
+              : row.dtAODueDate
+                ? row.aoDueDate
+                : formattedDate;
+            // Same rule as the live transactions list: red once the date
+            // has passed, orange when it is within 3 business days.
+            const secondColor = hasSecond ? getDueDateColor(shownDate) : null;
 
-                return (
-                  <div className="flex min-w-0 justify-start">
-                    <OfficerBlock>
-                      <OfficerLine
-                        icon={PersonOutline}
-                        title="AO"
-                        value={hasName ? row.aoName : "—"}
-                      />
-                      <OfficerLine
-                        icon={isForPurchaseStage ? LocalShipping : Event}
-                        title={isForPurchaseStage ? "Delivery" : "Due"}
-                        valueStyle={{
-                          color: hasSecond
-                            ? (secondColor ?? "inherit")
-                            : colors.textMuted,
-                          fontWeight: secondColor ? 600 : 500,
-                        }}
-                        value={secondValue}
-                      />
-                    </OfficerBlock>
-                  </div>
-                );
-              }
+            return (
+              <div className="flex min-w-0 justify-start">
+                <OfficerBlock>
+                  <OfficerLine
+                    icon={PersonOutline}
+                    title="AO"
+                    value={hasName ? row.aoName : "—"}
+                  />
+                  <OfficerLine
+                    icon={isForPurchaseStage ? LocalShipping : Event}
+                    title={isForPurchaseStage ? "Delivery" : "Due"}
+                    valueStyle={{
+                      color: hasSecond
+                        ? (secondColor ?? "inherit")
+                        : colors.textMuted,
+                      fontWeight: secondColor ? 600 : 500,
+                    }}
+                    value={secondValue}
+                  />
+                </OfficerBlock>
+              </div>
+            );
+          }
 
-              const hasName = Boolean(row.createdBy?.trim());
-              const hasDate = Boolean(row.dtDocSubmission);
-              const formattedDate =
-                row.date && row.date !== "—" ? row.date : OPEN_DATE;
-              // Same rule as the live transactions list.
-              const dateColor = getDueDateColor(row.dtDocSubmission);
-              return (
-                <div className="flex min-w-0 justify-start">
-                  <OfficerBlock>
-                    <OfficerLine
-                      icon={PersonOutline}
-                      title="PO"
-                      value={hasName ? row.createdBy : "—"}
-                    />
-                    <OfficerLine
-                      icon={CalendarToday}
-                      title="Submission Date"
-                      valueStyle={{
-                        color: hasDate
-                          ? (dateColor ?? "inherit")
-                          : colors.textMuted,
-                        fontWeight: dateColor ? 600 : 500,
-                      }}
-                      value={formattedDate}
-                    />
-                  </OfficerBlock>
-                </div>
-              );
-            },
-          },
-          // { key: "previous_status_label", label: "Previous", align: "center" },
-        ]),
+          const hasName = Boolean(row.createdBy?.trim());
+          const hasDate = Boolean(row.dtDocSubmission);
+          const formattedDate =
+            row.date && row.date !== "—" ? row.date : OPEN_DATE;
+          // Same rule as the live transactions list.
+          const dateColor = getDueDateColor(row.dtDocSubmission);
+          return (
+            <div className="flex min-w-0 justify-start">
+              <OfficerBlock>
+                <OfficerLine
+                  icon={PersonOutline}
+                  title="PO"
+                  value={hasName ? row.createdBy : "—"}
+                />
+                <OfficerLine
+                  icon={CalendarToday}
+                  title="Submission Date"
+                  valueStyle={{
+                    color: hasDate
+                      ? (dateColor ?? "inherit")
+                      : colors.textMuted,
+                    fontWeight: dateColor ? 600 : 500,
+                  }}
+                  value={formattedDate}
+                />
+              </OfficerBlock>
+            </div>
+          );
+        },
+      },
+      // { key: "previous_status_label", label: "Previous", align: "center" },
+    ],
     {
       key: "actions",
       label: "Actions",

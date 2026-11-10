@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer";
 import { Box, Typography, TextField, InputAdornment } from "@mui/material";
-import { Percent, TrendingUp, FileDownload } from "@mui/icons-material";
-import ExportAPI from "../../../../api/endpoints/export.api.js";
-import ExportSpinnerContent from "../../../../components/ui/content/ExportSpinnerContent.jsx";
+import { Percent, TrendingUp, Visibility } from "@mui/icons-material";
 import uiMessages from "../../../../utils/helpers/uiMessages";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 
@@ -55,10 +54,9 @@ function ExportCanvasModal({
 
   const [percentage, setPercentage] = useState("");
   const [error, setError] = useState("");
-  const [exporting, setExporting] = useState(false);
-  const [exportDone, setExportDone] = useState(false);
   const inputRef = useRef(null);
-  const abortRef = useRef(null);
+
+  const navigate = useNavigate();
 
   const fmt = (n) =>
     Number(n).toLocaleString(undefined, {
@@ -80,8 +78,6 @@ function ExportCanvasModal({
     if (open) {
       setPercentage("");
       setError("");
-      setExporting(false);
-      setExportDone(false);
       // No markup field to focus on the Pre-Canvass pricing-set export.
       if (!isPresetExport) {
         setTimeout(() => inputRef.current?.focus(), 100);
@@ -209,11 +205,42 @@ function ExportCanvasModal({
     onClose();
   };
 
-  const handleApply = async () => {
-    // Pre-Canvass pricing-set export — there is no markup to validate.
+  // The confirmation button no longer exports — it OPENS the print preview
+  // page, which renders the same table the Excel export carries (client /
+  // code / title header, then #/description/brand/qty/selling/total rows).
+  // The unit selling prices (markup applied in the modal, or the pricing
+  // set's own prices) ride along in the route state.
+  const handleApply = () => {
+    // Pre-Canvass pricing-set preview — there is no markup to validate.
     if (isPresetExport) {
       const unitSellingPrices = buildUnitSellingPrices();
-      return runExport(unitSellingPrices);
+      sessionStorage.setItem(
+        "previewPricingState",
+        JSON.stringify({
+          transaction,
+          clientName,
+          items,
+          unitSellingPrices,
+          company: transaction?.company ?? null,
+          selectedStatusCode:
+            transaction?.current_status ??
+            transaction?.latest_history?.nStatus,
+        }),
+      );
+      navigate("/preview-pricing", {
+        state: {
+          transaction,
+          clientName,
+          items,
+          unitSellingPrices,
+          company: transaction?.company ?? null,
+          // Transactions sidebar keeps the canvas-stage highlight on the
+          // preview page (TransactionNav reads this on route change).
+          selectedStatusCode:
+            transaction?.current_status ?? transaction?.latest_history?.nStatus,
+        },
+      });
+      return;
     }
 
     const pct = Number(percentage);
@@ -224,48 +251,31 @@ function ExportCanvasModal({
     }
 
     const unitSellingPrices = buildUnitSellingPrices();
-    return runExport(unitSellingPrices);
-  };
-
-  const runExport = async (unitSellingPrices) => {
-    abortRef.current = new AbortController();
-    setExporting(true);
-    setExportDone(false);
-
-    try {
-      const blob = await ExportAPI.exportPricingReport(
-        {
-          transaction,
-          unitSellingPrices,
-          items,
-        },
-        { signal: abortRef.current.signal },
-      );
-
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute(
-        "download",
-        `${transaction?.strCode || "canvas"}_${clientName || "export"}.xlsx`,
-      );
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-
-      setExportDone(true);
-      setTimeout(() => {
-        setExporting(false);
-        setExportDone(false);
-        handleClose();
-      }, 1600);
-    } catch (err) {
-      if (err.name === "AbortError") return;
-      console.error("Export canvas failed:", err);
-      setExporting(false);
-      setExportDone(false);
-    }
+    sessionStorage.setItem(
+      "previewPricingState",
+      JSON.stringify({
+        transaction,
+        clientName,
+        items,
+        unitSellingPrices,
+        company: transaction?.company ?? null,
+        selectedStatusCode:
+          transaction?.current_status ?? transaction?.latest_history?.nStatus,
+      }),
+    );
+    navigate("/preview-pricing", {
+      state: {
+        transaction,
+        clientName,
+        items,
+        unitSellingPrices,
+        company: transaction?.company ?? null,
+        // Transactions sidebar keeps the canvas-stage highlight on the
+        // preview page (TransactionNav reads this on route change).
+        selectedStatusCode:
+          transaction?.current_status ?? transaction?.latest_history?.nStatus,
+      },
+    });
   };
 
   if (!open) return null;
@@ -295,25 +305,10 @@ function ExportCanvasModal({
 
   return (
     <>
-      <ExportSpinnerContent
-        open={exporting}
-        done={exportDone}
-        fileName={
-          transaction?.strCode && clientName
-            ? `${transaction.strCode}_${clientName}.xlsx`
-            : ""
-        }
-        onCancel={() => {
-          abortRef.current?.abort();
-          setExporting(false);
-          setExportDone(false);
-        }}
-      />
-
       <ModalContainer
         open={open}
         handleClose={handleClose}
-        title="Export Canvas"
+        title="Preview Pricing"
         subTitle={
           transaction?.strCode
             ? `${transaction.strCode}${selectedSet?.name ? ` / ${selectedSet.name}` : ""}`
@@ -321,9 +316,9 @@ function ExportCanvasModal({
         }
         onSave={handleApply}
         showSave
-        saveLabel="Export"
-        saveIcon={<FileDownload />}
-        disableSave={exporting}
+        saveLabel="Preview Pricing"
+        saveIcon={<Visibility />}
+        disableSave={false}
         showCancel
         cancelLabel="Cancel"
         onCancel={handleClose}
@@ -529,7 +524,7 @@ function ExportCanvasModal({
           <Typography
             sx={{ fontSize: "0.65rem", color: colors.textMuted, mt: 0.5 }}
           >
-            Will export {eligibleCount} of {items.length} item
+            Will include {eligibleCount} of {items.length} item
             {items.length !== 1 ? "s" : ""} with purchase data.
             {lockedCount > 0 && (
               <span style={{ color: colors.textLocked, marginLeft: 4 }}>

@@ -690,6 +690,34 @@ export const getThemeColors = (isDark) => {
     },
 
     // ═══════════════════════════════════════════════════════════════════
+    // SYSTEM — the full-app states (SystemUnderMaintenance screen). The
+    // light background is the indigo→grey→violet aurora gradient; dark
+    // mode carries a deep slate equivalent with the same hue family so the
+    // aurora tint reads on both.
+    // ═══════════════════════════════════════════════════════════════════
+    system: {
+      maintenanceBg: isDark
+        ? "linear-gradient(145deg, #121a2f 0%, #0b1120 50%, #191024 100%)"
+        : "linear-gradient(145deg, #f0f4ff 0%, #fafafa 50%, #f5f0ff 100%)",
+      // APP SHELL — the page background behind ALL content (Layout2's root
+      // strip). Same aurora family as the maintenance screen; keep the two
+      // gradients in step so the shell and the global states look like one
+      // system.
+      shellBg: isDark
+        ? "linear-gradient(145deg, #121a2f 0%, #0b1120 50%, #191024 100%)"
+        : "linear-gradient(145deg, #f0f4ff 0%, #fafafa 50%, #f5f0ff 100%)",
+      // Glass card over the aurora — dark mode uses a deep frosted slate
+      // instead of white so the card keeps the "floating glass" look.
+      maintenanceCard: isDark ? "rgba(20,29,51,0.85)" : "rgba(255,255,255,0.85)",
+      maintenanceCardBorder: isDark
+        ? "rgba(148,163,184,0.25)"
+        : "rgba(99,102,241,0.12)",
+      maintenanceCardShadow: isDark
+        ? "0 8px 40px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.05) inset"
+        : "0 8px 40px rgba(99,102,241,0.1), 0 1px 0 rgba(255,255,255,0.9) inset",
+    },
+
+    // ═══════════════════════════════════════════════════════════════════
     // ACCOUNT — the "My Account" tab (AccountPanel + AccountPanelSkeleton).
     // These use the Tailwind grey/emerald ramps (#111827, #6b7280, #f3f4f6,
     // #047857 …) rather than the slate/emerald values already in `gray` /

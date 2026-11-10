@@ -1,12 +1,10 @@
 import React, { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Box, Typography, Alert, useTheme } from "@mui/material";
+import { Box, Typography, useTheme } from "@mui/material";
 import { Replay } from "@mui/icons-material";
 import PageLayout from "../../../components/layouts/page/content-page";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import TransactionDetails from "../transactions/components/TransactionDetails";
-import { PurchasePageSkeleton } from "../../../components/ui/loader/Skeleton";
-import CompareView from "../canvas/components/CompareView";
 import NewOptionModal from "../canvas/modal/NewOptionModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import TransactionActionModal from "../transactions/modal/TransactionActionModal";
@@ -14,7 +12,9 @@ import GetSuggestionsModal from "../canvas/modal/GetSuggestionsModal";
 import UpdateDeliveryInfoModal from "../pricing/modal/UpdateDeliveryInfoModal";
 import MiniBaseButton from "../../../components/ui/form/MiniBaseButton";
 import DRPanel from "./components/DR-SIPreview";
-import DirectCostModal from "../transactions/modal/DirectCostModal";import ArchiveModal from "../archive/modal/ArchiveModal";
+import ForPurchasePanel from "./components/ForPurchasePanel";
+import DirectCostModal from "../transactions/modal/DirectCostModal";
+import ArchiveModal from "../archive/modal/ArchiveModal";
 import AlertStructure from "../../../components/ui/structure/AlertStructure";
 import TransactionItemsTable from "../canvas/components/TransactionItemsTable";
 import PricingPanel from "../pricing/components/PricingPanel";
@@ -22,10 +22,6 @@ import AssignAOModal from "../canvas/modal/AssignAOModal";
 import AssignProcurementModal from "../pricing-set/modal/AssignProcurementModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import icons from "../../../utils/style/iconFormatStyles";
-import JevViewPanel from "../journal-entry-voucher/components/JEVViewPanel.jsx";
-import { MonetizationOnOutlined } from "@mui/icons-material";
-import ContentHeaderStructure from "../../../components/ui/structure/ContentHeaderStructure";
-import CardStructure from "../../../components/ui/structure/CardStructure";
 const useColors = (c) => ({
   slateBorder: c.slate.border,
   slateBorderLight: c.slate.borderLight,
@@ -253,8 +249,7 @@ export default function PurchaseView(props) {
     !statusChangedAlert &&
     deliveredOptions.length > 0;
 
-  const siReady =
-    totalPurchaseProgress === 100 && salesInvoiceItems.length > 0;
+  const siReady = totalPurchaseProgress === 100 && salesInvoiceItems.length > 0;
 
   if (confirmDrPrint && transaction) {
     return (
@@ -285,53 +280,55 @@ export default function PurchaseView(props) {
       title="Transaction"
       subtitle={`${currentStatusLabel || ""} / ${transactionCode || ""}`}
       scrollRef={scrollRef}
-      subFooter={isPrintDrAvailable && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            width: "100%",
-            height: "100%",
-            padding: "0 1rem",
-          }}
-        >
-          <Box
-            sx={{
+      subFooter={
+        isPrintDrAvailable && (
+          <div
+            style={{
               display: "flex",
+              justifyContent: "space-between",
               alignItems: "center",
-              gap: 0.75,
-              pr: 1,
+              width: "100%",
+              height: "100%",
+              padding: "0 1rem",
             }}
           >
-            {React.cloneElement(icons.print, {
-              sx: { fontSize: "0.8rem", color: "white" },
-            })}
-            <Typography
+            <Box
               sx={{
-                fontSize: "0.65rem",
-                fontWeight: 700,
-                color: "white",
-                textTransform: "uppercase",
-                letterSpacing: "0.025em",
+                display: "flex",
+                alignItems: "center",
+                gap: 0.75,
+                pr: 1,
               }}
             >
-              {siReady
-                ? "DELIVERY RECEIPT/SALES INVOICE IS NOW AVAILABLE!"
-                : "DELIVERY RECEIPT IS NOW AVAILABLE!"}
-            </Typography>
-          </Box>
-          <MiniBaseButton
-            label="VIEW"
-            icon={icons.view}
-            color="white"
-            bg="rgba(255, 255, 255, 0.15)"
-            border="rgba(255, 255, 255, 0.3)"
-            hoverBg="rgba(255, 255, 255, 0.25)"
-            onClick={() => setConfirmDrPrint(true)}
-          />
-        </div>
-      )}
+              {React.cloneElement(icons.print, {
+                sx: { fontSize: "0.8rem", color: "white" },
+              })}
+              <Typography
+                sx={{
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  color: "white",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.025em",
+                }}
+              >
+                {siReady
+                  ? "DELIVERY RECEIPT/SALES INVOICE IS NOW AVAILABLE!"
+                  : "DELIVERY RECEIPT IS NOW AVAILABLE!"}
+              </Typography>
+            </Box>
+            <MiniBaseButton
+              label="VIEW"
+              icon={icons.view}
+              color="white"
+              bg="rgba(255, 255, 255, 0.15)"
+              border="rgba(255, 255, 255, 0.3)"
+              hoverBg="rgba(255, 255, 255, 0.25)"
+              onClick={() => setConfirmDrPrint(true)}
+            />
+          </div>
+        )
+      }
       headerRight={
         !limitedContent ? (
           <div
@@ -348,10 +345,11 @@ export default function PurchaseView(props) {
               ["info", "Details"],
               ["canvas", "Canvas"],
               ["pricing", "Pricing"],
-              ["purchase", "For Purchase"],
+              ["purchase", "Purchase"],
             ].map(([tab, label], i, arr) => (
               <button
                 key={tab}
+                data-active={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
                 style={{
                   padding: "3px 10px",
@@ -415,13 +413,13 @@ export default function PurchaseView(props) {
               Management and finance both carry it, same purchase view. */}
           {(isManagement || isAccountOfficer || isFinanceOfficer) &&
             !isCompareActive && (
-            <BaseButton
-              label="Direct Cost"
-              icon={icons.breakdown}
-              onClick={() => setDirectCostModalOpen(true)}
-              actionColor="breakdown"
-            />
-          )}
+              <BaseButton
+                label="Direct Cost"
+                icon={icons.breakdown}
+                onClick={() => setDirectCostModalOpen(true)}
+                actionColor="breakdown"
+              />
+            )}
 
           {forPurchaseKey.includes(statusCode) &&
             !isCompareActive &&
@@ -431,7 +429,7 @@ export default function PurchaseView(props) {
                   salesInvoiceItems.length > 0 &&
                   totalPurchaseProgress === 100 && (
                     <>
-                  {/* Print SI button removed */}
+                      {/* Print SI button removed */}
                       <BaseButton
                         label="For Collection"
                         icon={icons.print}
@@ -490,6 +488,9 @@ export default function PurchaseView(props) {
                   crudItemsEnabled={crudItemsEnabled}
                   showAddButton={crudItemsEnabled}
                   showPurchaseOptions={showPurchaseOptions}
+                  showPurchasedBadge={
+                    forPurchaseKey.includes(statusCode) || forCollection
+                  }
                   checkboxOptionsEnabled={canvasCheckboxOptionsEnabled}
                   anyItemHasABC={anyItemHasABC}
                   statusChangedAlert={statusChangedAlert}
@@ -512,6 +513,9 @@ export default function PurchaseView(props) {
                   forCanvasKey={forCanvasKey}
                   optionStatuses={optionStatuses}
                   latestHistories={latestHistories}
+                  onRefreshOptionData={() =>
+                    fetchItems({ restoreScroll: true })
+                  }
                   getEffectiveABC={getEffectiveABC}
                   handleCollapseAllToggle={handleCollapseAllToggle}
                   toggleSpecsRow={toggleSpecsRow}
@@ -558,92 +562,67 @@ export default function PurchaseView(props) {
                 />
               )}
               {activeTab === "purchase" && (
-                <>
-                  {!isCompareActive && !itemsLoading && abcValidation && (
-                    <Alert severity="error" sx={{ mb: 2 }}>
-                      {abcValidation}
-                    </Alert>
-                  )}
-                  {itemsLoading ? (
-                    <PurchasePageSkeleton />
-                  ) : isCompareActive && compareData ? (
-                    <CompareView
-                      compareData={compareData}
-                      forCanvasKey={forCanvasKey}
-                      onSpecsChange={(newSpecs) =>
-                        updateSpecs(compareData.itemId, newSpecs, "item")
-                      }
-                      onOptionSpecsChange={(optionId, newSpecs) =>
-                        updateSpecs(optionId, newSpecs)
-                      }
-                    />
-                  ) : (
-                    <TransactionItemsTable
-                      mode="purchase"
-                      items={items}
-                      itemsLoading={itemsLoading}
-                      expandedRows={expandedRows}
-                      expandedOptions={expandedOptions}
-                      optionErrors={optionErrors}
-                      crudItemsEnabled={crudItemsEnabled}
-                      showAddButton={crudItemsEnabled}
-                      showPurchaseOptions={showPurchaseOptions}
-                      /* PROCUREMENT READS THE TABLE — Proc / Proc TL have
-                         no cart actions on the purchase page, so the whole
-                         Action column after EWT folds away for them.
-                         FINANCE READS IT TOO — the column folds away and
-                         the checkboxes render disabled (still visible). */
-                      checkboxOptionsEnabled={
-                        purchaseCheckboxOptionsEnabled &&
-                        !(isProcurement || isProcurementTL) &&
-                        !isFinanceOfficer
-                      }
-                      isFinanceOfficer={isFinanceOfficer}
-                      anyItemHasABC={anyItemHasABC}
-                      statusChangedAlert={statusChangedAlert}
-                      isManagement={isManagement}
-                      isAccountOfficer={isAccountOfficer}
-                      suppliers={suppliers}
-                      cItemType={cItemType}
-                      currentStatusLabel={currentStatusLabel}
-                      transaction={transaction}
-                      transactionCode={transactionCode}
-                      currentUserId={currentUserId}
-                      abcValue={abcValue}
-                      abcSub={abcSub}
-                      abcValidation={abcValidation}
-                      totalCanvas={totalCanvas}
-                      totalABC={totalABC}
-                      totalPurchaseProgress={totalPurchaseProgress}
-                      totalPurchaseBalance={totalPurchaseBalance}
-                      totalCollectibleValue={totalCollectibleValue}
-                      cancelledPOKey={cancelledPOKey}
-                      forCanvasKey={forCanvasKey}
-                      optionStatuses={optionStatuses}
-                      latestHistories={latestHistories}
-                      getEffectiveABC={getEffectiveABC}
-                      handleCollapseAllToggle={handleCollapseAllToggle}
-                      toggleSpecsRow={toggleSpecsRow}
-                      toggleOptionsRow={toggleOptionsRow}
-                      toggleOptionSpecs={toggleOptionSpecs}
-                      handleToggleInclude={handleToggleInclude}
-                      setEditingItem={setEditingItem}
-                      setAddingNewItem={setAddingNewItem}
-                      setEntityToDelete={setEntityToDelete}
-                      setSuggestionsItem={setSuggestionsItem}
-                      setIsSuggestionsModalOpen={setIsSuggestionsModalOpen}
-                      setEditingOption={setEditingOption}
-                      setOptionModalItemId={setOptionModalItemId}
-                      setOptionModalItem={setOptionModalItem}
-                      setExpandedRows={setExpandedRows}
-                      getDueDateVariant={getDueDateVariant}
-                      forCollection={forCollection}
-                      isAssignedToMe={isAssignedToMe}
-                      isProcurement={isProcurement}
-                      isProcurementTL={isProcurementTL}
-                    />
-                  )}
-                </>
+                <ForPurchasePanel
+                  items={items}
+                  itemsLoading={itemsLoading}
+                  expandedRows={expandedRows}
+                  expandedOptions={expandedOptions}
+                  optionErrors={optionErrors}
+                  crudItemsEnabled={crudItemsEnabled}
+                  showPurchaseOptions={showPurchaseOptions}
+                  purchaseCheckboxOptionsEnabled={
+                    purchaseCheckboxOptionsEnabled
+                  }
+                  statusChangedAlert={statusChangedAlert}
+                  anyItemHasABC={anyItemHasABC}
+                  isManagement={isManagement}
+                  isAccountOfficer={isAccountOfficer}
+                  isFinanceOfficer={isFinanceOfficer}
+                  isProcurement={isProcurement}
+                  isProcurementTL={isProcurementTL}
+                  suppliers={suppliers}
+                  cItemType={cItemType}
+                  currentStatusLabel={currentStatusLabel}
+                  transaction={transaction}
+                  transactionCode={transactionCode}
+                  currentUserId={currentUserId}
+                  abcValue={abcValue}
+                  abcSub={abcSub}
+                  abcValidation={abcValidation}
+                  totalCanvas={totalCanvas}
+                  totalABC={totalABC}
+                  totalPurchaseProgress={totalPurchaseProgress}
+                  totalPurchaseBalance={totalPurchaseBalance}
+                  totalCollectibleValue={totalCollectibleValue}
+                  cancelledPOKey={cancelledPOKey}
+                  forCanvasKey={forCanvasKey}
+                  optionStatuses={optionStatuses}
+                  latestHistories={latestHistories}
+                  getEffectiveABC={getEffectiveABC}
+                  handleCollapseAllToggle={handleCollapseAllToggle}
+                  toggleSpecsRow={toggleSpecsRow}
+                  toggleOptionsRow={toggleOptionsRow}
+                  toggleOptionSpecs={toggleOptionSpecs}
+                  handleToggleInclude={handleToggleInclude}
+                  setEditingItem={setEditingItem}
+                  setAddingNewItem={setAddingNewItem}
+                  setEntityToDelete={setEntityToDelete}
+                  setSuggestionsItem={setSuggestionsItem}
+                  setIsSuggestionsModalOpen={setIsSuggestionsModalOpen}
+                  setEditingOption={setEditingOption}
+                  setOptionModalItemId={setOptionModalItemId}
+                  setOptionModalItem={setOptionModalItem}
+                  setExpandedRows={setExpandedRows}
+                  getDueDateVariant={getDueDateVariant}
+                  forCollection={forCollection}
+                  isAssignedToMe={isAssignedToMe}
+                  isCompareActive={isCompareActive}
+                  compareData={compareData}
+                  updateSpecs={updateSpecs}
+                  onRefreshOptionData={() =>
+                    fetchItems({ restoreScroll: true })
+                  }
+                />
               )}
             </>
           )}
@@ -710,7 +689,10 @@ export default function PurchaseView(props) {
            Finance rides the same edit grant: same purchase view as
            management. */
         isProcurement={
-          isProcurement || isProcurementTL || isAccountOfficer || isFinanceOfficer
+          isProcurement ||
+          isProcurementTL ||
+          isAccountOfficer ||
+          isFinanceOfficer
         }
         isManagement={isManagement}
         onSuccess={() => setDeliveryModalOpen(false)}
@@ -725,7 +707,7 @@ export default function PurchaseView(props) {
       />
       <AlertStructure
         open={false}
-        title="Mark as Collected and Completed"
+        title="Transaction Completed"
         type="warning"
         headerTitle="Confirm Completion"
         confirmText="Yes, Mark as Completed"

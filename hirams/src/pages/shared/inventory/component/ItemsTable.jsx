@@ -54,6 +54,16 @@ const cellSx = (width, align = "left") => ({
   textAlign: align,
 });
 
+// PRICE / TOTAL stacked cells (PURCHASE over SELLING). Same fixed width as
+// the header cell above them, so every row lines up under its column title.
+const stackedColSx = {
+  ...cellSx(COL_W, "right"),
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  rowGap: 0.35,
+};
+
 // ONLY the tokens this table paints with. Named `makeColors` (not
 // `useColors`) so calling it inside useMemo doesn't trip
 // react-hooks/rules-of-hooks — same trick JevListView uses.
@@ -417,9 +427,10 @@ export function ItemsHeaderCard({
                   color: t.poId && onOpenPO ? colors.blue.text : "inherit",
                   cursor: t.poId && onOpenPO ? "pointer" : "inherit",
                   textDecoration: "none",
-                  "&:hover": t.poId && onOpenPO
-                    ? { textDecoration: "underline" }
-                    : undefined,
+                  "&:hover":
+                    t.poId && onOpenPO
+                      ? { textDecoration: "underline" }
+                      : undefined,
                 }}
               >
                 {i > 0 ? " · " : ""}
@@ -465,7 +476,9 @@ export function ItemsHeaderCard({
         {open ? (
           <KeyboardArrowUp sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }} />
         ) : (
-          <KeyboardArrowDown sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }} />
+          <KeyboardArrowDown
+            sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" } }}
+          />
         )}
       </IconButton>
     </Box>
@@ -557,14 +570,6 @@ export default function ItemsTable({
     return found?.[field] ?? "—";
   }, [rows, clientSide]);
 
-  console.log(
-    rows[0] && {
-      showSelling,
-      txn: rowTransactionId(rows[0]),
-      item: rowTransactionItemId(rows[0]),
-      sellingPrices,
-    },
-  );
   const sellingTotal = useMemo(() => {
     if (!showSelling) return null;
     let known = false;
@@ -666,394 +671,382 @@ export default function ItemsTable({
         />
       )}
       {open && (
-      <Box sx={scrollSx}>
-        {/* COLUMN HEADER */}
-        <Box sx={headerSx}>
-          <Box sx={{ width: 20, flexShrink: 0, textAlign: "center" }}>
-            <Typography
-              sx={{
-                fontSize: "0.55rem",
-                fontWeight: 700,
-                color: colors.gray.textSecondary,
-                letterSpacing: "0.03em",
-              }}
-            >
-              #
-            </Typography>
-          </Box>
-          <HeaderCell label="ITEMS" colors={colors} grow />
-          <HeaderCell
-            label="QTY"
-            colors={colors}
-            width={COL_W}
-            align="center"
-          />
-          {/* PRICE / TOTAL PRICE — the DELIVERED side stacks PURCHASE and
-              SELLING under each header; the FOR DELIVERY side stays as the
-              compact single-amount PURCHASE PRICE / TOTAL PURCHASE. */}
-          {showSelling ? (
+        <Box sx={scrollSx}>
+          {/* COLUMN HEADER */}
+          <Box sx={headerSx}>
+            <Box sx={{ width: 20, flexShrink: 0, textAlign: "center" }}>
+              <Typography
+                sx={{
+                  fontSize: "0.55rem",
+                  fontWeight: 700,
+                  color: colors.gray.textSecondary,
+                  letterSpacing: "0.03em",
+                }}
+              >
+                #
+              </Typography>
+            </Box>
+            <HeaderCell label="ITEMS" colors={colors} grow />
             <HeaderCell
-              label="PRICE"
-              colors={colors}
-              width={COL_W}
-              align="right"
-              wrap
-            />
-          ) : (
-            <HeaderCell
-              label="PURCHASE PRICE"
-              colors={colors}
-              width={COL_W}
-              align="right"
-              wrap
-            />
-          )}
-          {showSelling ? (
-            <HeaderCell
-              label="TOTAL PRICE"
-              colors={colors}
-              width={COL_W}
-              align="right"
-              wrap
-            />
-          ) : (
-            <HeaderCell
-              label="TOTAL PURCHASE"
-              colors={colors}
-              width={COL_W}
-              align="right"
-              wrap
-            />
-          )}
-          {interactive && (
-            <HeaderCell
-              label="ACTIONS"
+              label="QTY"
               colors={colors}
               width={COL_W}
               align="center"
             />
-          )}
-        </Box>
+            {/* PRICE / TOTAL PRICE — the DELIVERED side stacks PURCHASE and
+              SELLING under each header; the FOR DELIVERY side stays as the
+              compact single-amount PURCHASE PRICE / TOTAL PURCHASE. */}
+            {showSelling ? (
+              <HeaderCell
+                label="PRICE"
+                colors={colors}
+                width={COL_W}
+                align="right"
+                wrap
+              />
+            ) : (
+              <HeaderCell
+                label="PURCHASE PRICE"
+                colors={colors}
+                width={COL_W}
+                align="right"
+                wrap
+              />
+            )}
+            {showSelling ? (
+              <HeaderCell
+                label="TOTAL"
+                colors={colors}
+                width={COL_W}
+                align="right"
+                wrap
+              />
+            ) : (
+              <HeaderCell
+                label="TOTAL PURCHASE"
+                colors={colors}
+                width={COL_W}
+                align="right"
+                wrap
+              />
+            )}
+            {interactive && (
+              <HeaderCell
+                label="ACTIONS"
+                colors={colors}
+                width={COL_W}
+                align="center"
+              />
+            )}
+          </Box>
 
-        {rows.map((row, idx) => {
-          const isLast = idx === rows.length - 1;
-          return (
-            <Box
-              key={row.id ?? `item-${idx}`}
-              onClick={interactive ? () => onRowClick(row) : undefined}
-              sx={{
-                px: 2,
-                py: 1,
-                display: "flex",
-                alignItems: "center",
-                gap: 1,
-                justifyContent: "space-between",
-                flexWrap: { xs: "wrap", sm: "nowrap" },
-                borderBottom: isLast ? "none" : `0.5px solid ${colors.divider}`,
-                cursor: interactive ? "pointer" : "default",
-                "&:hover": interactive
-                  ? { background: colors.hover }
-                  : undefined,
-              }}
-            >
-              {/* LEFT: the numbering + brand/model + date */}
+          {rows.map((row, idx) => {
+            const isLast = idx === rows.length - 1;
+            return (
               <Box
+                key={row.id ?? `item-${idx}`}
+                onClick={interactive ? () => onRowClick(row) : undefined}
                 sx={{
+                  px: 2,
+                  py: 1,
                   display: "flex",
                   alignItems: "center",
                   gap: 1,
-                  flex: { sm: 1 },
-                  minWidth: { xs: 180, sm: 0 },
+                  justifyContent: "space-between",
+                  flexWrap: { xs: "wrap", sm: "nowrap" },
+                  borderBottom: isLast
+                    ? "none"
+                    : `0.5px solid ${colors.divider}`,
+                  cursor: interactive ? "pointer" : "default",
+                  "&:hover": interactive
+                    ? { background: colors.hover }
+                    : undefined,
                 }}
               >
-                {/* The numbering — its own narrow column, centred on the
-                    row (same as the Purchase Items table). */}
+                {/* LEFT: the numbering + brand/model + date */}
                 <Box
                   sx={{
-                    width: 20,
-                    flexShrink: 0,
-                    textAlign: "center",
-                    alignSelf: "center",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    flex: { sm: 1 },
+                    minWidth: { xs: 180, sm: 0 },
                   }}
                 >
-                  <Typography
+                  {/* The numbering — its own narrow column, centred on the
+                    row (same as the Purchase Items table). */}
+                  <Box
                     sx={{
-                      fontSize: "0.55rem",
-                      fontWeight: 700,
-                      color: colors.gray.textSecondary,
-                      lineHeight: 1,
+                      width: 20,
+                      flexShrink: 0,
+                      textAlign: "center",
+                      alignSelf: "center",
                     }}
                   >
-                    {idx + 1}
-                  </Typography>
-                </Box>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  {/* Every row paints its own PO — the batch's PO number
+                    <Typography
+                      sx={{
+                        fontSize: "0.55rem",
+                        fontWeight: 700,
+                        color: colors.gray.textSecondary,
+                        lineHeight: 1,
+                      }}
+                    >
+                      {idx + 1}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    {/* Every row paints its own PO — the batch's PO number
                       the header card no longer carries (it shows the
                       transaction codes now). It stays a LINK: it opens
                       that PO in Item Purchasing. */}
-                  {(row.strPurchaseOrderNo &&
-                    row.strPurchaseOrderNo !== "—") && (
+                    {row.strPurchaseOrderNo &&
+                      row.strPurchaseOrderNo !== "—" && (
+                        <Typography
+                          component="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openPurchaseOrder(row.nPurchaseOrderId);
+                          }}
+                          title={
+                            poNavigable && row.nPurchaseOrderId
+                              ? "Open this PO in Item Purchasing"
+                              : undefined
+                          }
+                          sx={{
+                            // Block + fit-content: hugs the text like an
+                            // inline-block would, but without the anonymous
+                            // line-box strut (the row container's inherited
+                            // ~1rem/1.43 line) that used to open up a big
+                            // gap between the PO code and the brand · model.
+                            display: "block",
+                            width: "fit-content",
+                            maxWidth: "100%",
+                            textAlign: "left",
+                            p: 0,
+                            border: "none",
+                            background: "transparent",
+                            fontSize: "0.55rem",
+                            fontWeight: 700,
+                            // Blue — it is a link, like every other PO code. A
+                            // non-navigable host (finance on the JEV viewer)
+                            // reads it as plain muted text.
+                            color:
+                              poNavigable && row.nPurchaseOrderId
+                                ? colors.blue.text
+                                : colors.gray.textSecondary,
+                            textTransform: "uppercase",
+                            lineHeight: 1,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            cursor:
+                              poNavigable && row.nPurchaseOrderId
+                                ? "pointer"
+                                : "default",
+                            "&:hover":
+                              poNavigable && row.nPurchaseOrderId
+                                ? { textDecoration: "underline" }
+                                : undefined,
+                          }}
+                        >
+                          {row.strPurchaseOrderNo}
+                        </Typography>
+                      )}
                     <Typography
-                      component="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openPurchaseOrder(row.nPurchaseOrderId);
-                      }}
+                      onClick={
+                        onBrandClick ? () => onBrandClick(row) : undefined
+                      }
                       title={
-                        poNavigable && row.nPurchaseOrderId
-                          ? "Open this PO in Item Purchasing"
+                        onBrandClick
+                          ? "Open this transaction for purchase"
                           : undefined
                       }
                       sx={{
-                        // Block + fit-content: hugs the text like an
-                        // inline-block would, but without the anonymous
-                        // line-box strut (the row container's inherited
-                        // ~1rem/1.43 line) that used to open up a big
-                        // gap between the PO code and the brand · model.
-                        display: "block",
-                        width: "fit-content",
-                        maxWidth: "100%",
-                        textAlign: "left",
-                        p: 0,
-                        border: "none",
-                        background: "transparent",
-                        fontSize: "0.55rem",
-                        fontWeight: 700,
-                        // Blue — it is a link, like every other PO code. A
-                        // non-navigable host (finance on the JEV viewer)
-                        // reads it as plain muted text.
-                        color:
-                          poNavigable && row.nPurchaseOrderId
-                            ? colors.blue.text
-                            : colors.gray.textSecondary,
-                        textTransform: "uppercase",
+                        fontSize: "0.78rem",
+                        fontWeight: 600,
+                        // A link looks like a link.
+                        color: onBrandClick
+                          ? colors.blue.text
+                          : colors.gray.textPrimary,
+                        fontStyle: "italic",
                         lineHeight: 1,
+                        // Same spacing as the header card: the gap between
+                        // the code line and the big text lives on the BIG
+                        // text (mirrors the transaction-code → client gap).
+                        mt: 0.15,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis",
-                        cursor:
-                          poNavigable && row.nPurchaseOrderId
-                            ? "pointer"
-                            : "default",
-                        "&:hover":
-                          poNavigable && row.nPurchaseOrderId
-                            ? { textDecoration: "underline" }
-                            : undefined,
+                        cursor: onBrandClick ? "pointer" : "default",
+                        ...(onBrandClick && {
+                          "&:hover": { textDecoration: "underline" },
+                        }),
                       }}
                     >
-                      {row.strPurchaseOrderNo}
+                      {row.strBrandModel}
                     </Typography>
-                  )}
-                  <Typography
-                    onClick={onBrandClick ? () => onBrandClick(row) : undefined}
-                    title={
-                      onBrandClick
-                        ? "Open this transaction for purchase"
-                        : undefined
-                    }
-                    sx={{
-                      fontSize: "0.78rem",
-                      fontWeight: 600,
-                      // A link looks like a link.
-                      color: onBrandClick
-                        ? colors.blue.text
-                        : colors.gray.textPrimary,
-                      fontStyle: "italic",
-                      lineHeight: 1,
-                      // Same spacing as the header card: the gap between
-                      // the code line and the big text lives on the BIG
-                      // text (mirrors the transaction-code → client gap).
-                      mt: 0.15,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      cursor: onBrandClick ? "pointer" : "default",
-                      ...(onBrandClick && {
-                        "&:hover": { textDecoration: "underline" },
-                      }),
-                    }}
-                  >
-                    {row.strBrandModel}
-                  </Typography>
-                  <Typography
-                    sx={{
-                      fontSize: "0.58rem",
-                      color: colors.gray.textMuted,
-                      textTransform: "uppercase",
-                      lineHeight: 1.1,
-                      mt: 0.15,
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {row.dtLog}
-                  </Typography>
+                    <Typography
+                      sx={{
+                        fontSize: "0.58rem",
+                        color: colors.gray.textMuted,
+                        textTransform: "uppercase",
+                        lineHeight: 1.1,
+                        mt: 0.15,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {row.dtLog}
+                    </Typography>
+                  </Box>
                 </Box>
-              </Box>
 
-              {/* QTY | PRICE | TOTAL PRICE | ACTIONS — the delivered side
+                {/* QTY | PRICE | TOTAL PRICE | ACTIONS — the delivered side
                   stacks PURCHASE / SELLING (QTY rides on the purchased
                   value line); the for-delivery side keeps the compact
                   single-amount purchase columns. */}
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1,
-                  flexShrink: 0,
-                }}
-              >
-                {/* QTY — on the stacked side, aligned to the row's
-                    PURCHASE value line so `qty × purchased total` reads
-                    across as one line: the invisible cover mirrors the
-                    stacked cells' label line, flex-start pins it top. */}
-                {showSelling ? (
                 <Box
                   sx={{
-                    ...cellSx(COL_W, "center"),
-                    alignSelf: "flex-start",
                     display: "flex",
-                    flexDirection: "column",
                     alignItems: "center",
+                    gap: 1,
+                    flexShrink: 0,
                   }}
                 >
-                  <Box
-                    sx={{ height: LABEL_LINE_PX, flexShrink: 0 }}
-                    aria-hidden="true"
-                  />
-                  <Typography sx={valueSx}>
-                    {fmtQty(row.nQuantity)}{" "}
-                    <Typography
-                      component="span"
-                      sx={{ fontSize: "0.5rem", color: valueSx.color }}
+                  {/* QTY — vertically centred like every other column, so
+                    it no longer hugs the top of the stacked rows. */}
+                  {showSelling ? (
+                    <Box
+                      sx={{
+                        ...cellSx(COL_W, "center"),
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        alignSelf: "center",
+                      }}
                     >
-                      {row.strUOM}
-                    </Typography>
-                  </Typography>
-                </Box>
-                ) : (
-                  /* Compact QTY — single line, centred like the plain
-                     purchase cells beside it. */
-                  <Box sx={cellSx(COL_W, "center")}>
-                    <Typography sx={valueSx}>
-                      {fmtQty(row.nQuantity)}{" "}
-                      <Typography
-                        component="span"
-                        sx={{ fontSize: "0.5rem", color: valueSx.color }}
-                      >
-                        {row.strUOM}
+                      <Typography sx={valueSx}>
+                        {fmtQty(row.nQuantity)}{" "}
+                        <Typography
+                          component="span"
+                          sx={{ fontSize: "0.5rem", color: valueSx.color }}
+                        >
+                          {row.strUOM}
+                        </Typography>
                       </Typography>
-                    </Typography>
-                  </Box>
-                )}
+                    </Box>
+                  ) : (
+                    /* Compact QTY — single line, centred like the plain
+                     purchase cells beside it. */
+                    <Box sx={cellSx(COL_W, "center")}>
+                      <Typography sx={valueSx}>
+                        {fmtQty(row.nQuantity)}{" "}
+                        <Typography
+                          component="span"
+                          sx={{ fontSize: "0.5rem", color: valueSx.color }}
+                        >
+                          {row.strUOM}
+                        </Typography>
+                      </Typography>
+                    </Box>
+                  )}
 
-                {/* PRICE — DELIVERED: the unit amount under its lifecycle
+                  {/* PRICE — DELIVERED: the unit amount under its lifecycle
                     label, PURCHASE on top, SELLING under it (a dash until
                     prices arrive). FOR DELIVERY: the plain single
                     purchase amount. */}
-                {showSelling ? (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-end",
-                      rowGap: 0.35,
-                    }}
-                  >
-                    <StackedAmountLine label="PURCHASE" colors={colors}>
+                  {showSelling ? (
+                    <Box sx={stackedColSx}>
+                      <StackedAmountLine label="PURCHASE" colors={colors}>
+                        <PickableValue
+                          value={Number(
+                            row._raw?.purchaseOption?.dUnitPrice ?? 0,
+                          )}
+                          sx={valueSx}
+                        >
+                          {fmtPHP(
+                            Number(row._raw?.purchaseOption?.dUnitPrice ?? 0),
+                          )}
+                        </PickableValue>
+                      </StackedAmountLine>
+                      <StackedAmountLine label="SELLING" colors={colors}>
+                        <PickableValue
+                          value={unitSellingPriceOf(row, sellingPrices)}
+                          sx={valueSx}
+                        >
+                          {fmtSelling(unitSellingPriceOf(row, sellingPrices))}
+                        </PickableValue>
+                      </StackedAmountLine>
+                    </Box>
+                  ) : (
+                    <Box sx={cellSx(COL_W, "right")}>
                       <PickableValue
                         value={Number(
                           row._raw?.purchaseOption?.dUnitPrice ?? 0,
                         )}
                         sx={valueSx}
                       >
-                        {fmtPHP(Number(row._raw?.purchaseOption?.dUnitPrice ?? 0))}
+                        {fmtPHP(
+                          Number(row._raw?.purchaseOption?.dUnitPrice ?? 0),
+                        )}
                       </PickableValue>
-                    </StackedAmountLine>
-                    <StackedAmountLine label="SELLING" colors={colors}>
-                      <PickableValue
-                        value={unitSellingPriceOf(row, sellingPrices)}
-                        sx={valueSx}
-                      >
-                        {fmtSelling(unitSellingPriceOf(row, sellingPrices))}
-                      </PickableValue>
-                    </StackedAmountLine>
-                  </Box>
-                ) : (
-                  <Box sx={cellSx(COL_W, "right")}>
-                    <PickableValue
-                      value={Number(
-                        row._raw?.purchaseOption?.dUnitPrice ?? 0,
-                      )}
-                      sx={valueSx}
-                    >
-                      {fmtPHP(Number(row._raw?.purchaseOption?.dUnitPrice ?? 0))}
-                    </PickableValue>
-                  </Box>
-                )}
+                    </Box>
+                  )}
 
-                {/* TOTAL PRICE — DELIVERED: same stacking, PURCHASE = qty ×
+                  {/* TOTAL PRICE — DELIVERED: same stacking, PURCHASE = qty ×
                     bought-at, SELLING = qty × selling. FOR DELIVERY: the
                     plain single purchase total. */}
-                {showSelling ? (
-                  <Box
-                    sx={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "flex-end",
-                      rowGap: 0.35,
-                    }}
-                  >
-                    <StackedAmountLine label="PURCHASE" colors={colors}>
+                  {showSelling ? (
+                    <Box sx={stackedColSx}>
+                      <StackedAmountLine label="PURCHASE" colors={colors}>
+                        <PickableValue value={itemTotal(row)} sx={valueSx}>
+                          {fmtPHP(itemTotal(row))}
+                        </PickableValue>
+                      </StackedAmountLine>
+                      <StackedAmountLine label="SELLING" colors={colors}>
+                        <PickableValue
+                          value={rowSellingTotal(row, sellingPrices)}
+                          sx={valueSx}
+                        >
+                          {fmtSelling(rowSellingTotal(row, sellingPrices))}
+                        </PickableValue>
+                      </StackedAmountLine>
+                    </Box>
+                  ) : (
+                    <Box sx={cellSx(COL_W, "right")}>
                       <PickableValue value={itemTotal(row)} sx={valueSx}>
                         {fmtPHP(itemTotal(row))}
                       </PickableValue>
-                    </StackedAmountLine>
-                    <StackedAmountLine label="SELLING" colors={colors}>
-                      <PickableValue
-                        value={rowSellingTotal(row, sellingPrices)}
-                        sx={valueSx}
-                      >
-                        {fmtSelling(rowSellingTotal(row, sellingPrices))}
-                      </PickableValue>
-                    </StackedAmountLine>
-                  </Box>
-                ) : (
-                  <Box sx={cellSx(COL_W, "right")}>
-                    <PickableValue value={itemTotal(row)} sx={valueSx}>
-                      {fmtPHP(itemTotal(row))}
-                    </PickableValue>
-                  </Box>
-                )}
+                    </Box>
+                  )}
 
-                {/* ACTIONS */}
-                {interactive && (
-                  <Box
-                    sx={{
-                      ...cellSx(COL_W),
-                      display: "flex",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onRowClick(row);
+                  {/* ACTIONS */}
+                  {interactive && (
+                    <Box
+                      sx={{
+                        ...cellSx(COL_W),
+                        display: "flex",
+                        justifyContent: "center",
                       }}
-                      sx={actionBtnSx}
                     >
-                      <Visibility sx={{ fontSize: "0.75rem" }} />
-                    </IconButton>
-                  </Box>
-                )}
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRowClick(row);
+                        }}
+                        sx={actionBtnSx}
+                      >
+                        <Visibility sx={{ fontSize: "0.75rem" }} />
+                      </IconButton>
+                    </Box>
+                  )}
+                </Box>
               </Box>
-            </Box>
-          );
-        })}
-      </Box>
+            );
+          })}
+        </Box>
       )}
 
       <TotalFooter

@@ -138,6 +138,9 @@ export default function JevViewPanel({
   clientName = null,
   panelTitle = null,
   flowType = "received",
+  // The full collection receipt handed in by the For Collection workspace —
+  // the Add / Edit Entry form prints it as its reference panel.
+  collectionDetailsPanel = null,
   // Panel shown under the modal's label instead of the voucher
   // particulars (the inventory screen passes its Items table here)
   itemsPanel = null,
@@ -232,7 +235,7 @@ export default function JevViewPanel({
     (entryStatusGate === "all" || jev?.cStatus === pendingStatusKey);
 
   const [entries, setEntries] = useState(jev?.entries ?? []);
-  const [loading, setLoading] = useState(!jev?.entries);
+  const [loading, setLoading] = useState(false);
   // The header's triangle opens and closes the From / To columns.
   const [contentOpen, setContentOpen] = useState(defaultOpen !== false);
   const [titleEditing, setTitleEditing] = useState(!!startEditing);
@@ -1224,6 +1227,7 @@ export default function JevViewPanel({
           saveError={saveError}
           onSave={handleSaveEntry}
           particularsGrandTotal={particularsGrandTotal}
+          collectionDetailsPanel={collectionDetailsPanel}
           equivalentValue={equivalentValue}
           sideTotal={formSide === "from" ? fromTotal : toTotal}
           usedAccountIds={usedAccountIds}

@@ -81,6 +81,9 @@ const SidebarSubmenu = ({
     <div
       className={`flex items-center gap-1.5 ${indent} pr-1.5 rounded-md ${ITEM_HEIGHT} cursor-pointer select-none transition-colors duration-150`}
       style={rowStyle}
+      // Marker for the sidebar scroll-reveal — the container scrolls the
+      // active row into view after route changes / auto-opens.
+      data-sidebar-active={active ? "true" : undefined}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onClick={onClick}

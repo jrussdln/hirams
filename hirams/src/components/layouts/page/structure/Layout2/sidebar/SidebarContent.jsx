@@ -1,4 +1,5 @@
-import React, { useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
+import { useLocation } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
 import useKeysLabels from "../../../../../../hooks/useKeysLabels";
 
@@ -8,9 +9,9 @@ import SidebarItem from "./SidebarItem";
 import SidebarSectionSkeleton from "../sidebar-content/skeleton/SidebarSectionSkeleton";
 import SectionHeader from "../sidebar-content/SectionHeader";
 import useSectionToggle from "../sidebar-content/useSectionToggle";
+import { SECTION_LABELS, SECTION_ROUTES } from "../../../../../../constants/navigations";
 import { Box } from "@mui/material";
 
-import { SECTION_LABELS } from "../../../../../../constants/navigations";
 import { buildNavItems } from "../sidebar-content/BuildNavItems";
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
 import UpDownIndicatorWidget from "../../../../../../components/ui/widget/UpDownIndicatorWidget";
@@ -26,8 +27,8 @@ const useColors = (c) => ({
 // A section title plus everything under it. Clicking the title hides /
 // shows the items; the choice is remembered (useSectionToggle).
 // ─────────────────────────────────────────────────────────────────
-const SectionGroup = ({ label, collapsed, forceExpanded, children }) => {
-  const [open, toggle] = useSectionToggle(label);
+const SectionGroup = ({ label, collapsed, forceExpanded, activeSection, children }) => {
+  const [open, toggle] = useSectionToggle(label, label === activeSection);
   // The title is dropped in icon-rail mode — the items must stay visible.
   const titleVisible = !(collapsed && !forceExpanded);
 
@@ -59,6 +60,52 @@ const SidebarContent = ({
   const colors = useMemo(() => useColors(base), [base]);
 
   const bodyScrollRef = useRef(null);
+
+  // The section group the current route belongs to — drives the group-level
+  // auto-open (a collapsed MANAGEMENT / TRANSACTION / … uncollapses when the
+  // app lands on one of its pages). Exact pathname match, same lists as the
+  // per-nav highlight memberships (SECTION_ROUTES in constants/navigations).
+  const { pathname } = useLocation();
+  const activeSection =
+    Object.entries(SECTION_ROUTES).find(
+      ([, routes]) => routes.includes(pathname),
+    )?.[0] ?? null;
+
+  // SCROLL-REVEAL — auto-opening a section is useless if the active row is
+  // still below the fold (Vouchers sits at the bottom): after every route
+  // change, scroll the container until the active sidebar row is in view.
+  // NOT plain "nearest" — the footer OVERLAYS the container's bottom edge,
+  // so a nearest-scrolled row ends up half-hidden under it. The row's full
+  // height is pushed ABOVE the footer line with a margin. Two passes — one
+  // right away for the plain leaf case, one after the Collapse animations
+  // settle for the rows that appeared through an auto-open.
+  const footerShellRef = useRef(null);
+  useEffect(() => {
+    const reveal = () => {
+      const ctx = bodyScrollRef.current;
+      const row = ctx?.querySelector('[data-sidebar-active="true"]');
+      if (!ctx || !row) return;
+      const ctxRect = ctx.getBoundingClientRect();
+      const rowRect = row.getBoundingClientRect();
+      const footerH =
+        footerShellRef.current?.getBoundingClientRect().height ?? 0;
+      const margin = 10;
+      let delta = 0;
+      // Row lands under the footer / the fold → push its BOTTOM above the
+      // footer line.
+      if (rowRect.bottom > ctxRect.bottom - footerH - margin) {
+        delta = rowRect.bottom - (ctxRect.bottom - footerH - margin);
+      }
+      // Row scrolled past the top edge → pull it back into view.
+      if (rowRect.top < ctxRect.top - margin) {
+        delta = rowRect.top - (ctxRect.top - margin);
+      }
+      if (delta !== 0) ctx.scrollTop += delta;
+    };
+    reveal();
+    const timer = setTimeout(reveal, 380);
+    return () => clearTimeout(timer);
+  }, [pathname, collapsed, forceExpanded]);
 
   // ✅ SINGLE SOURCE OF TRUTH — mappings + roles from one hook
   const {
@@ -143,6 +190,7 @@ const SidebarContent = ({
             <>
               <SectionGroup
                 label={SECTION_LABELS.overview}
+                activeSection={activeSection}
                 {...{ collapsed, forceExpanded }}
               >
                 {navConfig.overview[0].items.map((item) => (
@@ -162,6 +210,7 @@ const SidebarContent = ({
                 <>
                   <SectionGroup
                     label={SECTION_LABELS.management}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {navConfig.management.common.map(renderNavItem)}
@@ -169,6 +218,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.transaction}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.transaction)}
@@ -179,6 +229,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.records}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.inventory)}
@@ -186,6 +237,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.accounting}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {navConfig.management.accounting.map(renderNavItem)}
@@ -197,6 +249,7 @@ const SidebarContent = ({
                 <>
                   <SectionGroup
                     label={SECTION_LABELS.management}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.common[1])}
@@ -204,6 +257,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.transaction}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.transaction)}
@@ -212,6 +266,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.records}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.inventory)}
@@ -223,6 +278,7 @@ const SidebarContent = ({
                 <>
                   <SectionGroup
                     label={SECTION_LABELS.management}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.common[2])}
@@ -230,6 +286,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.transaction}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.transaction)}
@@ -239,6 +296,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.records}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.inventory)}
@@ -254,6 +312,7 @@ const SidebarContent = ({
                 <>
                   <SectionGroup
                     label={SECTION_LABELS.management}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.common[2])}
@@ -262,6 +321,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.transaction}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.transaction)}
@@ -270,6 +330,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.records}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.inventory)}
@@ -277,6 +338,7 @@ const SidebarContent = ({
 
                   <SectionGroup
                     label={SECTION_LABELS.accounting}
+                    activeSection={activeSection}
                     {...{ collapsed, forceExpanded }}
                   >
                     {navConfig.management.accounting.map(renderNavItem)}
@@ -295,8 +357,10 @@ const SidebarContent = ({
         />
       </div>
 
-      {/* FOOTER — fixed at bottom */}
+      {/* FOOTER — fixed at bottom (its height is measured by the
+          scroll-reveal, which keeps the active row clear of it) */}
       <div
+        ref={footerShellRef}
         className="flex-shrink-0 w-full border-t"
         style={{
           backgroundColor: colors.surfaceBg,

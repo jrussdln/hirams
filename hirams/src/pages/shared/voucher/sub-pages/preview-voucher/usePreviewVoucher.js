@@ -40,7 +40,7 @@ export default function usePreviewVoucher() {
     return path.join(" / ");
   };
 
-  const accountRows = jevEntries.map((e) => {
+  const accountRows = (Array.isArray(jevEntries) ? jevEntries : []).map((e) => {
     const isFrom = Number(e.dAmount) < 0;
     return {
       id: e.nJEVEntryId,
@@ -49,7 +49,7 @@ export default function usePreviewVoucher() {
       toAmount: isFrom ? null : Number(e.dAmount || 0),
     };
   });
-console.log(onlineLabel);
+
   // The FREIGHT of the POs the voucher carries — the sum of their freight
   // (a voucher without POs — an assignee voucher — has none).
   const freight = (voucher?.voucher_suppliers ?? []).reduce(
@@ -57,7 +57,7 @@ console.log(onlineLabel);
     0,
   );
 
-  const items = particulars.map((p) =>
+  const items = (Array.isArray(particulars) ? particulars : []).map((p) =>
     isAssigneeType
       ? {
           particular: p.particular ?? "—",
@@ -79,6 +79,19 @@ console.log(onlineLabel);
         },
   );
 
+  // SAVED-PDF TITLE — "DVNUMBER(SupplierNick)-DisbursementVoucher(
+  // CompanyNick)", e.g. "DV2026-0134(PRIMA)-DisbursementVoucher(HiRams)".
+  // Filesystem-illegal characters are stripped first, since a voucher
+  // number can carry slashes.
+  const companyNick =
+    company?.strCompanyNickName || company?.strCompanyName || "";
+  const pdfFileName = `${
+    voucher?.strNumber ?? ""
+  }(${payeeNickName ?? ""})-DisbursementVoucher(${companyNick})`
+    .replace(/[\\/:*?"<>|]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
   return {
     voucherNo: voucher?.strNumber ?? "—",
     tin: supplierTIN ?? "",
@@ -97,6 +110,9 @@ console.log(onlineLabel);
     items,
 
     freight,
+
+    // Save-as-PDF file name: DVNUMBER(SupplierNick)-DisbursementVoucher(CompanyNick)
+    pdfFileName,
 
     ewtDiscount: Number(ewtAmount ?? 0),
 

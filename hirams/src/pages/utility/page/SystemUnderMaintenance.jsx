@@ -1,9 +1,31 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+// ═══════════════════════════════════════════════════════════════════════
+// EMERGENCY SCREEN — MUST STAY SELF-CONTAINED.
+// This is PageChunkErrorBoundary's fallback: it renders after a deploy
+// mismatch, when the server hands back 404/text-html for chunks that no
+// longer exist. That means it must NOT import app modules — getThemeColors,
+// MUI providers or anything else that lives behind a chunk — because those
+// are exactly what failed. Dark mode is read with pure browser APIs
+// (ThemeModeContext syncs the `dark` class onto <html> and the mode into
+// localStorage under `app-theme-mode`), which need no imports to work.
+// The themed tokens also live in getThemeColors().system for OTHER
+// surfaces; the gradients here are the same strings, kept verbatim.
+// ═══════════════════════════════════════════════════════════════════════
+const AURORA_BG = {
+  light: "linear-gradient(145deg, #f0f4ff 0%, #fafafa 50%, #f5f0ff 100%)",
+  dark: "linear-gradient(145deg, #121a2f 0%, #0b1120 50%, #191024 100%)",
+};
+
 export default function SystemUnderMaintenance() {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
+
+  // Zero-import dark detection — no MUI theme, no app utils.
+  const isDark =
+    document.documentElement.classList.contains("dark") ||
+    localStorage.getItem("app-theme-mode") === "dark";
 
   useEffect(() => {
     setMounted(true);
@@ -12,16 +34,21 @@ export default function SystemUnderMaintenance() {
   return (
     <div
       style={{
-        minHeight: "100vh",
-        background:
-          "linear-gradient(145deg, #f0f4ff 0%, #fafafa 50%, #f5f0ff 100%)",
+        // FULL-VIEWPORT OVERLAY — this screen can mount INSIDE the app
+        // layout: PageChunkErrorBoundary swaps only the page <Outlet />,
+        // leaving the sidebar mounted beside it. Fixed positioning (with a
+        // zIndex above the shell and MUI dialogs) makes this state read as
+        // GLOBAL — nothing else should be visible or clickable during it.
+        position: "fixed",
+        inset: 0,
+        zIndex: 2000,
+        background: AURORA_BG[isDark ? "dark" : "light"],
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         padding: "24px",
         fontFamily: "'Georgia', serif",
         overflow: "hidden",
-        position: "relative",
       }}
     >
       {/* Soft background orbs */}
@@ -100,17 +127,20 @@ export default function SystemUnderMaintenance() {
 
       <div
         style={{
+          // Glass card over the aurora — dark mode uses a frosted deep
+          // slate so the "floating glass" look survives on the dark bg.
           position: "relative",
-          background: "rgba(255,255,255,0.85)",
+          background: isDark ? "rgba(20,29,51,0.85)" : "rgba(255,255,255,0.85)",
           backdropFilter: "blur(24px)",
-          border: "1px solid rgba(99,102,241,0.12)",
+          border: `1px solid ${isDark ? "rgba(148,163,184,0.25)" : "rgba(99,102,241,0.12)"}`,
           borderRadius: "24px",
           padding: "52px 44px",
           maxWidth: "460px",
           width: "100%",
           textAlign: "center",
-          boxShadow:
-            "0 8px 40px rgba(99,102,241,0.1), 0 1px 0 rgba(255,255,255,0.9) inset",
+          boxShadow: isDark
+            ? "0 8px 40px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.05) inset"
+            : "0 8px 40px rgba(99,102,241,0.1), 0 1px 0 rgba(255,255,255,0.9) inset",
           animation: mounted ? "fadeUp 0.7s ease forwards" : "none",
           opacity: mounted ? 1 : 0,
         }}

@@ -187,6 +187,28 @@ export const calculateEWT = ({
 };
 
 /**
+ * Calculate the For Collection EWT from the collectible amount.
+ * Collection uses the transaction item type directly: goods are 1% and
+ * services are 2%, independent of the supplier flags used for purchase lines.
+ */
+export const calculateCollectionEWT = (amount, cItemType) => {
+  const rawType =
+    cItemType && typeof cItemType === "object"
+      ? Object.keys(cItemType)[0] || Object.values(cItemType)[0]
+      : cItemType;
+  const type = String(rawType ?? "").trim().toUpperCase();
+  const normalizedType = type === "S" || type.startsWith("SERVICE") ? "S" : "G";
+
+  return calculateEWT({
+    quantity: 1,
+    unitPrice: amount,
+    bEWT: 1,
+    bVAT: 0,
+    cItemType: normalizedType,
+  });
+};
+
+/**
  * Pull the EWT inputs out of an option, whatever shape it comes in.
  *
  * The app carries a purchase option in a few shapes:

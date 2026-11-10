@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Box,
   Typography,
@@ -493,6 +494,18 @@ function CostBreakdownModal({
   taxes = {},
 }) {
   const theme = useTheme();
+  const navigate = useNavigate();
+  // The CURRENTLY highlighted transaction stage — forwarded to the preview so
+  // the Transactions sidebar highlights the same item there. The pricing
+  // stage the page was opened at is NOT always the same as the transaction's
+  // current_status (a chosen set may already have moved on after the row was
+  // clicked), so the page's own route state is the source of truth, with
+  // current_status as the fallback.
+  const location = useLocation();
+  const selectedStatusCode =
+    location.state?.selectedStatusCode ??
+    transaction?.current_status ??
+    transaction?.latest_history?.nStatus;
   const isDark = theme.palette.mode === "dark";
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useMemo(() => useColors(base), [base]);
@@ -599,23 +612,29 @@ function CostBreakdownModal({
     totalTax = Math.round(totalTax * 100) / 100;
     // round only once, here, instead of summing per-item taxes
     const budget = totalSellingPrice;
-    // The EWT is derived per option — see utils/helpers/calculateEWT.js
-    const ewt = items.reduce(
+    const calculatedEwt = items.reduce(
       (sum, item) =>
         sum +
         totalEWT(item.purchaseOptions.filter((opt) => opt.bIncluded)),
       0,
     );
-    let retention = 0,
+
+    let directEwt = 0,
+      retention = 0,
       otherDirectCost = 0;
     directCosts.forEach((cost) => {
       const name = getOptionName(cost.nDirectCostOptionID);
       const amount = Number(cost.dAmount || 0);
-      if (name.startsWith("ret")) retention += amount;
-      // Every other direct cost — EWT included — is both listed in the
-      // column beside it and rolled into Total Cost.
-      else otherDirectCost += amount;
+      if (name.startsWith("ret")) {
+        retention += amount;
+      } else if (name.startsWith("ewt")) {
+        directEwt += amount;
+      } else {
+        otherDirectCost += amount;
+      }
     });
+
+    const ewt = calculatedEwt > 0 ? calculatedEwt : directEwt;
     const totalCost = totalPurchases + totalTax + ewt + otherDirectCost;
     const grossProfit = budget - totalCost;
     const finalTotal = grossProfit - retention;
@@ -654,60 +673,41 @@ function CostBreakdownModal({
   if (!open) return null;
   const displayedDirectCosts = directCosts.filter((cost) => {
     const name = getOptionName(cost.nDirectCostOptionID);
-    // Retention stays out of this list (it is netted off the profit further
-    // down), but EWT direct costs are shown here like any other cost.
-    return !name.startsWith("ret");
+    // Retention and EWT stay out of this list (retention is netted off profit,
+    // and EWT is displayed in its own dedicated EWT row).
+    return !name.startsWith("ret") && !name.startsWith("ewt");
   });
-  const handleSave = async () => {
-    if (!transaction?.strCode) return;
-    abortRef.current = new AbortController();
-    setExporting(true);
-    setExportDone(false);
-    try {
-      const blob = await ExportAPI.exportPricingReport(
-        { transaction, unitSellingPrices, items },
-        { signal: abortRef.current.signal },
-      );
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.setAttribute(
-        "download",
-        `${transaction.strCode}_${clientName}.xlsx`,
-      );
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      setExportDone(true);
-      setTimeout(() => {
-        setExporting(false);
-        setExportDone(false);
-      }, 1600);
-    } catch (err) {
-      if (err.name !== "AbortError") {
-        console.error("Export breakdown failed:", err);
-        setExporting(false);
-        setExportDone(false);
-      }
-    }
+  const handlePreviewPricings = () => {
+    // Park the payload — a refresh on (or a direct open of) /preview-pricing
+    // wipes route state; the preview page and the Transactions sidebar
+    // highlight both restore from this slot.
+    sessionStorage.setItem(
+      "previewPricingState",
+      JSON.stringify({
+        transaction,
+        clientName: clientName || transaction?.clientName,
+        items,
+        unitSellingPrices,
+        company: transaction?.company ?? null,
+        selectedStatusCode,
+      }),
+    );
+    navigate("/preview-pricing", {
+      state: {
+        transaction,
+        clientName: clientName || transaction?.clientName,
+        items,
+        unitSellingPrices,
+        company: transaction?.company ?? null,
+        // Transactions sidebar keeps the pricing-stage highlight on the
+        // preview page (TransactionNav reads this on route change).
+        selectedStatusCode,
+      },
+    });
+    onClose();
   };
   return (
     <>
-      <ExportSpinnerContent
-        open={exporting}
-        done={exportDone}
-        fileName={
-          transaction?.strCode && clientName
-            ? `${transaction.strCode}_${clientName}.xlsx`
-            : ""
-        }
-        onCancel={() => {
-          abortRef.current?.abort();
-          setExporting(false);
-          setExportDone(false);
-        }}
-      />
       <ModalContainer
         open={open}
         handleClose={onClose}
@@ -719,9 +719,9 @@ function CostBreakdownModal({
               ? `${transaction.strCode}`
               : ""
         }
-        onSave={handleSave}
-        saveLabel="Export"
-        loading={dataLoading || exporting}
+        onSave={handlePreviewPricings}
+        saveLabel="Preview Pricings"
+        loading={dataLoading}
       >
         <Box sx={{ px: 1.5, py: 0.5 }}>
           <CollapsibleSectionHeader

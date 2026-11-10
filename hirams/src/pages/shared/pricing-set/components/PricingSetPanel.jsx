@@ -473,6 +473,13 @@ function PricingSetPanel({
           transaction,
           clientNickName,
           selectedSet: row,
+          // Forwarded so CostBreakdownModal's preview navigation can carry
+          // the EXACT sidebar stage this page was opened with. Without it
+          // the preview falls back to transaction.current_status — for the
+          // aggregated pricing flows that is a different stage code than
+          // the highlighted sidebar item, so the highlight "fades" onto
+          // the wrong (or no) item.
+          selectedStatusCode,
           isPricingSetting,
           currentStatusLabel,
           isManagement,

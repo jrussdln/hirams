@@ -180,7 +180,11 @@ export default function ManagePOVoucherModal({
   const handleConfirmBack = () => closeConfirm();
   const handleNavigateToVoucher = () => {
     if (linkedVoucher) {
-      navigate(`/voucher-update?id=${linkedVoucher.nVoucherId}`);
+      // voucherStatusCode → the Vouchers sidebar highlights the linked
+      // voucher's real status filter.
+      navigate(`/voucher-update?id=${linkedVoucher.nVoucherId}`, {
+        state: { voucherStatusCode: linkedVoucher.cStatus },
+      });
       onClose();
     }
   };

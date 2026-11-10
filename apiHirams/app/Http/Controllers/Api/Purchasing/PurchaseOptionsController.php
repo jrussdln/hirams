@@ -196,17 +196,16 @@ class PurchaseOptionsController extends ApiController
     }
 
     /**
-     * SYNC one pending price change — the option row adopts the pending
-     * (requested) price: dUnitPrice moves onto it, the pending fields are
-     * cleared and the canvass date moves to the moment it took effect.
+     * CLEAR one pending price change — remove the requested price while
+     * leaving the original canvassed unit price unchanged.
      */
-    public function syncPriceChange(int $id): JsonResponse
+    public function clearPriceChange(int $id): JsonResponse
     {
         try {
-            $purchaseOption = $this->service->syncUnitPrice($id);
+            $purchaseOption = $this->service->clearPriceChange($id);
 
             return response()->json([
-                'message' => __('messages.update_success', ['name' => 'Price change synced']),
+                'message' => __('messages.update_success', ['name' => 'Requested price cleared']),
                 'item'    => $purchaseOption,
             ]);
         } catch (ModelNotFoundException $e) {

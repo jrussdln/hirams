@@ -25,6 +25,8 @@ import {
 import useKeysLabels from "./useKeysLabels.js";
 import { getDueDateColor } from "../utils/helpers/dueDateColor";
 import { fmtPHP, fmtDate } from "../utils/formatters/formatter.js";
+import { calculateCollectionEWT } from "../utils/helpers/calculateEWT.js";
+import { calculateCollectionTax } from "../utils/helpers/calculateTax.js";
 import * as localStorage from "../utils/storage/localStorage.js";
 const mapSuppliers = (suppliers) =>
   suppliers.map((s) => ({
@@ -108,6 +110,15 @@ export default function useTransactionWorkspace() {
     priceApprovalKey = "",
     procSource,
   } = state || {};
+
+  /**
+   * Archive mode — the transaction is completed & archived, so the workspace
+   * renders as a READ-ONLY reference of the stage it completed from: all five
+   * stage tabs stay, but every mutation/control is disabled and the
+   * realtime status-change redirect is off (an archived transaction never
+   * changes status under your feet).
+   */
+  const isArchiveView = state?.isArchiveView ?? false;
   const {
     cartKey,
     forApprovalKey,
@@ -189,7 +200,15 @@ export default function useTransactionWorkspace() {
   const fetchItemsRef = useRef(null);
 
   const [actionModal, setActionModal] = useState(null);
-  const [activeTab, setActiveTab] = useState("purchase"); // was "canvas"
+  // Completed archives open the stage they finished on — but landing on the
+  // read-only reference should start where a reader starts: the Details tab.
+  const [activeTab, setActiveTab] = useState(() =>
+    isArchiveView
+      ? "info"
+      : (stateForCollectionKey || keysForCollectionKey).includes(selectedStatusCode)
+        ? "collection"
+        : "purchase",
+  );
   const [statusChangedAlert, setStatusChangedAlert] = useState(false);
   const [countdown, setCountdown] = useState(null);
   // Cache hit → no skeleton; the mount fetch below is then silent.
@@ -203,8 +222,10 @@ export default function useTransactionWorkspace() {
       (seededFromCache &&
         (cachedItemsPayload?.cItemType &&
         typeof cachedItemsPayload.cItemType === "object"
-          ? Object.keys(cachedItemsPayload.cItemType)[0]
+          ? Object.keys(cachedItemsPayload.cItemType)[0] ||
+            Object.values(cachedItemsPayload.cItemType)[0]
           : cachedItemsPayload.cItemType)) ||
+      transaction?.cItemType ||
       null,
   );
   // Mirror for realtime handlers that persist outside fetchItems.
@@ -252,6 +273,8 @@ export default function useTransactionWorkspace() {
   const [showJev, setShowJev] = useState(false);
   const [jevToggling, setJevToggling] = useState(false);
   const [directCostModalOpen, setDirectCostModalOpen] = useState(false);
+  const [createJevConfirmOpen, setCreateJevConfirmOpen] = useState(false);
+  const [finalizeJevConfirmOpen, setFinalizeJevConfirmOpen] = useState(false);
   const [completeModalOpen, setCompleteModalOpen] = useState(false);
   const [completeConfirmOpen, setCompleteConfirmOpen] = useState(false);
   const [assignMode, setAssignMode] = useState(null);
@@ -290,7 +313,7 @@ export default function useTransactionWorkspace() {
 
   const showRevert = !isProcurement && forPurchaseKey.includes(statusCode);
   const crudItemsEnabled =
-    !isProcurement && itemsManagementKey.includes(statusCode);
+    !isArchiveView && !isProcurement && itemsManagementKey.includes(statusCode);
 
   const showPurchaseOptions =
     forCanvasKey.includes(statusCode) ||
@@ -307,9 +330,9 @@ export default function useTransactionWorkspace() {
   // the transaction was in "For Purchase" status left canvas rows/checkboxes
   // enabled even though they shouldn't be interactive there.
   const canvasCheckboxOptionsEnabled =
-    !statusChangedAlert && forCanvasKey.includes(statusCode);
+    !isArchiveView && !statusChangedAlert && forCanvasKey.includes(statusCode);
   const purchaseCheckboxOptionsEnabled =
-    !statusChangedAlert && forPurchaseKey.includes(statusCode);
+    !isArchiveView && !statusChangedAlert && forPurchaseKey.includes(statusCode);
   const hasAssignedAO = Number(transaction?.nAssignedAO) > 0;
   // MANAGEMENT and FINANCE always read as "assigned" — the officer touches
   // only transactions already at For Purchase/Delivery / For Collection, and
@@ -317,16 +340,18 @@ export default function useTransactionWorkspace() {
   // sees (Delivery Info, Print DR / SI, For Collection) instead of a
   // read-only page.
   const isAssignedToMe =
-    isManagement ||
-    isFinanceOfficer ||
-    (currentUserId && transaction?.nAssignedAO
-      ? String(currentUserId) === String(transaction.nAssignedAO)
-      : false);
+    !isArchiveView &&
+    (isManagement ||
+      isFinanceOfficer ||
+      (currentUserId && transaction?.nAssignedAO
+        ? String(currentUserId) === String(transaction.nAssignedAO)
+        : false));
   // The AO can be (re)assigned by the AOTL — and by MANAGEMENT, which
   // watches the whole board. The button itself says "Assign AO" or
   // "Reassign AO" depending on whether one is already on the transaction
   // (see hasAssignedAO).
-  const showReassignAO = (isAOTL || isManagement) && !forCollection;
+  const showReassignAO =
+    !isArchiveView && (isAOTL || isManagement) && !forCollection;
   const showReassignProcurement =
     forPurchaseKey.includes(statusCode) && (isManagement || isProcurementTL);
   const transactionHasABC =
@@ -503,7 +528,7 @@ export default function useTransactionWorkspace() {
       const res = await TransactionAPI.getItems(transaction.nTransactionId);
       setCItemType(
         res.cItemType && typeof res.cItemType === "object"
-          ? Object.keys(res.cItemType)[0]
+          ? Object.keys(res.cItemType)[0] || Object.values(res.cItemType)[0]
           : res.cItemType,
       );
       const loadedItems = (res.items || []).map((item) => ({
@@ -882,24 +907,38 @@ export default function useTransactionWorkspace() {
       .catch((err) => console.error("Error fetching AOs:", err));
   }, []);
   useEffect(() => {
+    if (!forCollection) {
+      setCollectionEwt(0);
+      return;
+    }
+    setCollectionEwt(
+      calculateCollectionEWT(totalCollectibleValue, cItemType),
+    );
+  }, [forCollection, totalCollectibleValue, cItemType]);
+
+  useEffect(() => {
     if (!transaction?.nTransactionId || !forCollection || directCostModalOpen)
       return;
     let active = true;
 
     (async () => {
+      // Set the derived values immediately. Direct-cost loading should not be
+      // able to leave the collection deductions stale or at zero.
+      setCollectionEwt(
+        calculateCollectionEWT(totalCollectibleValue, cItemType),
+      );
+      setCollectionRetention(0);
+
       try {
-        let options;
-        const cached = localStorage.getItem("direct_cost_options_cache", null);
-        if (cached) {
-          options = cached;
-        } else {
-          const r = await DirectCostOptionAPI.getDirectCostOptions();
-          options = r.data || r || [];
-          localStorage.setItem(
-            "direct_cost_options_cache",
-            options,
-          );
-        }
+        // Fetch the option names fresh. A cached option list can be stale when
+        // a Retention option was added after the cache was created.
+        const optionResponse =
+          await DirectCostOptionAPI.getDirectCostOptions();
+        const options = Array.isArray(optionResponse)
+          ? optionResponse
+          : optionResponse?.data ||
+            optionResponse?.directCostOptions ||
+            [];
 
         const costsRes = await DirectCostAPI.getDirectCosts({
           nTransactionID: transaction.nTransactionId,
@@ -907,37 +946,46 @@ export default function useTransactionWorkspace() {
         });
         if (!active) return;
 
-        const nameOf = (id) => {
-          const f = options.find((o) => (o.nDirectCostOptionID || o.id) === id);
-          return (f?.strName || f?.name || "").toLowerCase();
+        const nameOf = (id, cost) => {
+          const f = options.find(
+            (o) => String(o.nDirectCostOptionID || o.id) === String(id),
+          );
+          return String(
+            f?.strName ||
+              f?.name ||
+              cost?.option?.strName ||
+              cost?.option?.name ||
+              "",
+          )
+            .trim()
+            .toLowerCase();
         };
 
         const costs = costsRes.directCosts || costsRes.data || costsRes || [];
-        const totalEWT = Number(costsRes.totalEWT) || 0;
-
-        let ewt = 0,
-          ewtFound = false,
-          retention = 0;
+        let retention = 0;
         costs.forEach((c) => {
-          const name = nameOf(c.nDirectCostOptionID);
+          const name = nameOf(c.nDirectCostOptionID, c);
           const amt = Number(c.dAmount || 0);
-          if (name === "ewt") {
-            ewt += amt;
-            ewtFound = true;
-          } else if (name.startsWith("ret")) retention += amt;
+          if (name.includes("retention")) retention += amt;
         });
 
-        setCollectionEwt(ewtFound && ewt > 0 ? ewt : totalEWT);
         setCollectionRetention(retention);
       } catch (err) {
         console.error("Failed to fetch EWT/Retention:", err);
+        // EWT was already set before the direct-cost request.
       }
     })();
 
     return () => {
       active = false;
     };
-  }, [transaction?.nTransactionId, forCollection, directCostModalOpen]);
+  }, [
+    transaction?.nTransactionId,
+    forCollection,
+    directCostModalOpen,
+    totalCollectibleValue,
+    cItemType,
+  ]);
   const fetchProcurementUsers = useCallback(async () => {
     try {
       const res = await UserAPI.getActiveProcurement();
@@ -1031,7 +1079,9 @@ export default function useTransactionWorkspace() {
 
   /* ✅ TRANSACTION STATUS CHANGES — from global RealtimeProvider */
   useEffect(() => {
-    if (!transaction?.nTransactionId) return;
+    // Archive mode: the transaction is frozen — no status can change under
+    // the user's feet, so the redirect banner must never appear.
+    if (!transaction?.nTransactionId || isArchiveView) return;
 
     const handleTxnUpdated = (e) => {
       if (localActionRef.current) return;
@@ -1060,7 +1110,7 @@ export default function useTransactionWorkspace() {
     window.addEventListener("txn_data_updated", handleTxnUpdated);
     return () =>
       window.removeEventListener("txn_data_updated", handleTxnUpdated);
-  }, [transaction?.nTransactionId, statusCode]);
+  }, [transaction?.nTransactionId, statusCode, isArchiveView]);
 
   useEffect(() => {
     if (!statusChangedAlert) return;
@@ -1099,7 +1149,7 @@ export default function useTransactionWorkspace() {
     };
   }, [transaction?.nTransactionId, forCollection]);
   useEffect(() => {
-    if (!transaction?.nTransactionId) return;
+    if (!transaction?.nTransactionId || !forCollection) return;
     let active = true;
     (async () => {
       try {
@@ -1112,7 +1162,7 @@ export default function useTransactionWorkspace() {
         if (!chosen) {
           if (active) {
             setSellingPrices({});
-            setCollectionTax(0);
+            setCollectionTax(calculateCollectionTax(totalCollectibleValue));
           }
           return;
         }
@@ -1123,8 +1173,7 @@ export default function useTransactionWorkspace() {
         });
         if (active) {
           setSellingPrices(map);
-          // collectionTax deliberately stays 0 for now — no tax derivation
-          // off the item pricings.
+          setCollectionTax(calculateCollectionTax(totalCollectibleValue));
         }
       } catch (err) {
         console.error("Failed to fetch unit selling prices:", err);
@@ -1136,7 +1185,7 @@ export default function useTransactionWorkspace() {
     return () => {
       active = false;
     };
-  }, [transaction?.nTransactionId]);
+  }, [transaction?.nTransactionId, totalCollectibleValue]);
   useEffect(() => {
     if (!transaction?.nTransactionId) return;
     const handler = () => fetchItemsRef.current?.();
@@ -1165,6 +1214,7 @@ export default function useTransactionWorkspace() {
     canvasCheckboxOptionsEnabled,
     purchaseCheckboxOptionsEnabled,
     forCollection,
+    isArchiveView,
     transactionHasABC,
     totalItemsABC,
     totalABC,
@@ -1205,6 +1255,10 @@ export default function useTransactionWorkspace() {
     confirmDrPrint,
     confirmSiPrint,
     directCostModalOpen,
+    createJevConfirmOpen,
+    setCreateJevConfirmOpen,
+    finalizeJevConfirmOpen,
+    setFinalizeJevConfirmOpen,
     completeModalOpen,
     completeConfirmOpen,
     actionModal,

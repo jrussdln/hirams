@@ -102,8 +102,13 @@ const ArchiveNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   }, [location.key, firstCode, selectedCode]);
 
   // Follow the archived row that was opened (also survives a page refresh).
+  // Completed archives open the collection workspace, where selectedStatusCode
+  // carries the LIVE stage the transaction completed from — the archive
+  // code is parked beside it as archiveStatusCode.
   useEffect(() => {
-    const code = location.state?.selectedStatusCode;
+    const code =
+      location.state?.archiveStatusCode ??
+      location.state?.selectedStatusCode;
     if (location.state?.isArchiveView === true && code) {
       setItem(SESSION_KEY, String(code));
       setSelectedCode(String(code));
@@ -153,6 +158,7 @@ const ArchiveNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
       <SidebarItem
         icon={<ArchiveIcon fontSize="small" />}
         label="Archives"
+        autoOpen={isOnPage || isArchiveView}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}

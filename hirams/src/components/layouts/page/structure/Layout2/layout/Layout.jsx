@@ -6,7 +6,11 @@ import PageChunkErrorBoundary from "../../../../../ui/error-boundary/PageChunkEr
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
 
 const useColors = (c) => ({
-  layoutBg: c.slate.outerBg,
+  // The shell strips' background — the aurora gradient from the system
+  // group (same family as the maintenance screen). NOTE: it rides on
+  // `background` in the JSX, not backgroundColor — a CSS gradient is not a
+  // single color.
+  shellBg: c.system.shellBg,
 });
 
 function Layout() {
@@ -36,7 +40,7 @@ function Layout() {
       {/* items-stretch makes sidebar fill full height — DO NOT CHANGE */}
       <div
         className="flex items-stretch h-screen w-full overflow-hidden py-2 pl-2 gap-1"
-        style={{ backgroundColor: colors.layoutBg }}
+        style={{ background: colors.shellBg }}
       >
         <Sidebar
           collapsed={sidebarCollapsed}

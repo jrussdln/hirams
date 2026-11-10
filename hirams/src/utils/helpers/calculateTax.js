@@ -19,12 +19,23 @@ export const TAX_VAT_FACTOR = 1.12;
 export const TAX_VAT_RATE = 0.12;
 export const TAX_OTHER_RATE = 0.3;
 
+// For Collection uses a flat 5% tax on the collectible amount.
+export const COLLECTION_TAX_RATE = 0.05;
+
 const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/**
+ * Tax used by the For Collection payment summary.
+ *
+ * @param amount collectible amount
+ */
+export const calculateCollectionTax = (amount) =>
+  round2(num(amount) * COLLECTION_TAX_RATE);
 
 /**
  * The total purchase price of a transaction item — the included options.

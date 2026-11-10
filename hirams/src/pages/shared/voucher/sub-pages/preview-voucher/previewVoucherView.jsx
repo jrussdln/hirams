@@ -11,6 +11,7 @@ import EditableCell, {
 } from "../../../../../components/ui/print-preview/EditableCell.jsx";
 import MediaRoute from "../../../../../routes/MediaRoute.jsx";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
+import { getItem } from "../../../../../utils/storage/localStorage.js";
 
 // Print ink for this document. Read once at module scope: it renders to
 // PAPER, so every value is mode-INDEPENDENT (the print.* group).
@@ -61,6 +62,9 @@ const toNum = (v) => {
 // ids stay identical when `items` is re-sorted or filtered.
 const rowIdOf = (item, idx) => item.id ?? item.particular ?? idx;
 
+const user = getItem("user", {});
+const userFullName = `${user?.strFName ?? ""} ${user?.strLName ?? ""}`.trim();
+
 // SUB-TOTAL when the user has not typed over that cell: the sum of each
 // row's AMOUNT, honouring whatever was typed into the row's Qty / Unit Price
 // / Amount cells (an edited Amount wins over Qty × Unit Price).
@@ -73,8 +77,7 @@ function rowsSubtotal(items, values) {
     const qtyKey = `item-${rowId}-qty`;
     const priceKey = `item-${rowId}-unitPrice`;
     const qty = qtyKey in values ? toNum(values[qtyKey]) : item.qty;
-    const price =
-      priceKey in values ? toNum(values[priceKey]) : item.unitPrice;
+    const price = priceKey in values ? toNum(values[priceKey]) : item.unitPrice;
     return sum + toNum(qty) * toNum(price);
   }, 0);
 }
@@ -706,10 +709,16 @@ function VoucherFooterTable({
               ...cellSx,
               height: 30,
               borderRight: `2px solid ${DOC.border}`,
+              // Signature name — bold caps for the formal look. The editing
+              // <input> uses font: inherit and transforms inherit too, so
+              // typing shows the same bold-uppercase treatment.
+              fontWeight: 700,
+              textTransform: "uppercase",
             }}
             align="center"
             verticalAlign="bottom"
             placeholder="Name / Signature"
+            initialValue={userFullName}
           />
           <EditableCell
             id="cashAvailabilityNote"
@@ -718,6 +727,7 @@ function VoucherFooterTable({
             align="center"
             verticalAlign="bottom"
             placeholder="Name / Signature"
+            
           />
           <td
             colSpan={1}
@@ -743,11 +753,7 @@ function VoucherFooterTable({
           <td
             colSpan={3}
             rowSpan={1}
-            style={{
-              ...cellSx,
-              borderRight: `2px solid ${DOC.border}`,
-              textAlign: "center",
-            }}
+            style={{ ...cellSx, textAlign: "center", fontStyle: "italic" }}
           >
             Signature over Name / Date
           </td>
@@ -850,6 +856,7 @@ function VoucherFooterTable({
             style={cellSx}
             align="left"
             placeholder="Name"
+            initialValue={userFullName}
           />
           <td colSpan={1} style={{ ...cellSx, fontWeight: 700 }}>
             Receipt No:
@@ -883,6 +890,7 @@ export default function PreviewVoucherView({
   date = DEFAULTS.date,
   payeeName = DEFAULTS.payeeName,
   payeeAddress = DEFAULTS.payeeAddress,
+  pdfFileName,
   items = DEFAULTS.items,
   freight = 0,
   ewtDiscount = DEFAULTS.ewtDiscount,
@@ -932,6 +940,7 @@ export default function PreviewVoucherView({
         onExport={() => console.log("wire up export")}
         onControlsReady={setPrintControls}
         hideHeaderControls={true}
+        pdfFileName={pdfFileName}
         header={
           <VoucherHeaderTable
             voucherNo={voucherNo}

@@ -148,6 +148,10 @@ export default function JEVEntryAEModal({
   // list, exactly as the voucher page does.
   voucherNumber = "",
   flowType = "received",
+  // For Collection: the FULL receipt (a CollectionReceiptCard element)
+  // printed as the reference panel above the fields while entries are
+  // typed in.
+  collectionDetailsPanel = null,
   // Non-voucher callers (the inventory Pending JEV screen) hand over
   // their own panel — the items or the logs.
   itemsPanel = null,
@@ -344,6 +348,14 @@ export default function JEVEntryAEModal({
             <Box sx={{ mb: 1 }}>{logsPanel}</Box>
           ) : itemsPanel ? (
             <Box sx={{ mb: 1 }}>{itemsPanel}</Box>
+          ) : collectionDetailsPanel ? (
+            /* For Collection — the full receipt (company header, amount in
+               words, deduction ledger, client info and the payment-for
+               line) so the figures are visible while the entry amounts are
+               typed in. */
+            <Box sx={{ mb: 1 }}>
+              {collectionDetailsPanel}
+            </Box>
           ) : isAssigneeType ? (
             <AssigneeListPanel
               assigneeLinks={assigneeLinks}
