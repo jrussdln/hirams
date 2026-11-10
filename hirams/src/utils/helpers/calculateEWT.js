@@ -189,7 +189,9 @@ export const calculateEWT = ({
 /**
  * Calculate the For Collection EWT from the collectible amount.
  * Collection uses the transaction item type directly: goods are 1% and
- * services are 2%, independent of the supplier flags used for purchase lines.
+ * services are 2%, independent of the supplier flags used for purchase
+ * lines. The collectible amount is a VAT-INCLUSIVE figure, so the base is
+ * the VAT-net share: (amount / 1.12) x 1% / 2%.
  */
 export const calculateCollectionEWT = (amount, cItemType) => {
   const rawType =
@@ -203,7 +205,9 @@ export const calculateCollectionEWT = (amount, cItemType) => {
     quantity: 1,
     unitPrice: amount,
     bEWT: 1,
-    bVAT: 0,
+    // bVAT: 1 → the DEFAULT branch divides the base by EWT_VAT_FACTOR
+    // (1.12) before applying the rate — the collectible amount is VAT-in.
+    bVAT: 1,
     cItemType: normalizedType,
   });
 };
