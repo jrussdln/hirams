@@ -38,6 +38,7 @@ class JevService
             // CLIENT names the Collection row in the list (see
             // resolveDisplayTitle).
             'transactions.client',
+            'transactions.company',
             'transactions.latestHistory',
             // The journal's creator — the Created column prints their
             // nickname as the "BY: …" line over the date.
@@ -97,7 +98,6 @@ class JevService
                 'strTitle'     => $this->resolveTitle($request),
                 'dtOccur'      => $request->dtOccur ?? now(),
                 'cStatus'      => 'P',
-                // Who raised the journal — the Created column's "BY: …".
                 'nUserId'      => auth()->id(),
             ]);
 

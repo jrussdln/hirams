@@ -285,6 +285,10 @@ export default function useTransactionWorkspace() {
   /* ─── Derived Values ────────────────────────────────────────────────── */
   const statusCode = selectedStatusCode;
   const forCollection = forCollectionKey.includes(statusCode);
+  // The For Purchase stage hosts the DR / Sales Invoice print panel too —
+  // the SI's unit prices come from the chosen pricing set, exactly like
+  // the collection page's receipt, so the same fetches serve both.
+  const forPurchase = forPurchaseKey.includes(statusCode);
 
   const assignedAOName = (() => {
     const u = transaction?.user;
@@ -849,6 +853,25 @@ export default function useTransactionWorkspace() {
       window.removeEventListener("jev_entry_data_deleted", handler);
     };
   }, [jev?.nJEVId, fetchJev]);
+
+  // Title / status writes (the JEV Info card's save, the status tooltip,
+  // the finalize toggles) raise jev_data_updated. Refetching on it keeps
+  // the footer's Finalize gate honest in the SAME tab: the button is
+  // disabled while strTitle is blank, and re-enables the moment the
+  // title lands — without this, the freshly saved title never reached
+  // this hook's own `jev` copy. Events that name another journal (an
+  // edit made on another tab) are skipped; same-tab saves dispatch the
+  // event with no detail at all, so those fall through.
+  useEffect(() => {
+    if (!jev?.nJEVId) return;
+    const handler = (e) => {
+      if (e.detail?.jevId && String(e.detail.jevId) !== String(jev.nJEVId))
+        return;
+      fetchJev();
+    };
+    window.addEventListener("jev_data_updated", handler);
+    return () => window.removeEventListener("jev_data_updated", handler);
+  }, [jev?.nJEVId, fetchJev]);
   /* ─── Effects ────────────────────────────────────────────────────────── */
   useEffect(() => {
     if (!transaction?.nTransactionId) return;
@@ -1132,7 +1155,7 @@ export default function useTransactionWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (!transaction?.nTransactionId || !forCollection) return;
+    if (!transaction?.nTransactionId) return;
     let active = true;
     PricingAPI.getPricingSets(transaction.nTransactionId)
       .then((res) => {
@@ -1147,9 +1170,11 @@ export default function useTransactionWorkspace() {
     return () => {
       active = false;
     };
-  }, [transaction?.nTransactionId, forCollection]);
+  }, [transaction?.nTransactionId]);
   useEffect(() => {
-    if (!transaction?.nTransactionId || !forCollection) return;
+    if (!transaction?.nTransactionId || (!forCollection && !forPurchase)) {
+      return;
+    }
     let active = true;
     (async () => {
       try {
@@ -1185,7 +1210,12 @@ export default function useTransactionWorkspace() {
     return () => {
       active = false;
     };
-  }, [transaction?.nTransactionId, totalCollectibleValue]);
+  }, [
+    transaction?.nTransactionId,
+    forCollection,
+    forPurchase,
+    totalCollectibleValue,
+  ]);
   useEffect(() => {
     if (!transaction?.nTransactionId) return;
     const handler = () => fetchItemsRef.current?.();

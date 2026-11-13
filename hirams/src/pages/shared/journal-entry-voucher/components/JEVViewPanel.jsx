@@ -1024,36 +1024,57 @@ export default function JevViewPanel({
               </Typography>
             </Box>
 
-            {/* The type — the label of the journal. */}
-            <Typography
+            {/* The type — the label of the journal — with the date right
+                after it on the SAME line: "DELIVERED ITEMS - Nov 12, 2026".
+                One flex row so a long type truncates while the date stays. */}
+            <Box
               sx={{
-                fontSize: { xs: "0.5rem", sm: "0.55rem", md: "0.58rem" },
-                fontWeight: 600,
-                fontStyle: "italic",
-                color: colors.gray.textMuted,
-                textTransform: "uppercase",
-                lineHeight: 1,
+                display: "flex",
+                alignItems: "baseline",
+                gap: 0.4,
                 mt: 0.15,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                minWidth: 0,
               }}
             >
-              {typeMap?.[jev?.cJEVLinkType] ?? jev?.cJEVLinkType ?? "—"}
-            </Typography>
-
-            {/* Date display under the type */}
-            <Typography
-              sx={{
-                fontSize: { xs: "0.48rem", sm: "0.52rem", md: "0.55rem" },
-                fontWeight: 500,
-                color: colors.gray.textMuted,
-                lineHeight: 1,
-                mt: 0.1,
-              }}
-            >
-              {fmtDate(savedDate ?? jev?.dtOccur ?? "")}
-            </Typography>
+              <Typography
+                sx={{
+                  fontSize: { xs: "0.5rem", sm: "0.55rem", md: "0.58rem" },
+                  fontWeight: 600,
+                  fontStyle: "italic",
+                  color: colors.gray.textMuted,
+                  textTransform: "uppercase",
+                  lineHeight: 1,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {typeMap?.[jev?.cJEVLinkType] ?? jev?.cJEVLinkType ?? "—"}
+              </Typography>
+              <Typography
+                sx={{
+                  fontSize: { xs: "0.5rem", sm: "0.55rem", md: "0.58rem" },
+                  fontWeight: 500,
+                  color: colors.gray.textMuted,
+                  lineHeight: 1,
+                  flexShrink: 0,
+                }}
+              >
+                -
+              </Typography>
+              <Typography
+                sx={{
+                  fontSize: { xs: "0.48rem", sm: "0.52rem", md: "0.55rem" },
+                  fontWeight: 500,
+                  color: colors.gray.textMuted,
+                  lineHeight: 1,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {fmtDate(savedDate ?? jev?.dtOccur ?? "")}
+              </Typography>
+            </Box>
           </Box>
 
           {/* STATUS — sits before the panel's actions, after the title

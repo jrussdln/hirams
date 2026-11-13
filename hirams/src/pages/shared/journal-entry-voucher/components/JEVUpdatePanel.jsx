@@ -7,6 +7,7 @@ import Skeleton from "./Skeleton.jsx";
 import POListPanel from "../../voucher/components/POListPanel.jsx";
 import AssigneeListPanel from "../../voucher/components/AssigneeListPanel.jsx";
 import ItemsTable from "../../inventory/component/ItemsTable.jsx";
+import CollectionReceiptCard from "../../collection/components/CollectionReceiptCard.jsx";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 
 const makeColors = (c) => ({
@@ -69,6 +70,13 @@ export default function JEVUpdatePanel({
   itemsTotal,
   sellingPrices,
   isReceivedSide,
+  // Collection (C) JEV — the transaction behind it and the receipt
+  // figures, printed above the journal the way the For Collection
+  // workspace shows them.
+  isCollectionJev,
+  collectionTransaction,
+  collectibleAmount = 0,
+  retentionAmount = 0,
   // Balance banner state.
   balance,
   showBalanceBanner,
@@ -110,6 +118,42 @@ export default function JEVUpdatePanel({
         onBrandClick={isManagement ? openInventoryRowTransaction : undefined}
       />
     ) : null;
+
+  // ── The Collection Receipt — a C JEV's top block ────────────────────────
+  // A collection JEV has no voucher behind it (the particulars block stays
+  // empty), so its "what this journal was raised for" block is the
+  // transaction's collection receipt instead — the very card the For
+  // Collection workspace shows. Built once, shown twice: full size on the
+  // page, and handed to JevViewPanel as collectionDetailsPanel so the
+  // Add / Edit Entry modal prints the compact copy as its reference.
+  const collectionTxn = collectionTransaction ?? {};
+  // The receipt props both mounts share — the page prints it FULL SIZE
+  // above the journal (showClientInfo off: the header line, the
+  // Collection Amount with its words and the deduction ledger only — the
+  // same figures the Add / Edit Entry modal's compact copy shows, without
+  // the client-info blocks the workspace's own receipt carries). The
+  // company is named by its NICKNAME — the same convention the voucher /
+  // inventory screens follow.
+  const receiptProps = {
+    eventName:
+      collectionTxn.company?.strCompanyNickName ??
+      collectionTxn.company?.strCompanyName ??
+      "",
+    collectibleAmount,
+    cItemType: collectionTxn.cItemType,
+    retentionAmount,
+    clientName: collectionTxn.client?.strClientName,
+    clientAddress: collectionTxn.client?.strAddress,
+    clientTIN: collectionTxn.client?.strTIN,
+    businessStyle: collectionTxn.client?.strBusinessStyle,
+    transactionTitle: collectionTxn.strTitle,
+  };
+  const collectionReceipt = isCollectionJev ? (
+    <CollectionReceiptCard {...receiptProps} showClientInfo={false} />
+  ) : null;
+  const collectionReceiptCompact = isCollectionJev ? (
+    <CollectionReceiptCard compact {...receiptProps} />
+  ) : null;
 
   return (
     <>
@@ -262,6 +306,15 @@ export default function JEVUpdatePanel({
               grand total. ── */}
           {itemRows.length > 0 && <Box>{itemsTable}</Box>}
 
+          {/* ── The Collection Receipt — a C JEV's top block. The
+              particulars / items blocks above never apply to a
+              collection JEV (no voucher, no inventory batches), so the
+              receipt IS its "what this journal was raised for" — the
+              same card the For Collection workspace prints. ── */}
+          {isCollectionJev && collectionReceipt && (
+            <Box sx={{ mb: 1 }}>{collectionReceipt}</Box>
+          )}
+
           {/* ── The JEV itself ────────────────────────────────────── */}
           <Box>
             {/* The panel below carries its own header (JEV number ·
@@ -277,8 +330,13 @@ export default function JEVUpdatePanel({
               // The amount this JEV's entries must reconcile against —
               // the same figure the Items block prints as its total
               // (for a D JEV: the delivered group's, which the panel
-              // never caps an R/D entry with anyway).
-              particularsGrandTotal={itemsTotal}
+              // never caps an R/D entry with anyway). A Collection JEV
+              // reconciles against the receipt's collectible total
+              // instead — the same cap the entry form carries on the
+              // For Collection workspace.
+              particularsGrandTotal={
+                isCollectionJev ? collectibleAmount : itemsTotal
+              }
               // Entry CRUD, Management / Finance Officer — plus ACCOUNT
               // OFFICERS (AO / AOTL), who hand it in via the explicit
               // override: they manage entries without being finance.
@@ -313,6 +371,12 @@ export default function JEVUpdatePanel({
               // The Items table above, handed on: for R/D JEVs the Add /
               // Edit Entry modal shows the same blocks the page shows.
               itemsPanel={itemsTable}
+              // Collection (C) JEV — the entry modal prints the compact
+              // receipt as its reference panel, and its wording knows
+              // the flow is a collection.
+              collectionDetailsPanel={collectionReceiptCompact}
+              panelTitle={isCollectionJev ? "Collection Details" : null}
+              flowType={isCollectionJev ? "collected" : "received"}
             />
           </Box>
         </Box>

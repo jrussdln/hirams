@@ -46,6 +46,11 @@ export default function JEVUpdateView() {
     itemsTotal,
     sellingPrices,
     isReceivedSide,
+    // Collection (C) JEV — the receipt behind it.
+    isCollectionJev,
+    collectionTransaction,
+    collectibleAmount,
+    retentionAmount,
     balance,
     showBalanceBanner,
     dismissBalanceMsg,
@@ -164,6 +169,11 @@ export default function JEVUpdateView() {
         itemsTotal={itemsTotal}
         sellingPrices={sellingPrices}
         isReceivedSide={isReceivedSide}
+        // Collection (C) JEV — the receipt block above the journal.
+        isCollectionJev={isCollectionJev}
+        collectionTransaction={collectionTransaction}
+        collectibleAmount={collectibleAmount}
+        retentionAmount={retentionAmount}
         // Balance banner state.
         balance={balance}
         showBalanceBanner={showBalanceBanner}

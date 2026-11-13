@@ -126,7 +126,14 @@ const SerialSection = ({
   icon,
   colors,
 }) => {
+  // Follow the selected batch: a section with serials opens, an empty one
+  // stays collapsed. Keyed on the array itself — the parent rebuilds it for
+  // every newly selected item — so switching batches re-applies this, while
+  // a manual collapse inside the same batch is left alone.
   const [expanded, setExpanded] = useState(true);
+  useEffect(() => {
+    setExpanded(serials.length > 0);
+  }, [serials]);
 
   return (
     <Box
@@ -737,7 +744,11 @@ export default function InventoryDetailsPanel({
       />
 
       <SerialSection
-        title={`${accent.label} Serial Numbers`}
+        // One title for every status: a batch carries a single serial-number
+        // record — the S/N it was received with are the ones that go out —
+        // so both the For Delivery and Delivered views read the same source
+        // (item.serialNumbers) and don't need a status-specific label.
+        title="Serial Numbers"
         serials={serialNumbers}
         accent={accent}
         emptyText="No serial numbers recorded."

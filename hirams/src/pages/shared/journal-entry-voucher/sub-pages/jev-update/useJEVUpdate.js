@@ -4,6 +4,9 @@ import VoucherAPI from "../../../../../api/endpoints/voucher.api.js";
 import JevAPI from "../../../../../api/endpoints/jev.api.js";
 import JevEntriesAPI from "../../../../../api/endpoints/jev-entries.api.js";
 import InventoryAPI from "../../../../../api/endpoints/inventory.api.js";
+import PricingAPI from "../../../../../api/endpoints/pricing.api.js";
+import DirectCostAPI from "../../../../../api/endpoints/direct-cost.api.js";
+import DirectCostOptionAPI from "../../../../../api/endpoints/direct-cost-option.api.js";
 import { withSpinner, showSwal } from "../../../../../utils/helpers/swal.jsx";
 import {
   mapInventoryItems,
@@ -130,6 +133,21 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
         const data = Array.isArray(res) ? res[0] : (res?.data ?? res);
         // Rebuilt WITHOUT `entries` — the panel fetches those itself.
         if (data?.nJEVId) {
+          // A Collection (C) JEV is raised against a transaction — its
+          // receipt (the client, the company, the collectible figures)
+          // hangs off that transaction. The show() payload carries it
+          // through the transactions relation, so the FIRST one is kept
+          // (one collection row per journal) on the stripped shape.
+          const txn = data.transactions?.[0] ?? null;
+          const collectionTransaction = txn
+            ? {
+                nTransactionId: txn.nTransactionId,
+                strTitle: txn.strTitle ?? "",
+                cItemType: txn.cItemType ?? "",
+                client: txn.client ?? null,
+                company: txn.company ?? null,
+              }
+            : null;
           const stripped = {
             nJEVId: data.nJEVId,
             strJEVNumber: data.strJEVNumber ?? "",
@@ -139,6 +157,7 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
             dtOccur: data.dtOccur ?? "",
             cStatus: data.cStatus ?? "",
             cJEVLinkType: data.cJEVLinkType ?? "",
+            collectionTransaction,
           };
           setJev(stripped);
           setItem(`jev_${jevId}`, stripped);
@@ -163,6 +182,24 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
     loadedForRef.current = jevId;
     fetchJev({ silent: Boolean(initialJev) });
   }, [fetchJev, jevId]);
+
+  // ── Title / status writes made inside the panel keep the hook honest ──
+  // The JEV Info card's save (JevViewPanel dispatches jev_data_updated
+  // after JevAPI.update) and the realtime channel's re-dispatch both land
+  // here: a SILENT refetch pulls the new strTitle / cStatus into the
+  // hook's `jev` copy. Without it, jevHasTitle stayed stale — the Finalize
+  // button never re-enabled after the title was added until a refresh.
+  // (fetchJev dispatches nothing, so this cannot loop. Events naming a
+  // DIFFERENT journal are skipped; same-tab saves carry no detail.)
+  useEffect(() => {
+    if (!jevId) return;
+    const handler = (e) => {
+      if (e.detail?.jevId && String(e.detail.jevId) !== String(jevId)) return;
+      fetchJev({ silent: true });
+    };
+    window.addEventListener("jev_data_updated", handler);
+    return () => window.removeEventListener("jev_data_updated", handler);
+  }, [jevId, fetchJev]);
 
   // ── Roles ────────────────────────────────────────────────────────────
   // The viewer's entry CRUD gate — Management / Finance Officer, PLUS the
@@ -382,6 +419,98 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
   // A received JEV fetches nothing here: the table hides those columns
   // (isReceivedSide), so handing it an empty list keeps the lookup off.
   const sellingPrices = useSellingPrices(isReceivedSide ? [] : itemRows);
+
+  // ── The transaction behind a Collection (C) JEV ───────────────────────
+  // The receipt the page prints above the journal — the same
+  // CollectionReceiptCard the For Collection workspace shows — needs the
+  // transaction's COLLECTIBLE total (the chosen pricing set's selling
+  // price) and its RETENTION (the direct-cost rows named "Retention").
+  // The same two lookups useTransactionWorkspace runs for the collection
+  // page, scoped to the one transaction this JEV was raised against.
+  const collectionTransaction = jev?.collectionTransaction ?? null;
+  const collectionTransactionId = collectionTransaction?.nTransactionId ?? null;
+  const isCollectionJev = linkType === "C" && !!collectionTransactionId;
+
+  const [collectibleAmount, setCollectibleAmount] = useState(0);
+  const [retentionAmount, setRetentionAmount] = useState(0);
+
+  // The chosen pricing set's total — the receipt's "Amount".
+  useEffect(() => {
+    if (!isCollectionJev) return;
+    let active = true;
+    PricingAPI.getPricingSets(collectionTransactionId)
+      .then((res) => {
+        if (!active) return;
+        const chosen = (res.data ?? []).find((s) => s.bChosen === 1);
+        setCollectibleAmount(chosen?.totalSellingPrice ?? 0);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch the chosen pricing set total:", err);
+        if (active) setCollectibleAmount(0);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isCollectionJev, collectionTransactionId]);
+
+  // The retention rows — the receipt's "Less: Retention". A cached option
+  // list can be stale when a Retention option was added after the cache
+  // was created, so the option names are fetched fresh (the same rule the
+  // For Collection workspace follows).
+  useEffect(() => {
+    if (!isCollectionJev) {
+      setRetentionAmount(0);
+      return;
+    }
+    let active = true;
+    (async () => {
+      setRetentionAmount(0);
+      try {
+        const optionResponse = await DirectCostOptionAPI.getDirectCostOptions();
+        const options = Array.isArray(optionResponse)
+          ? optionResponse
+          : optionResponse?.data ||
+            optionResponse?.directCostOptions ||
+            [];
+
+        const costsRes = await DirectCostAPI.getDirectCosts({
+          nTransactionID: collectionTransactionId,
+          withEWT: 1,
+        });
+        if (!active) return;
+
+        const nameOf = (id, cost) => {
+          const f = options.find(
+            (o) => String(o.nDirectCostOptionID || o.id) === String(id),
+          );
+          return String(
+            f?.strName ||
+              f?.name ||
+              cost?.option?.strName ||
+              cost?.option?.name ||
+              "",
+          )
+            .trim()
+            .toLowerCase();
+        };
+
+        const costs = costsRes.directCosts || costsRes.data || costsRes || [];
+        let retention = 0;
+        costs.forEach((c) => {
+          const name = nameOf(c.nDirectCostOptionID, c);
+          const amt = Number(c.dAmount || 0);
+          if (name.includes("retention")) retention += amt;
+        });
+
+        setRetentionAmount(retention);
+      } catch (err) {
+        console.error("Failed to fetch the collection retention:", err);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isCollectionJev, collectionTransactionId]);
 
   // Same rule VoucherUpdateView uses to pick its particulars panel.
   const isAssigneeType =
@@ -669,6 +798,12 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
     itemsTotal,
     sellingPrices,
     isReceivedSide,
+    // Collection (C) JEV — the transaction behind it and the receipt
+    // figures the page prints above the journal.
+    isCollectionJev,
+    collectionTransaction,
+    collectibleAmount,
+    retentionAmount,
     // Balance banner
     balance,
     showBalanceBanner,

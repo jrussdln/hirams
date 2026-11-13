@@ -2043,7 +2043,12 @@ function TransactionItemsTable({
       totalSales={totalCollectibleValue}
       cItemType={cItemType}
       retentionAmount={collectionRetention}
-      companyName={transaction?.company?.strCompanyName}
+      // The receipt's header line names the company by its NICKNAME —
+      // the same convention the voucher / inventory screens follow.
+      companyName={
+        transaction?.company?.strCompanyNickName ??
+        transaction?.company?.strCompanyName
+      }
       clientName={transaction?.client?.strClientName}
       clientAddress={transaction?.client?.strAddress}
       clientTIN={transaction?.client?.strTIN}

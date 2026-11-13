@@ -126,6 +126,14 @@ export default function CollectionReceiptCard({
   showHeader = true,
   // Scale everything down for small mounts (the JEV Entry modal).
   compact = false,
+  // The client-info blocks ("Received From", "Business Style", "Address",
+  // "TIN" and the "In partial / full payment of" line) sit under the
+  // amount + deduction ledger. A mount that needs ONLY the figures — the
+  // /jev-update page's top block — hides them while keeping the full-size
+  // fonts (unlike `compact`, which hides them AND shrinks everything).
+  // Defaults to `!compact`: the page receipt shows them, the modal's
+  // shrunken one does not — exactly the way both mounts have always read.
+  showClientInfo,
   collectibleAmount = 0,
   cItemType,
   retentionAmount: fetchedRetentionAmount = 0,
@@ -196,6 +204,17 @@ export default function CollectionReceiptCard({
   const retentionAmount = Number(fetchedRetentionAmount || 0);
   const deductionsLoading = false;
 
+  // `?? ` lets an explicit false stand (the /jev-update mount) while a
+  // caller that says nothing keeps the historic rule: full receipt shows
+  // the client blocks, the compact modal one hides them.
+  const showClient = showClientInfo ?? !compact;
+  // When the client blocks are hidden (the entry modal's shrunken
+  // receipt, the /jev-update page's figures-only one) the client's name
+  // would disappear entirely — so it moves INTO the header line, ahead
+  // of the company: "LGU - VICTORIA - HiRAMS' Supply Wholesaling".
+  const headerName =
+    !showClient && clientName ? `${clientName} - ${eventName}` : eventName;
+
   const netAmount =
     Number(collectibleAmount || 0) - ewtAmount - taxAmount - retentionAmount;
   const amountInWords = numberToWords(netAmount);
@@ -231,11 +250,13 @@ export default function CollectionReceiptCard({
                   textTransform: "uppercase",
                   fontStyle: "italic",
                 }}
-                title={compact && clientName ? `${clientName} - ${eventName}` : eventName}
+                title={
+                  !showClient && clientName
+                    ? headerName
+                    : eventName
+                }
               >
-                {compact && clientName
-                  ? `${clientName} - ${eventName}`
-                  : eventName}
+                {headerName}
               </Typography>
             )}
           </Box>
@@ -403,7 +424,7 @@ export default function CollectionReceiptCard({
           </Box>
         </Box>
 
-        {!compact && (
+        {showClient && (
           <Box sx={{ px: sizes.padX, py: sizes.blockGapY }}>
             <Box
               sx={{

@@ -92,8 +92,11 @@ function ClientAEModal({
       handleClose();
 
       await withSpinner(entity, async () => {
+        // The id is NOT part of the payload — Add mode has no clientData
+        // at all (reading clientData.id here used to throw on null and
+        // silently kill every Add), and Edit hands the id to
+        // ClientAPI.updateClient through the URL anyway.
         const payload = {
-          id: clientData.id,
           strClientName: formData.clientName,
           strClientNickName: formData.nickname,
           strTIN: tinToStorage(formData.tin),

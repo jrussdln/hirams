@@ -245,6 +245,15 @@ export default function CollectionView(props) {
     procSourceLabel,
   };
 
+  // ── The footer's Finalize gates — the same trio every finalize path
+  // follows (the /jev-update page, the voucher page): the journal must
+  // carry a title and its From / To sides must square before it can
+  // leave Pending. The workspace hook loads the FULL JEV record
+  // (entries included), so its strTitle is on hand for the title gate.
+  const isPendingJev =
+    jev && String(jev.cStatus) === String(jevPendingKey);
+  const jevHasTitle = Boolean(String(jev?.strTitle ?? "").trim());
+
   return (
     <PageLayout
       title={isArchiveView ? "Transaction Archived" : "Transaction"}
@@ -334,32 +343,25 @@ export default function CollectionView(props) {
             jev &&
             (isManagement || isFinanceOfficer) && (
               <BaseButton
-                label={
-                  String(jev.cStatus) === String(jevPendingKey)
-                    ? "Finalize JEV"
-                    : "Undo Finalize"
-                }
-                icon={
-                  String(jev.cStatus) === String(jevPendingKey)
-                    ? icons.finalize
-                    : icons.revert
-                }
+                label={isPendingJev ? "Finalize JEV" : "Undo Finalize"}
+                icon={isPendingJev ? icons.finalize : icons.revert}
                 onClick={() => setFinalizeJevConfirmOpen(true)}
-                actionColor={
-                  String(jev.cStatus) === String(jevPendingKey)
-                    ? "approve"
-                    : "delete"
-                }
+                actionColor={isPendingJev ? "approve" : "delete"}
                 disabled={
                   jevToggling ||
-                  (String(jev.cStatus) === String(jevPendingKey) &&
-                    (jevBalance.loading || !jevBalance.balanced))
+                  (isPendingJev &&
+                    (jevBalance.loading || !jevHasTitle || !jevBalance.balanced))
                 }
                 tooltip={
-                  String(jev.cStatus) === String(jevPendingKey) &&
-                  !jevBalance.balanced
-                    ? jevBalance.message ||
-                      "JEV totals must be equal before finalizing"
+                  isPendingJev
+                    ? jevBalance.loading
+                      ? "Checking JEV balance…"
+                      : !jevHasTitle
+                        ? "Title is not yet added."
+                        : !jevBalance.balanced
+                          ? jevBalance.message ||
+                            "JEV totals must be equal before finalizing"
+                          : "Finalize this JEV"
                     : ""
                 }
               />
