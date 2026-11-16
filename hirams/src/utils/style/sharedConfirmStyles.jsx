@@ -15,6 +15,7 @@ import {
   DeleteSweepOutlined,
   CleaningServicesOutlined,
   GroupRemoveOutlined,
+  FileDownloadOutlined,
 } from "@mui/icons-material";
 
 // ── Shared color variants ─────────────────────────────────────────────────
@@ -449,6 +450,19 @@ export const PRINT_PREVIEW_CONFIRM_STYLES = {
     title: "Save as PDF?",
     desc: "A .pdf file of this document will be generated and downloaded to your device. The page layout follows your print settings.",
     confirmLabel: "Yes, Save PDF",
+  },
+};
+
+// ── Journal-accounts ledger confirm dialogs ──────────────────────────────
+// Wired in pages/shared/journal-accounts/JournalAccountsView.jsx through
+// LedgerConfirmModal (pass style={LEDGER_CONFIRM_STYLES.export_ledger}).
+export const LEDGER_CONFIRM_STYLES = {
+  export_ledger: {
+    variant: "green",
+    Icon: FileDownloadOutlined,
+    title: "Export this Ledger?",
+    desc: "The ledger will be downloaded to your device as an Excel (.xlsx) file, titled with the selected account and the filtered date range.",
+    confirmLabel: "Yes, Export Ledger",
   },
 };
 

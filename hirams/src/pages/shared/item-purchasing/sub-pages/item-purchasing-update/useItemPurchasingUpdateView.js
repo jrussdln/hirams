@@ -618,17 +618,35 @@ export default function useItemPurchasingUpdateView() {
   // dispatches an update/delete (the Manage Voucher modal does both, as
   // does any other voucher screen), so the Manage Voucher button always
   // reflects what is actually linked.
+  // The PO / PO-option events refresh the ROWS too — a line removed from
+  // cart (here or in another tab), moved, or re-priced must leave this
+  // view's table the same way it leaves the list's cards.
   useEffect(() => {
     const refetch = () => fetchVoucherStatus();
+    const refetchRows = () => fetchPO({ silent: true });
     window.addEventListener("voucher_data_updated", refetch);
     window.addEventListener("voucher_data_deleted", refetch);
     window.addEventListener("purchase_order_data_updated", refetch);
+    window.addEventListener("purchase_order_data_updated", refetchRows);
+    window.addEventListener("purchase_order_data_deleted", refetchRows);
+    window.addEventListener("purchase_order_option_data_updated", refetchRows);
+    window.addEventListener("purchase_order_option_data_deleted", refetchRows);
     return () => {
       window.removeEventListener("voucher_data_updated", refetch);
       window.removeEventListener("voucher_data_deleted", refetch);
       window.removeEventListener("purchase_order_data_updated", refetch);
+      window.removeEventListener("purchase_order_data_updated", refetchRows);
+      window.removeEventListener("purchase_order_data_deleted", refetchRows);
+      window.removeEventListener(
+        "purchase_order_option_data_updated",
+        refetchRows,
+      );
+      window.removeEventListener(
+        "purchase_order_option_data_deleted",
+        refetchRows,
+      );
     };
-  }, [fetchVoucherStatus]);
+  }, [fetchVoucherStatus, fetchPO]);
 
   const notifyUpdated = useCallback((detail) => {
     window.dispatchEvent(

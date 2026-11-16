@@ -37,6 +37,8 @@ const actionPastMap = {
   reassigning: "reassigned",
   register: "registered",
   registering: "registered",
+  export: "exported",
+  exporting: "exported",
 };
 
 // FIX: replaces the long if-else chain with a single loop

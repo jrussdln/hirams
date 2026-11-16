@@ -27,6 +27,11 @@ class JevService
             'vouchers.voucher_assignees.assignee',
             'vouchers.company',
             'vouchers.voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.transactionItem.transaction.company',
+            // The supplier's EWT / VAT flags — the PO panel's per-line and
+            // grand EWT totals are derived from them (calculateEWT.js);
+            // without the relation the lines fall back to the stored
+            // per-line dEWT and the grand total can drift one centavo.
+            'vouchers.voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.supplier',
             // Received / Delivered JEVs are built from inventory batches, not
             // vouchers, so the list reads their names from here. supplier
             // titles a Received row, transaction.client titles a Delivered

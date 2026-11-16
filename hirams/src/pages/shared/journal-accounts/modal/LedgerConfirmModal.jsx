@@ -1,0 +1,58 @@
+import { Box } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+import ModalContainer from "../../../../components/layouts/modal/ModalContainer.jsx";
+import ConfirmationStructure from "../../../../components/ui/structure/ConfirmationStructure.jsx";
+import getThemeColors from "../../../../utils/style/getThemeColors.js";
+
+const useColors = (c) => ({
+  slate: { outerBg: c.slate.outerBg, border: c.slate.border },
+});
+
+/**
+ * Confirmation dialog of the Journal Accounts ledger — the same shell the
+ * settings page uses (ModalContainer + ConfirmationStructure), with the
+ * style entry resolved by the caller from LEDGER_CONFIRM_STYLES.
+ *
+ * `style` is the raw entry (e.g. LEDGER_CONFIRM_STYLES.export_ledger);
+ * ConfirmationStructure resolves the light/dark variant itself.
+ */
+export default function LedgerConfirmModal({
+  open,
+  style,
+  loading = false,
+  onConfirm,
+  onClose,
+}) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+  const base = getThemeColors(isDark);
+  const colors = useColors(base);
+
+  return (
+    <ModalContainer
+      open={open}
+      handleClose={onClose}
+      contentOnly
+      disableBackdropClick
+      width={{ xs: "90%", sm: 420 }}
+    >
+      {style && (
+        <Box
+          sx={{
+            borderRadius: 3,
+            overflow: "hidden",
+            bgcolor: colors.slate.outerBg,
+            border: `1px solid ${colors.slate.border}`,
+          }}
+        >
+          <ConfirmationStructure
+            style={style}
+            loading={loading}
+            onConfirm={onConfirm}
+            onBack={onClose}
+          />
+        </Box>
+      )}
+    </ModalContainer>
+  );
+}

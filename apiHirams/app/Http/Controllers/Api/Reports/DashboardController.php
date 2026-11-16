@@ -71,4 +71,31 @@ class DashboardController extends ApiController
             ], 500);
         }
     }
+
+    /**
+     * The Management dashboard's Collectibles / Collection card — pending
+     * (no receipt yet) and collected (receipt raised) transactions in one call.
+     */
+    public function collectiblesCollection(): JsonResponse
+    {
+        try {
+            $data = $this->service->collectiblesCollection();
+
+            return response()->json([
+                'message'      => __('messages.retrieve_success', ['name' => 'Collectibles and collections']),
+                'collectibles' => $data['collectibles'],
+                'collections'  => $data['collections'],
+            ]);
+        } catch (Exception $e) {
+            SqlErrors::create([
+                'dtDate'   => now(),
+                'strError' => "Error retrieving collectibles and collections: " . $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to retrieve collectibles and collections',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

@@ -64,6 +64,7 @@ class VoucherService extends CrudService
             'company',
             'supplier:nSupplierId,strSupplierNickName,strSupplierName,strTIN,strAddress',
             'voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.transactionItem.transaction.company',
+            'voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.supplier',
             'voucher_assignees.assignee',
             // The voucher's creator — the Created column's "BY: …" line.
             'user:nUserId,strNickName',
@@ -154,7 +155,12 @@ class VoucherService extends CrudService
             'user:nUserId,strNickName',
             'voucher_assignees.assignee',
             'voucher_assignees.company',
-            'voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.transactionItem.transaction.company', // ← add full chain
+            'voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.transactionItem.transaction.company',
+            // The supplier's EWT / VAT flags — the PO panel derives every
+            // line's EWT (and the grand total) from them; without the
+            // relation the lines fall back to the stored per-line dEWT and
+            // the grand total can drift one centavo.
+            'voucher_suppliers.purchase_order.purchaseOrderOptions.purchaseOption.supplier',
         ])->findOrFail($id);
         // Same "BY: <nickname>" line the list ships with. NULL when the
         // voucher predates the column — the frontend owns the fallback.

@@ -3,6 +3,10 @@ import { Tooltip } from "@mui/material";
 import PageLayout from "../../../components/layouts/page/content-page";
 import BaseButton from "../../../components/ui/form/BaseButton";
 import icons from "../../../utils/style/iconFormatStyles";
+import { showSwal, withSpinner } from "../../../utils/helpers/swal.jsx";
+import { LEDGER_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
+import { exportLedgerXlsx } from "./utils/exportLedgerXlsx.js";
+import LedgerConfirmModal from "./modal/LedgerConfirmModal.jsx";
 import JournalAccountPanel from "./components/JournalAccountPanel";
 import LedgerPanel from "./components/LedgerPanel";
 import LedgerFilterModal from "./modal/LedgerFilterModal";
@@ -123,10 +127,48 @@ export default function JournalAccountsView({
     />
   ) : null;
 
-  // ── Footer right — Finalize on the embedded JEV ─────────────────────
+  // ── Footer right — Finalize on the embedded JEV ──────────────────────
   // Same gates the /jev-update page uses: a title + square From/To sides
   // before a Pending journal may leave it. NO Undo Finalize here — once
   // the journal left Pending it is done from this screen's point of view.
+  // Export lives on the ledger's selected-account row (the panel's
+  // icon-only button), not in the footer — it asks through the page's
+  // styled confirm modal (LedgerConfirmModal + LEDGER_CONFIRM_STYLES).
+  const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
+
+  // The ledger panel's nJEVId → nCompanyId map, handed over when its
+  // Export button is pressed — the export runs the SAME company filter the
+  // screen does, and this map is the fallback the panel's own filter uses
+  // when the nested JEV payload can't name a company.
+  const [exportCompanyIdByJevId, setExportCompanyIdByJevId] = useState({});
+
+  const handleExportLedger = useCallback(async () => {
+    if (!reportTarget) return;
+    try {
+      await withSpinner("Export", async () =>
+        exportLedgerXlsx({
+          account: reportTarget,
+          allAccounts: journalAccounts,
+          jevEntries,
+          jevActiveKey,
+          dateRange: reportDateRange,
+          companyIdByJevId: exportCompanyIdByJevId,
+        }),
+      );
+      await showSwal("SUCCESS", {}, { entity: "Ledger", action: "export" });
+    } catch (err) {
+      console.error("Ledger export failed:", err);
+      await showSwal("ERROR", {}, { entity: "Ledger", action: "export" });
+    }
+  }, [
+    reportTarget,
+    reportDateRange,
+    journalAccounts,
+    jevEntries,
+    jevActiveKey,
+    exportCompanyIdByJevId,
+  ]);
+
   const footerRActions = (() => {
     if (!showJevUpdate || !jevUpdate || !jevUpdateCanManage || !isPendingJev)
       return null;
@@ -185,6 +227,18 @@ export default function JournalAccountsView({
         onApply={openReport}
       />
 
+      {/* Export confirmation — the page's styled confirm, shared by every
+          surface (sharedConfirmStyles). The export itself runs on Yes. */}
+      <LedgerConfirmModal
+        open={exportConfirmOpen}
+        style={LEDGER_CONFIRM_STYLES.export_ledger}
+        onConfirm={() => {
+          setExportConfirmOpen(false);
+          handleExportLedger();
+        }}
+        onClose={() => setExportConfirmOpen(false)}
+      />
+
       {showJevUpdate ? (
         /* The updater content — same component the /jev-update page
            shows, fed by the hook driven by this view's own state. */
@@ -231,6 +285,13 @@ export default function JournalAccountsView({
           jevReceivedPurchasesKey={jevReceivedPurchasesKey}
           dateRange={reportDateRange}
           onEditRange={editRange}
+          onExport={(companyIdByJevId) => {
+            // Snapshot the panel's company-id map for the export BEFORE the
+            // confirm modal opens; the export then filters exactly like the
+            // ledger on screen.
+            setExportCompanyIdByJevId(companyIdByJevId ?? {});
+            setExportConfirmOpen(true);
+          }}
           isManagement={isManagement}
           isFinanceOfficer={isFinanceOfficer}
           // A JEV number click swaps the ledger for the updater panel

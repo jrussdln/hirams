@@ -2,14 +2,19 @@
 
 namespace App\Services\Reports;
 
+use App\Helpers\FormulaHelper;
 use App\Models\Client;
 use App\Models\Company;
+use App\Models\DirectCost;
 use App\Models\ItemPricings;
+use App\Models\PricingSet;
 use App\Models\Supplier;
 use App\Models\TransactionHistory;
 use App\Models\Transactions;
 use App\Models\User;
+use App\Models\Collection as CollectionLink; // tblcollections pivot — the Illuminate\Collection import above owns the short name
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Read-only aggregation behind the Dashboard endpoints.
@@ -263,6 +268,169 @@ class DashboardService
                     'created_by_id'          => $createdHistory?->user?->nUserId ?? null,
                 ];
             });
+    }
+
+    /**
+     * The Management dashboard's Collectibles / Collection card.
+     *
+     *   • Collectibles — transactions sitting at "For Collection" that do NOT
+     *     have a Collection (C) journal raised yet. The amount is the chosen
+     *     pricing set's total selling price — the same figure the For
+     *     Collection workspace calls the "Collectible Amount".
+     *   • Collection — transactions that DO have a Collection journal. The
+     *     amount is the journal's credit side (the sum of its positive
+     *     entries), i.e. what the receipt actually collected.
+     *
+     * Every row also carries the inputs the card's metrics strip needs to
+     * reproduce the receipt's deduction ledger (see CollectionReceiptCard):
+     * cItemType (drives the EWT rate — goods 1%, services 2%) and retention
+     * (the direct-cost rows whose option name contains "retention").
+     *
+     * @return array{
+     *     collectibles: array<int, array<string, mixed>>,
+     *     collections:  array<int, array<string, mixed>>,
+     * }
+     */
+    public function collectiblesCollection(): array
+    {
+        $statusCodes    = config('mappings.status_transaction', []);
+        $forCollection  = (string) (array_search('For Collection', $statusCodes, true) ?: '');
+        $jevTypes       = config('mappings.jev_types', []);
+        $typeCollection = (string) (array_search('Collection', $jevTypes, true) ?: '');
+
+        // ── Collectibles: at For Collection, no journal raised yet ──
+        $collectibleTxns = collect();
+        if ($forCollection !== '') {
+            $collectibleTxns = Transactions::with('client')
+                ->whereHas('latestHistory', fn($q) => $q->where('nStatus', $forCollection))
+                ->whereDoesntHave('collection')
+                ->get();
+        }
+
+        // ── Collection: transactions with a Collection (C) journal ──
+        $collectionLinks = collect();
+        if ($typeCollection !== '') {
+            $collectionLinks = CollectionLink::with(['transaction.client', 'jev.entries'])
+                ->whereHas('jev', fn($q) => $q->where('cJEVLinkType', $typeCollection))
+                ->get()
+                ->filter(fn($link) => $link->transaction);
+        }
+
+        // The chosen set of every collectible transaction — ONE query, no
+        // per-row N+1. The figure is computed through FormulaHelper, the same
+        // path the pricing-set listing uses, so the card can never disagree
+        // with the table.
+        $chosen = $collectibleTxns->isEmpty() ? collect() : PricingSet::whereIn(
+            'nTransactionId',
+            $collectibleTxns->pluck('nTransactionId'),
+        )
+            ->where('bChosen', 1)
+            ->pluck('nPricingSetId', 'nTransactionId');
+
+        // ONE retention query for every transaction both lists touch — the
+        // same rule the For Collection workspace applies (DirectCost rows
+        // whose option name contains "retention", summed per transaction).
+        $retentionMap = $this->retentionByTransaction(
+            $collectibleTxns->pluck('nTransactionId')
+                ->merge($collectionLinks->map(
+                    fn($link) => $link->transaction->nTransactionId
+                ))
+                ->filter()
+                ->unique()
+                ->values()
+        );
+
+        $collectibles = $collectibleTxns
+            ->map(fn($txn) => $this->collectionCardRow(
+                $txn,
+                isset($chosen[$txn->nTransactionId])
+                    ? FormulaHelper::calculateTotalSellingPrice($chosen[$txn->nTransactionId])
+                    : 0.0,
+                $retentionMap[$txn->nTransactionId] ?? 0.0
+            ))
+            ->values()
+            ->all();
+
+        $collections = $collectionLinks
+            ->map(function ($link) use ($retentionMap) {
+                // The credit ("to") side of the journal — the collected figure.
+                $amount = $link->jev?->entries
+                    ->filter(fn($e) => (float) $e->dAmount >= 0)
+                    ->sum(fn($e) => (float) $e->dAmount);
+
+                $txnId = $link->transaction->nTransactionId;
+
+                return $this->collectionCardRow(
+                    $link->transaction,
+                    $amount,
+                    $retentionMap[$txnId] ?? 0.0
+                );
+            })
+            ->values()
+            ->all();
+
+        return [
+            'collectibles' => $collectibles,
+            'collections'  => $collections,
+        ];
+    }
+
+    /**
+     * Retention per transaction id — one grouped query for the whole batch.
+     *
+     * Mirrors the For Collection workspace's rule (useTransactionWorkspace's
+     * direct-cost scan): direct-cost rows whose OPTION NAME contains
+     * "retention", their dAmount summed per transaction.
+     *
+     * @param  iterable<int, mixed> $txnIds
+     * @return array<int, float>
+     */
+    private function retentionByTransaction($txnIds): array
+    {
+        $txnIds = collect($txnIds)->filter()->unique()->values();
+        if ($txnIds->isEmpty()) {
+            return [];
+        }
+
+        return DirectCost::query()
+            ->join(
+                'tbldirectcostoptions as dco',
+                'dco.nDirectCostOptionID',
+                '=',
+                'tbldirectcosts.nDirectCostOptionID'
+            )
+            ->whereIn('tbldirectcosts.nTransactionID', $txnIds->all())
+            ->whereRaw('LOWER(dco.strName) LIKE ?', ['%retention%'])
+            ->groupBy('tbldirectcosts.nTransactionID')
+            ->selectRaw(
+                'tbldirectcosts.nTransactionID as txn_id, SUM(tbldirectcosts.dAmount) as retention'
+            )
+            ->get()
+            ->pluck('retention', 'txn_id')
+            ->map(fn($sum) => (float) $sum)
+            ->all();
+    }
+
+    /**
+     * One row of the Collectibles / Collection card — title, client, amount,
+     * plus the deduction inputs (cItemType, retention) the metrics strip and
+     * the row amounts need.
+     */
+    private function collectionCardRow(
+        ?Transactions $txn,
+        ?float $amount,
+        ?float $retention = null
+    ): array {
+        return [
+            'id'             => $txn?->nTransactionId,
+            'strCode'        => $txn?->strCode,
+            'strTitle'       => $txn?->strTitle,
+            'clientNickName' => $txn?->client?->strClientNickName
+                ?: $txn?->client?->strClientName,
+            'cItemType'      => $txn?->cItemType,
+            'retention'      => round($retention ?? 0, 2),
+            'amount'         => round($amount ?? 0, 2),
+        ];
     }
 
     private function getBusinessMinutes($start, $end): float

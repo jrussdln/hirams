@@ -141,6 +141,52 @@ export const phpRoundHalfUp = (value, places = 2) => {
 const round2 = (n) => phpRoundHalfUp(Number(n), 2);
 
 /**
+ * The EXACT EWT of one line — the same matrix as calculateEWT below, but
+ * WITHOUT the per-line round2.
+ *
+ * Totals must round the exact sum ONCE, not sum the rounded parts: with
+ * VAT-net lines (÷ 1.12) the per-line centavos don't add back up to the
+ * round of the whole — three lines of 60,000 / 60,000 / 35,610 give parts
+ * 535.71 + 535.71 + 317.95 = 1,389.37, while the exact total
+ * 155,610 / 1.12 x 1% = 1,389.375 rounds to 1,389.38.
+ */
+const ewtExact = ({
+  quantity = 0,
+  unitPrice = 0,
+  cEWTType = null,
+  bEWT = null,
+  bVAT = null,
+  cItemType = null,
+} = {}) => {
+  const totalCost = num(quantity) * num(unitPrice);
+
+  // ── The EWT TYPE wins over the supplier's flags ────────────────────
+  switch (cEWTType) {
+    case EWT_TYPE_BYPASS_0:
+      return 0;
+    case EWT_TYPE_BYPASS_1:
+      return totalCost * EWT_RATE_GOODS;
+    case EWT_TYPE_BYPASS_VAT:
+      return (totalCost / EWT_VAT_FACTOR) * EWT_RATE_GOODS;
+    case EWT_TYPE_BYPASS_VAT_2:
+      return (totalCost / EWT_VAT_FACTOR) * EWT_RATE_SERVICE;
+    case EWT_TYPE_BYPASS_2:
+      return totalCost * EWT_RATE_SERVICE;
+    default:
+      break;
+  }
+
+  // ── DEFAULT — the supplier's own flags decide ──────────────────────
+  // No supplier (or an unknown flag) → nothing to withhold.
+  if (bEWT === null || bEWT === undefined || Number(bEWT) !== 1) return 0;
+
+  const rate = cItemType === "S" ? EWT_RATE_SERVICE : EWT_RATE_GOODS;
+  const base = Number(bVAT) === 1 ? totalCost / EWT_VAT_FACTOR : totalCost;
+
+  return base * rate;
+};
+
+/**
  * The EWT of ONE line.
  *
  * @param quantity   the line's quantity
@@ -157,34 +203,7 @@ export const calculateEWT = ({
   bEWT = null,
   bVAT = null,
   cItemType = null,
-} = {}) => {
-  const totalCost = num(quantity) * num(unitPrice);
-
-  // ── The EWT TYPE wins over the supplier's flags ────────────────────
-  switch (cEWTType) {
-    case EWT_TYPE_BYPASS_0:
-      return 0;
-    case EWT_TYPE_BYPASS_1:
-      return round2(totalCost * EWT_RATE_GOODS);
-    case EWT_TYPE_BYPASS_VAT:
-      return round2((totalCost / EWT_VAT_FACTOR) * EWT_RATE_GOODS);
-    case EWT_TYPE_BYPASS_VAT_2:
-      return round2((totalCost / EWT_VAT_FACTOR) * EWT_RATE_SERVICE);
-    case EWT_TYPE_BYPASS_2:
-      return round2(totalCost * EWT_RATE_SERVICE);
-    default:
-      break;
-  }
-
-  // ── DEFAULT — the supplier's own flags decide ──────────────────────
-  // No supplier (or an unknown flag) → nothing to withhold.
-  if (bEWT === null || bEWT === undefined || Number(bEWT) !== 1) return 0;
-
-  const rate = cItemType === "S" ? EWT_RATE_SERVICE : EWT_RATE_GOODS;
-  const base = Number(bVAT) === 1 ? totalCost / EWT_VAT_FACTOR : totalCost;
-
-  return round2(base * rate);
-};
+} = {}) => round2(ewtExact({ quantity, unitPrice, cEWTType, bEWT, bVAT, cItemType }));
 
 /**
  * Calculate the For Collection EWT from the collectible amount.
@@ -259,12 +278,33 @@ export const ewtOfOption = (option) => {
 };
 
 /**
- * The EWT total of a list of options.
+ * The EXACT EWT of one option — the unrounded twin of ewtOfOption, used
+ * when SUMMING options (totalEWT), so the total rounds the exact sum once
+ * instead of adding the per-line rounded parts.
+ *
+ * When the supplier's flags are unknown the stored (already-rounded) dEWT
+ * is the best available figure, same as ewtOfOption.
+ */
+export const ewtOfOptionExact = (option) => {
+  const p = option?.purchase_option ?? option ?? {};
+  const inputs = ewtInputsOf(option);
+
+  if (inputs.bEWT === null || inputs.bEWT === undefined) {
+    return num(p.dEWT ?? p.ewt ?? 0);
+  }
+
+  return ewtExact(inputs);
+};
+
+/**
+ * The EWT total of a list of options — the exact line values summed and
+ * rounded ONCE. (Summing the rounded parts can drift one centavo from the
+ * round of the whole: 1,389.37 vs 1,389.38 on a ₱155,610.00 VAT PO.)
  */
 export const totalEWT = (options = []) =>
   round2(
     (options || []).reduce(
-      (sum, option) => sum + num(ewtOfOption(option)),
+      (sum, option) => sum + ewtOfOptionExact(option),
       0,
     ),
   );

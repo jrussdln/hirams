@@ -12,6 +12,8 @@ import {
   EventOutlined,
   KeyboardArrowDown,
   FilterListOutlined,
+  ChevronLeft,
+  ChevronRight,
 } from "@mui/icons-material";
 
 import getThemeColors from "../../../utils/style/getThemeColors";
@@ -32,18 +34,169 @@ const useColors = (c) => ({
 });
 
 // Presets offered by the "This ▾" dropdown
-const THIS_OPTIONS = [
-  { value: "week", label: "Week" },
-  { value: "month", label: "Month" },
-  { value: "year", label: "Year" },
+const THIS_PREVIOUS_OPTIONS = [
+  { label: "This", items: [
+    { value: "week", label: "Week" },
+    { value: "month", label: "Month" },
+    { value: "year", label: "Year" },
+  ]},
+  { label: "Previous", items: [
+    { value: "week_prev", label: "Week" },
+    { value: "month_prev", label: "Month" },
+    { value: "year_prev", label: "Year" },
+  ]},
 ];
 
+const MiniCalendar = ({ value, onChange, colors }) => {
+  const [currentDate, setCurrentDate] = useState(() => {
+    const d = value ? new Date(value) : new Date();
+    return isNaN(d.getTime()) ? new Date() : d;
+  });
+
+  useEffect(() => {
+    if (value) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) {
+        setCurrentDate(d);
+      }
+    }
+  }, [value]);
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayIndex = new Date(year, month, 1).getDay(); // 0 = Sun
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dayNames = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+
+  const handleSelect = (day) => {
+    const mStr = String(month + 1).padStart(2, "0");
+    const dStr = String(day).padStart(2, "0");
+    onChange(`${year}-${mStr}-${dStr}`);
+  };
+
+  return (
+    <Box
+      sx={{
+        p: 1,
+        borderRadius: "8px",
+        border: `1px solid ${colors.border}`,
+        background: colors.inputBg,
+        width: "100%",
+        userSelect: "none",
+      }}
+    >
+      {/* Month / Year header */}
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+        <Box
+          component="button"
+          type="button"
+          onClick={prevMonth}
+          sx={{
+            background: "transparent",
+            border: "none",
+            color: colors.gray.pri,
+            cursor: "pointer",
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            px: 0.5,
+            py: 0.2,
+            borderRadius: "4px",
+            "&:hover": { background: colors.hoverBg },
+          }}
+        >
+          ‹
+        </Box>
+        <Typography sx={{ fontSize: "0.7rem", fontWeight: 700, color: colors.gray.pri }}>
+          {monthNames[month]} {year}
+        </Typography>
+        <Box
+          component="button"
+          type="button"
+          onClick={nextMonth}
+          sx={{
+            background: "transparent",
+            border: "none",
+            color: colors.gray.pri,
+            cursor: "pointer",
+            fontSize: "0.75rem",
+            fontWeight: 700,
+            px: 0.5,
+            py: 0.2,
+            borderRadius: "4px",
+            "&:hover": { background: colors.hoverBg },
+          }}
+        >
+          ›
+        </Box>
+      </Box>
+
+      {/* Day headers */}
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", mb: 0.25, textAlign: "center" }}>
+        {dayNames.map((d) => (
+          <Typography key={d} sx={{ fontSize: "0.55rem", fontWeight: 700, color: colors.gray.muted }}>
+            {d}
+          </Typography>
+        ))}
+      </Box>
+
+      {/* Days grid */}
+      <Box sx={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: "2px" }}>
+        {Array.from({ length: firstDayIndex }).map((_, i) => (
+          <Box key={`empty-${i}`} />
+        ))}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const mStr = String(month + 1).padStart(2, "0");
+          const dStr = String(day).padStart(2, "0");
+          const iso = `${year}-${mStr}-${dStr}`;
+          const isSelected = value === iso;
+
+          return (
+            <Box
+              key={day}
+              component="button"
+              type="button"
+              onClick={() => handleSelect(day)}
+              sx={{
+                aspectRatio: "1",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: isSelected ? colors.blue.text : "transparent",
+                color: isSelected ? colors.gray.textOnFill : colors.gray.pri,
+                fontSize: "0.65rem",
+                fontWeight: isSelected ? 700 : 500,
+                borderRadius: "4px",
+                border: "none",
+                cursor: "pointer",
+                "&:hover": {
+                  background: isSelected ? colors.blue.text : colors.hoverBg,
+                },
+              }}
+            >
+              {day}
+            </Box>
+          );
+        })}
+      </Box>
+    </Box>
+  );
+};
 const QUICK_LABEL = {
   today: "Today",
   yesterday: "Yesterday",
   week: "This Week",
   month: "This Month",
   year: "This Year",
+  week_prev: "Prev Week",
+  month_prev: "Prev Month",
+  year_prev: "Prev Year",
 };
 
 // "YYYY-MM-DD" -> "MM/DD/YYYY"
@@ -93,6 +246,27 @@ export const quickRange = (key) => {
     }
     case "year":
       return [`${today.getFullYear()}-01-01`, `${today.getFullYear()}-12-31`];
+    case "week_prev": {
+      // Week runs Monday → Sunday (getDay(): 0 = Sun … 6 = Sat)
+      const offset = (today.getDay() + 6) % 7;
+      const start = new Date(today);
+      start.setDate(start.getDate() - offset);
+      const prevStart = new Date(start);
+      prevStart.setDate(prevStart.getDate() - 7);
+      const end = new Date(prevStart);
+      end.setDate(end.getDate() + 6);
+      return [toISO(prevStart), toISO(end)];
+    }
+    case "month_prev": {
+      const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const end = new Date(today.getFullYear(), today.getMonth(), 0);
+      return [toISO(start), toISO(end)];
+    }
+    case "year_prev":
+      return [
+        `${today.getFullYear() - 1}-01-01`,
+        `${today.getFullYear() - 1}-12-31`,
+      ];
     default:
       return ["", ""];
   }
@@ -108,7 +282,7 @@ export const quickRange = (key) => {
  *
  *   from   — "YYYY-MM-DD" ("" when unset)
  *   to     — "YYYY-MM-DD" ("" when unset)
- *   quick  — today | yesterday | week | month | year | custom | null
+ *   quick  — today | yesterday | week | month | year | week_prev | month_prev | year_prev | custom | null
  *   onPatch— (partial) => void, partial = { from, to, quick }
  */
 export const FilterDateFields = ({
@@ -138,8 +312,11 @@ export const FilterDateFields = ({
 
   // Label of the "This ▾" chip — shows the picked option once one is selected.
   const thisLabel = useMemo(() => {
-    const opt = THIS_OPTIONS.find((o) => o.value === quick);
-    return opt ? `This ${opt.label}` : "This";
+    for (const group of THIS_PREVIOUS_OPTIONS) {
+      const opt = group.items.find((o) => o.value === quick);
+      if (opt) return `${group.label} ${opt.label}`;
+    }
+    return "Date Range";
   }, [quick]);
 
   const fieldSx = {
@@ -169,7 +346,14 @@ export const FilterDateFields = ({
     "&:hover": { background: active ? colors.blue.bg : colors.hoverBg },
   });
 
-  const isThisActive = ["week", "month", "year"].includes(quick);
+  const isThisActive = [
+    "week",
+    "month",
+    "year",
+    "week_prev",
+    "month_prev",
+    "year_prev",
+  ].includes(quick);
 
   return (
     <Box>
@@ -201,53 +385,69 @@ export const FilterDateFields = ({
             ...chipSx(isThisActive),
             display: "inline-flex",
             alignItems: "center",
+            justifyContent: "flex-end",
             gap: 0.4,
             whiteSpace: "nowrap",
-            flex: isThisActive ? "1.4" : 1,
+            flex: 0.8,
           }}
         >
-          {thisLabel}
+          <Box component="span" sx={{ ml: "auto" }}>
+            {thisLabel}
+          </Box>
           <KeyboardArrowDown
             sx={{
               fontSize: "0.95rem",
               transform: menuOpen ? "rotate(180deg)" : "none",
               transition: "transform .15s",
+              flexShrink: 0,
             }}
           />
         </Box>
       </Box>
 
       {/* Always-visible range inputs */}
-      <Box sx={{ display: "flex", gap: 0.75 }}>
-        <Box sx={{ flex: 1 }}>
-          <Typography
-            sx={{ fontSize: "0.6rem", color: colors.gray.muted, mb: 0.3 }}
-          >
-            From
-          </Typography>
-          <Box
-            component="input"
-            type="date"
-            value={from}
-            onChange={(e) => editFrom(e.target.value)}
-            aria-label="From date"
-            sx={{ ...fieldSx, width: "100%" }}
-          />
+      <Box sx={{ display: "flex", gap: 0.75, flexDirection: "column" }}>
+        <Box sx={{ display: "flex", gap: 0.75 }}>
+          <Box sx={{ flex: 1 }}>
+            <Typography
+              sx={{ fontSize: "0.6rem", color: colors.gray.muted, mb: 0.3 }}
+            >
+              From
+            </Typography>
+            <Box
+              component="input"
+              type="date"
+              value={from}
+              onChange={(e) => editFrom(e.target.value)}
+              aria-label="From date"
+              sx={{ ...fieldSx, width: "100%" }}
+            />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography
+              sx={{ fontSize: "0.6rem", color: colors.gray.muted, mb: 0.3 }}
+            >
+              To
+            </Typography>
+            <Box
+              component="input"
+              type="date"
+              value={to}
+              onChange={(e) => editTo(e.target.value)}
+              aria-label="To date"
+              sx={{ ...fieldSx, width: "100%" }}
+            />
+          </Box>
         </Box>
-        <Box sx={{ flex: 1 }}>
-          <Typography
-            sx={{ fontSize: "0.6rem", color: colors.gray.muted, mb: 0.3 }}
-          >
-            To
-          </Typography>
-          <Box
-            component="input"
-            type="date"
-            value={to}
-            onChange={(e) => editTo(e.target.value)}
-            aria-label="To date"
-            sx={{ ...fieldSx, width: "100%" }}
-          />
+
+        {/* Small calendars below the fields */}
+        <Box sx={{ display: "flex", gap: 0.75, mt: 0.5 }}>
+          <Box sx={{ flex: 1 }}>
+            <MiniCalendar value={from} onChange={editFrom} colors={colors} />
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <MiniCalendar value={to} onChange={editTo} colors={colors} />
+          </Box>
         </Box>
       </Box>
 
@@ -256,8 +456,8 @@ export const FilterDateFields = ({
         open={menuOpen}
         anchorEl={menuAnchor}
         onClose={() => setMenuAnchor(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
-        transformOrigin={{ vertical: "top", horizontal: "left" }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        transformOrigin={{ vertical: "top", horizontal: "right" }}
         PaperProps={{
           sx: {
             background: colors.panelBg,
@@ -269,28 +469,44 @@ export const FilterDateFields = ({
           },
         }}
       >
-        {THIS_OPTIONS.map((opt) => (
-          <MenuItem
-            key={opt.value}
-            selected={quick === opt.value}
-            onClick={() => pickQuick(opt.value)}
+        {THIS_PREVIOUS_OPTIONS.map((group) => [
+          <Typography
+            key={group.label}
             sx={{
-              fontSize: "0.72rem",
-              fontWeight: 600,
-              borderRadius: "6px",
-              mx: 0.5,
+              px: 1.5,
               py: 0.5,
-              color: colors.gray.pri,
-              "&.Mui-selected": {
-                background: colors.blue.bg,
-                color: colors.blue.text,
-              },
-              "&.Mui-selected:hover": { background: colors.blue.bg },
+              fontSize: "0.65rem",
+              fontWeight: 800,
+              textTransform: "uppercase",
+              color: colors.gray.muted,
+              letterSpacing: "0.03em",
             }}
           >
-            {opt.label}
-          </MenuItem>
-        ))}
+            {group.label}
+          </Typography>,
+          ...group.items.map((opt) => (
+            <MenuItem
+              key={opt.value}
+              selected={quick === opt.value}
+              onClick={() => pickQuick(opt.value)}
+              sx={{
+                fontSize: "0.72rem",
+                fontWeight: 600,
+                borderRadius: "6px",
+                mx: 0.5,
+                py: 0.5,
+                color: colors.gray.pri,
+                "&.Mui-selected": {
+                  background: colors.blue.bg,
+                  color: colors.blue.text,
+                },
+                "&.Mui-selected:hover": { background: colors.blue.bg },
+              }}
+            >
+              {opt.label}
+            </MenuItem>
+          )),
+        ])}
       </Menu>
     </Box>
   );
@@ -326,6 +542,15 @@ const FilterDate = ({ onChange, hint = null, sx }) => {
   );
 
   // Fire onChange only when the committed range actually changes
+  useEffect(() => {
+    if (!quick) {
+      const [f, t] = quickRange("month");
+      setFromDate(f);
+      setToDate(t);
+      setQuick("month");
+    }
+  }, []); // Only on mount
+
   useEffect(() => {
     onChange?.(appliedRange);
     // eslint-disable-next-line react-hooks/exhaustive-deps

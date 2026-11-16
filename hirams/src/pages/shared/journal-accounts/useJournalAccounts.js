@@ -54,11 +54,12 @@ export default function useJournalAccounts() {
   const [reportOpen, setReportOpen] = useState(false);
   const [reportTarget, setReportTarget] = useState(null);
   const [reportFilterOpen, setReportFilterOpen] = useState(false);
-  // { from, to, quick } — window the report is built on (nulls = all history)
+  // { from, to, quick, companyIds } — window the report is built on (nulls = all history)
   const [reportDateRange, setReportDateRange] = useState({
     from: null,
     to: null,
     quick: null,
+    companyIds: ["all"],
   });
 
   // Tree Expand State
@@ -332,6 +333,7 @@ export default function useJournalAccounts() {
         from: range.from || null,
         to: range.to || null,
         quick: range.quick ?? null,
+        companyIds: range.companyIds ?? ["all"],
       });
     }
     setReportFilterOpen(false);
@@ -342,7 +344,7 @@ export default function useJournalAccounts() {
   const closeReport = useCallback(() => {
     setReportOpen(false);
     setReportTarget(null);
-    setReportDateRange({ from: null, to: null, quick: null });
+    setReportDateRange({ from: null, to: null, quick: null, companyIds: ["all"] });
   }, []);
 
   // ── Sidebar → "Journal Accounts" clicked while already on this page ────

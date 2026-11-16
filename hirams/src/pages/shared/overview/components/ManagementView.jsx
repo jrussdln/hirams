@@ -10,6 +10,9 @@ import {
   Select,
   MenuItem,
   FormControl,
+  Collapse,
+  IconButton,
+  Divider,
 } from "@mui/material";
 import { motion } from "framer-motion";
 import CountUp from "react-countup";
@@ -20,6 +23,9 @@ import ChartStructure from "../../../../components/ui/structure/ChartStructure";
 import { fmtDate } from "../../../../utils/helpers/timeZone";
 import { getDueDateColor } from "../../../../utils/helpers/dueDateColor";
 import useKeysLabels from "../../../../hooks/useKeysLabels";
+import { fmtPHP } from "../../../../utils/formatters/formatter";
+import { calculateCollectionEWT } from "../../../../utils/helpers/calculateEWT";
+import { calculateCollectionTax } from "../../../../utils/helpers/calculateTax";
 import { getItem, setItem } from "../../../../utils/storage/localStorage";
 import { cardSx, cardVariants } from "./overviewStyles";
 import {
@@ -43,6 +49,8 @@ import {
   Group,
   LocalShipping,
   TrendingUp,
+  ExpandMore,
+  ExpandLess,
 } from "@mui/icons-material";
 import OverviewAPI from "../../../../api/endpoints/overview.api";
 
@@ -425,6 +433,342 @@ function OngoingTransactionsPanel({
   );
 }
 
+/**
+ * Collectibles / Collection — the money side of the collection flow.
+ *
+ * ONE card with TWO collapsible sections (Collectibles, Collection). Each
+ * section shows its receipt-style ledger — title + count chip, then the
+ * five right-aligned metrics (Amount → Less EWT → Less Tax → Less
+ * Retention → Net) — with a collapse toggle in the right corner; expanding
+ * reveals the section's transaction list beneath.
+ *
+ *   • Collectibles — at "For Collection" with no receipt raised yet;
+ *     the amount is the chosen pricing set's total selling price.
+ *   • Collection — transactions that already have a Collection (C) journal;
+ *     the amount is the journal's credit side (what was collected).
+ * Rows are display-only: the figures feed management's overview, they are
+ * not a worklist the way the Ongoing Transactions panel below is.
+ *
+ * The EWT / TAX are worked out PER ROW exactly the way CollectionReceiptCard
+ * does it (the rate depends on the transaction's cItemType; the tax is a
+ * flat 5% of the VAT-net amount). Summing the row figures — not the formulas
+ * of the sums — keeps every row and the total in agreement.
+ */
+
+// Section totals: Amount → Less EWT → Less Tax → Less Retention → Net,
+// summed from the ROW figures (not the formulas of the sums).
+const ledgerTotalsOf = (rows) => {
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const amount = rows.reduce((s, r) => s + num(r.amount), 0);
+  const ewt = rows.reduce(
+    (s, r) => s + num(calculateCollectionEWT(num(r.amount), r.cItemType)),
+    0,
+  );
+  const tax = rows.reduce(
+    (s, r) => s + num(calculateCollectionTax(num(r.amount))),
+    0,
+  );
+  const retention = rows.reduce((s, r) => s + num(r.retention), 0);
+  const net = amount - ewt - tax - retention;
+  return { amount, ewt, tax, retention, net };
+};
+
+// NOTE: defined at MODULE scope, not inside the panel — an inline component
+// gets a fresh identity every parent render, so React would unmount it (and
+// wipe its `open` state) whenever the dashboard data refreshed, making the
+// section collapse itself.
+function CollectionLedgerSection({ title, rows, emptyLabel }) {
+  const theme = useTheme();
+  const isDark = theme.palette.mode === "dark";
+  const colors = useColors(getThemeColors(isDark));
+
+  // The metrics tiles read straight off the receipt's ledger. Net carries
+  // the receipt's green — it is the figure the "Collection Amount" prints.
+  const green = getThemeColors(isDark).green.paid;
+
+  const [open, setOpen] = useState(false);
+  const totals = useMemo(() => ledgerTotalsOf(rows), [rows]);
+
+  const metricTiles = [
+    { label: "Amount", value: totals.amount },
+    { label: "Less: EWT", value: totals.ewt, deduction: true },
+    { label: "Less: Tax", value: totals.tax, deduction: true },
+    { label: "Less: Retention", value: totals.retention, deduction: true },
+    { label: "Net Amount", value: totals.net, strong: true },
+  ];
+
+  return (
+    <Box>
+      {/* ── Header — clicking ANYWHERE on it toggles the section ── */}
+      <Box
+        onClick={() => setOpen((o) => !o)}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 1.5,
+          cursor: "pointer",
+          userSelect: "none",
+        }}
+      >
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <Typography
+            sx={{
+              fontSize: "0.78rem",
+              fontWeight: 600,
+              lineHeight: 1.2,
+              textTransform: "uppercase",
+              letterSpacing: "0.03em",
+            }}
+          >
+            {title}{" "}
+            <Box
+              component="span"
+              sx={{ color: "text.secondary", fontWeight: 500 }}
+            >
+              ({rows.length})
+            </Box>
+          </Typography>
+        </Box>
+        {/* stopPropagation — the button's own click would otherwise bubble
+            up to the header and toggle the state straight back. */}
+        <IconButton
+          size="small"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((o) => !o);
+          }}
+          aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
+          sx={{ p: 0.25, flexShrink: 0 }}
+        >
+          {open ? <ExpandLess /> : <ExpandMore />}
+        </IconButton>
+      </Box>
+
+      {/* ── Horizontal boundary between the section label and the metrics ── */}
+      <Divider sx={{ mt: 0.75 }} />
+
+      {/* ── The five ledger metrics — right-aligned ── */}
+      <Box
+        sx={{
+          display: "grid",
+          gridTemplateColumns: {
+            xs: "repeat(2, 1fr)",
+            sm: "repeat(3, 1fr)",
+            md: "repeat(5, 1fr)",
+          },
+          gap: 1.5,
+          mt: 1,
+        }}
+      >
+        {metricTiles.map((tile) => (
+          <Box key={tile.label} sx={{ minWidth: 0, textAlign: "right" }}>
+            <Typography
+              sx={{
+                fontSize: "0.55rem",
+                fontWeight: 600,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+                color: "text.secondary",
+                mb: 0.25,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {tile.label}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "0.85rem",
+                fontWeight: 600,
+                lineHeight: 1.2,
+                // EWT / Tax / Retention are deductions — they read orange;
+                // Net Amount keeps the receipt's green, Amount stays neutral.
+                color: tile.strong
+                  ? green
+                  : tile.deduction
+                    ? getThemeColors(isDark).orange.text
+                    : "text.primary",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {fmtPHP(tile.value)}
+            </Typography>
+          </Box>
+        ))}
+      </Box>
+
+      {/* ── The transaction list — revealed by the toggle ── */}
+      <Collapse in={open}>
+        <Divider
+          sx={{ borderStyle: "dashed", mt: 1.5, mb: 0.75 }}
+        />
+        {/* The rows share one surface — no per-row cards, no container
+            card either: plain rows separated by thin dividers. Each row's
+            right corner stacks its amount and, when they exist, the small
+            EWT / TAX / RETENTION / NET ledger. */}
+        <Box
+          sx={{
+            maxHeight: 220,
+            overflowY: "auto",
+          }}
+        >
+          {rows.length === 0 && (
+            <Typography
+              sx={{ fontSize: "0.66rem", color: "text.disabled", py: 1, px: 1 }}
+            >
+              {emptyLabel}
+            </Typography>
+          )}
+          {rows.map((r, idx) => {
+            const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+            const amount = num(r.amount);
+            const rowEwt = num(calculateCollectionEWT(amount, r.cItemType));
+            const rowTax = num(calculateCollectionTax(amount));
+            const rowRetention = num(r.retention);
+            const rowNet = amount - rowEwt - rowTax - rowRetention;
+            // "(if have)" — a deduction line only prints when it is nonzero,
+            // and NET only when something was actually deducted.
+            const deductions = [
+              { label: "EWT:", value: rowEwt },
+              { label: "TAX:", value: rowTax },
+              { label: "RETENTION:", value: rowRetention },
+            ].filter((d) => d.value > 0);
+            const showNet = deductions.length > 0;
+
+            return (
+              <Box
+                key={r.id ?? r.strCode}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1.5,
+                  px: 1,
+                  py: 0.5,
+                  borderTop:
+                    idx > 0 ? `1px solid ${theme.palette.divider}` : "none",
+                }}
+              >
+                {/* Far left — the row's 1-based position in the list */}
+                <Typography
+                  sx={{
+                    fontSize: "0.62rem",
+                    fontWeight: 500,
+                    color: "text.secondary",
+                    minWidth: 16,
+                    textAlign: "right",
+                    flexShrink: 0,
+                  }}
+                >
+                  {idx + 1}
+                </Typography>
+
+                <Box flex={1} minWidth={0}>
+                  {/* The transaction code sits ABOVE the title */}
+                  <Typography
+                    sx={{
+                      fontSize: "0.56rem",
+                      fontWeight: 500,
+                      color: "text.secondary",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                    }}
+                    noWrap
+                  >
+                    {r.strCode || "—"}
+                  </Typography>
+                  <Typography
+                    sx={{ fontSize: "0.72rem", fontWeight: 500 }}
+                    noWrap
+                  >
+                    {r.strTitle || "--"}
+                  </Typography>
+                  <Typography
+                    sx={{ fontSize: "0.62rem", color: "text.secondary" }}
+                    noWrap
+                  >
+                    {r.clientNickName || "—"}
+                  </Typography>
+                </Box>
+
+                {/* Right corner — the amount is the headline figure; the
+                    small EWT / TAX lines only print when there is something
+                    to deduct, and the green NET figure closes the ledger. */}
+                <Box
+                  sx={{
+                    textAlign: "right",
+                    flexShrink: 0,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  <Typography
+                    sx={{
+                      fontSize: "0.66rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {fmtPHP(amount)}
+                  </Typography>
+                  {showNet && (
+                    <>
+                      {deductions.map((d) => (
+                        <Typography
+                          key={d.label}
+                          sx={{
+                            fontSize: "0.52rem",
+                            fontWeight: 400,
+                            color: "text.secondary",
+                          }}
+                        >
+                          {d.label} {fmtPHP(d.value)}
+                        </Typography>
+                      ))}
+                      <Typography
+                        sx={{
+                          fontSize: "0.66rem",
+                          fontWeight: 600,
+                          color: green,
+                        }}
+                      >
+                        {fmtPHP(rowNet)}
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+              </Box>
+            );
+          })}
+        </Box>
+      </Collapse>
+    </Box>
+  );
+}
+
+function CollectiblesCollectionPanel({ collectibles, collections, theme }) {
+  return (
+    <Card sx={{ ...cardSx(theme), p: 2 }}>
+      {/* ── Section 1 — Collectibles ── */}
+      <CollectionLedgerSection
+        title="Collectibles"
+        rows={collectibles}
+        emptyLabel="Nothing pending collection."
+      />
+
+      <Divider sx={{ my: 2 }} />
+
+      {/* ── Section 2 — Collection ── */}
+      <CollectionLedgerSection
+        title="Collection"
+        rows={collections}
+        emptyLabel="No collections raised yet."
+      />
+    </Card>
+  );
+}
+
 function EmployeeChart({
   data,
   availableYears,
@@ -738,6 +1082,7 @@ export default function ManagementView() {
   const cacheKey = {
     metrics: "overview_metrics_cache",
     ongoingTxns: "overview_ongoing_txns_cache",
+    collectibles: "overview_collectibles_cache",
     employee: (year) => `overview_employee_performance_${year}`,
   };
   const currentYear = new Date().getFullYear();
@@ -788,6 +1133,11 @@ export default function ManagementView() {
   );
   const [allTxns, setAllTxns] = useState(() =>
     getItem(cacheKey.ongoingTxns, []),
+  );
+  // Seeded { collectibles, collections } — empty arrays render an empty card
+  // on first visit, cached lists render instantly on a revisit.
+  const [collectiblesData, setCollectiblesData] = useState(() =>
+    getItem(cacheKey.collectibles, { collectibles: [], collections: [] }),
   );
   const [employeeData, setEmployeeData] = useState(() =>
     getItem(cacheKey.employee(currentYear), []),
@@ -863,6 +1213,26 @@ export default function ManagementView() {
     };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    OverviewAPI.getCollectiblesCollection()
+      .then((res) => {
+        if (!mounted) return;
+        const data = {
+          collectibles: res?.collectibles || [],
+          collections: res?.collections || [],
+        };
+        setCollectiblesData(data);
+        setItem(cacheKey.collectibles, data);
+      })
+      .catch((err) =>
+        console.error("Failed to load collectibles and collections", err),
+      );
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const stageOrder = useMemo(() => {
     if (mappingLoading || !transacstatus) return [];
     return Object.entries(transacstatus)
@@ -900,8 +1270,19 @@ export default function ManagementView() {
         ))}
       </Grid> */}
 
-      {/* Ongoing Transactions */}
+      {/* Collectibles / Collection — one card, two columns */}
       <Grid container spacing={2}>
+        <Grid item xs={12}>
+          <CollectiblesCollectionPanel
+            collectibles={collectiblesData.collectibles}
+            collections={collectiblesData.collections}
+            theme={theme}
+          />
+        </Grid>
+      </Grid>
+
+      {/* Ongoing Transactions — commented out for now */}
+      {/* <Grid container spacing={2}>
         <Grid item xs={12}>
           <OngoingTransactionsPanel
             transactions={ongoingTxns}
@@ -911,9 +1292,10 @@ export default function ManagementView() {
             theme={theme}
           />
         </Grid>
-      </Grid>
+      </Grid> */}
 
-      <Grid container spacing={2}>
+      {/* Employee Performance / Rankings — commented out for now */}
+      {/* <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
           <EmployeeChart
             data={employeeData}
@@ -930,7 +1312,7 @@ export default function ManagementView() {
             theme={theme}
           />
         </Grid>
-      </Grid>
+      </Grid> */}
     </div>
   );
 }

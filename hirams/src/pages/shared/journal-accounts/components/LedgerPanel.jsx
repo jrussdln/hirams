@@ -7,6 +7,7 @@ import {
   EventOutlined,
   ExpandLess,
   ExpandMore,
+  FileDownloadOutlined,
   FolderOffOutlined,
   LinkOutlined,
   SearchOutlined,
@@ -160,6 +161,7 @@ const EntryBranch = ({
   // the received inventory rows behind them. Drives the
   // "Received Purchases from {supplier}" Particulars text.
   receivedSupplierByJevId = {},
+  companyByJevId = {},
   // Raw key of the "Received Purchases" JEV type — matched against
   // entry.jev.cJEVLinkType to know which rows take the received treatment.
   jevReceivedPurchasesKey = "",
@@ -222,6 +224,7 @@ const EntryBranch = ({
         nJEVEntryId: e.nJEVEntryId ?? null,
         date: String(e?.jev?.dtOccur ?? ""),
         jevNo: e?.jev?.strJEVNumber ?? "",
+        companyName: e?.jev?.company?.strCompanyNickName ?? e?.jev?.company?.strCompanyName ?? e?.jev?.entries?.[0]?.strCompanyName ?? companyByJevId[String(e.nJEVId)] ?? "—",
         nJEVId: e.nJEVId ?? null,
         // The journal account this entry posts to — what the row's Transfer
         // button re-assigns. dAmount travels with it so the update call
@@ -249,6 +252,7 @@ const EntryBranch = ({
     nameById,
     payeeByJevId,
     receivedSupplierByJevId,
+    companyByJevId,
     jevReceivedPurchasesKey,
   ]);
 
@@ -352,7 +356,7 @@ const EntryBranch = ({
       {
         key: "particulars",
         label: "Title",
-        xs: 2.2,
+        xs: 3.4,
         render: (_, row) => (
           <Box
             component="span"
@@ -532,6 +536,9 @@ function LedgerPanel({
   // Reopens LedgerFilterModal on the header's date chip so the
   // window can be changed while the report is already on screen.
   onEditRange = null,
+  // Icon-only Export on the selected account's row — the host (the page
+  // footer already has one) decides what it does; the panel only renders it.
+  onExport = null,
   // Role flags — handed to JevEntriesViewModal as `entryCrud` so its entry
   // rows are editable here just like on the JEV list page.
   isManagement = false,
@@ -556,6 +563,8 @@ function LedgerPanel({
   // the nickname string or null (no voucher / no nickname) — null is cached
   // too, so a lookup never re-fetches.
   const [payeeByJevId, setPayeeByJevId] = useState({});
+  const [companyByJevId, setCompanyByJevId] = useState({});
+  const [companyIdByJevId, setCompanyIdByJevId] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -564,12 +573,27 @@ function LedgerPanel({
         const res = await VoucherAPI.getVouchers();
         const list = Array.isArray(res) ? res : res?.data || [];
         if (cancelled) return;
-        const map = {};
+        const pMap = {};
+        const cMap = {};
+        const idMap = {};
         list.forEach((v) => {
           if (!v?.nJEVId) return;
-          map[String(v.nJEVId)] = voucherPayeeName(v);
+          const jevId = String(v.nJEVId);
+          pMap[jevId] = voucherPayeeName(v);
+          
+          // Extract company nickname and company id
+          const firstPO = v.voucher_suppliers?.[0]?.purchase_order;
+          const firstPOOption = firstPO?.purchase_order_options?.[0];
+          const company = v.company || firstPOOption?.purchase_option?.transaction_item?.transaction?.company;
+          const nick = company?.strCompanyNickName || company?.strCompanyName;
+          if (nick) cMap[jevId] = String(nick);
+
+          const compId = v.nCompanyId ?? company?.nCompanyId;
+          if (compId != null) idMap[jevId] = Number(compId);
         });
-        setPayeeByJevId(map);
+        setPayeeByJevId(pMap);
+        setCompanyByJevId((prev) => ({ ...prev, ...cMap }));
+        setCompanyIdByJevId((prev) => ({ ...prev, ...idMap }));
       } catch (err) {
         console.error("Failed to load vouchers for the report:", err);
       }
@@ -595,22 +619,36 @@ function LedgerPanel({
         const res = await InventoryAPI.getInventory();
         const rows = Array.isArray(res) ? res : res?.inventories || [];
         if (cancelled) return;
-        const map = {};
+        const sMap = {};
+        const cMap = {};
+        const idMap = {};
         rows.forEach((i) => {
-          if (Number(i?.nQuantity ?? 0) <= 0) return; // received side only
           const nick = i?.strSupplierNickName;
-          if (!nick || nick === "—") return;
+          const compNick = i?.strCompanyNickName;
+          const compId = i?.nCompanyId ?? i?.purchaseOption?.transactionItem?.transaction?.company?.nCompanyId ?? i?.purchaseOption?.transactionItem?.transaction?.nCompanyId;
+
           const ids =
             Array.isArray(i?.nJEVIds) && i.nJEVIds.length
               ? i.nJEVIds
               : [i?.nJEVId];
+
           ids.forEach((id) => {
             if (id == null) return;
             const k = String(id);
-            if (map[k] == null) map[k] = String(nick);
+            
+            // Received side only for supplier nickname
+            if (Number(i?.nQuantity ?? 0) > 0) {
+              if (nick && nick !== "—" && sMap[k] == null) sMap[k] = String(nick);
+            }
+
+            // All rows for company nickname and ID
+            if (compNick && compNick !== "—" && cMap[k] == null) cMap[k] = String(compNick);
+            if (compId != null && idMap[k] == null) idMap[k] = Number(compId);
           });
         });
-        setReceivedSupplierByJevId(map);
+        setReceivedSupplierByJevId(sMap);
+        setCompanyByJevId((prev) => ({ ...prev, ...cMap }));
+        setCompanyIdByJevId((prev) => ({ ...prev, ...idMap }));
       } catch (err) {
         console.error("Failed to load inventory for the report:", err);
       }
@@ -703,7 +741,10 @@ function LedgerPanel({
         return { ...c, children: walk(c.id, depth + 1) };
       });
 
-    return walk(account.id, 0);
+    // Start at depth 1: the reported account itself is the ROOT row of the
+    // list (treeRows prepends it at depth 0), so its linked children sit one
+    // level under it — indented, and hidden together when its row is folded.
+    return walk(account.id, 1);
   }, [account, allAccounts]);
 
   const flat = useMemo(() => flatten(children), [children]);
@@ -714,7 +755,8 @@ function LedgerPanel({
   // pending JEVs are excluded, including as counterpart lines.
   const { byJev, byAccount: entriesByAccount } = useMemo(() => {
     const activeStatus = String(jevActiveKey ?? "").trim() || "A";
-    const { from, to } = range;
+    const { from, to, companyIds } = range;
+    const hasCompanyFilter = Array.isArray(companyIds) && !companyIds.includes("all") && companyIds.length > 0;
 
     // jev.dtOccur is a MySQL datetime → compare its "YYYY-MM-DD" prefix, so
     // no timezone shifting can move an entry across the range edge.
@@ -727,9 +769,30 @@ function LedgerPanel({
       return true;
     };
 
+    const matchesCompany = (e) => {
+      if (!hasCompanyFilter) return true;
+      const jId = e.nJEVId != null ? String(e.nJEVId) : null;
+      const compId =
+        e?.jev?.company?.nCompanyId ??
+        e?.jev?.transactions?.[0]?.company?.nCompanyId ??
+        e?.jev?.vouchers?.[0]?.company?.nCompanyId ??
+        e?.jev?.inventories?.[0]?.purchaseOption?.transactionItem?.transaction?.company?.nCompanyId ??
+        (jId ? companyIdByJevId[jId] : null);
+
+      // "No Company" — the JEV resolves to no company at all; it passes
+      // only when the "none" sentinel is among the chosen ids.
+      if (compId == null) return companyIds.includes("none");
+      return companyIds
+        .filter((x) => x !== "none")
+        .map(Number)
+        .includes(Number(compId));
+    };
+
     const activeEntries = (jevEntries || []).filter((e) => {
       if (String(e?.jev?.cStatus ?? "").trim() !== activeStatus) return false;
-      return inRange(dayOf(e));
+      if (!inRange(dayOf(e))) return false;
+      if (!matchesCompany(e)) return false;
+      return true;
     });
     // Newest first — dtOccur is "YYYY-MM-DD HH:mm:ss", so string compare sorts correctly
     const sorted = [...activeEntries].sort((a, b) => {
@@ -739,7 +802,7 @@ function LedgerPanel({
       return (Number(b.nJEVEntryId) || 0) - (Number(a.nJEVEntryId) || 0);
     });
     return groupEntries(sorted);
-  }, [jevEntries, jevActiveKey, range]);
+  }, [jevEntries, jevActiveKey, range, companyIdByJevId]);
 
   // ── Header total — unfiltered by date ──────────────────────────────────
   // The violet banner's balance chip shows the account's ALL-TIME total:
@@ -841,31 +904,40 @@ function LedgerPanel({
   // NOTE: filters/collapse state start fresh on mount — the parent unmounts
   // this panel whenever the report is closed, so no reset effect is needed.
 
+  // The linked-accounts list INCLUDES the reported account itself — its
+  // row sits on top (depth 0) with its own balance, fold toggle and entry
+  // block, exactly like every linked account under it. `flat` (its linked
+  // children) is a depth-first walk, so the list stays parent-before-child.
+  const treeRows = useMemo(
+    () => (account ? [{ node: account, depth: 0 }, ...flat] : []),
+    [account, flat],
+  );
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
 
     // While a search is active every match stays visible — a folded branch
     // must never swallow a result.
     if (q) {
-      return flat.filter((x) =>
+      return treeRows.filter((x) =>
         String(x.node.accountName ?? "")
           .toLowerCase()
           .includes(q),
       );
     }
 
-    // Otherwise drop everything sitting beneath a collapsed row. `flat` is a
-    // depth-first walk (parent before its children), so a stack of the still
-    // open collapsed depths is enough to skip a whole subtree at once.
+    // Otherwise drop everything sitting beneath a collapsed row. `treeRows`
+    // is a depth-first walk (parent before its children), so a stack of the
+    // still open collapsed depths is enough to skip a whole subtree at once.
     const openBelow = [];
-    return flat.filter((x) => {
+    return treeRows.filter((x) => {
       while (openBelow.length && x.depth <= openBelow[openBelow.length - 1])
         openBelow.pop();
       const visible = openBelow.length === 0;
       if (collapsedIds.has(rowKeyOf(x))) openBelow.push(x.depth);
       return visible;
     });
-  }, [flat, search, collapsedIds]);
+  }, [treeRows, search, collapsedIds]);
 
   // A row can fold only when something is drawn beneath it: linked accounts
   // and/or its own entry block.
@@ -874,8 +946,9 @@ function LedgerPanel({
     (entriesByAccount[node.id]?.length ?? 0) > 0;
 
   // Header toggle: "Collapse all" while anything is still showing beneath a
-  // row, "Expand all" once every nested account and entry block is folded.
-  const foldableRows = flat.filter(isFoldable);
+  // row, "Expand all" once every nested account and entry block is folded —
+  // the reported account's own entry block included.
+  const foldableRows = treeRows.filter(isFoldable);
   const somethingShown = filtered.some(
     (x) =>
       x.depth > 0 ||
@@ -886,7 +959,7 @@ function LedgerPanel({
 
   // Header controls: fold / unfold the whole tree at once. Marking every row
   // key is safe — rows with nothing beneath them simply don't render a toggle.
-  const collapseAll = () => setCollapsedIds(new Set(flat.map(rowKeyOf)));
+  const collapseAll = () => setCollapsedIds(new Set(treeRows.map(rowKeyOf)));
   const expandAll = () => setCollapsedIds(new Set());
 
   // The header's Collapse all / Expand all pill — same height as the search
@@ -918,6 +991,63 @@ function LedgerPanel({
   // The header's totals overlay only renders over a non-zero net — the
   // account name narrows only when it is actually on screen.
   const showHeaderTotals = (grandTotalsById[account?.id]?.net ?? 0) !== 0;
+
+  // TRULY EMPTY report — the account has no linked accounts AND no entries
+  // of its own. The linked-accounts card still renders (its search row and
+  // the reported account's own row stay on top); only what sits UNDER them
+  // becomes the empty banner.
+  const noLinkedNoEntries =
+    total === 0 && !(entriesByAccount[account?.id]?.length > 0);
+
+  // The "No linked accounts" empty state, drawn INSIDE the linked-accounts
+  // card — beneath the search row and the reported account's own row — so
+  // the search box and the current account always stay visible above it.
+  const emptyBanner = (
+    <Box
+      sx={{
+        m: 1.25,
+        py: 4,
+        px: 2,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 1,
+        textAlign: "center",
+        border: `1px dashed ${colors.border}`,
+        borderRadius: "10px",
+      }}
+    >
+      <Box
+        sx={{
+          width: 40,
+          height: 40,
+          borderRadius: "10px",
+          background: colors.mutedBg,
+          border: `1px solid ${colors.border}`,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: colors.gray.muted,
+        }}
+      >
+        <FolderOffOutlined sx={{ fontSize: "1.1rem" }} />
+      </Box>
+      <Typography
+        sx={{
+          fontSize: "0.78rem",
+          fontWeight: 700,
+          color: colors.gray.pri,
+        }}
+      >
+        No linked accounts
+      </Typography>
+      <Typography sx={{ fontSize: "0.68rem", color: colors.gray.sec }}>
+        {account?.accountName
+          ? `“${account.accountName}” has no accounts linked to it yet.`
+          : "This account has no accounts linked to it yet."}
+      </Typography>
+    </Box>
+  );
 
   return (
     <>
@@ -1055,7 +1185,7 @@ function LedgerPanel({
                       <Box sx={{ width: 40, flexShrink: 0 }} />
                       <Box sx={{ flex: "1.1 1 0", minWidth: 0 }} />
                       <Box sx={{ flex: "1.4 1 0", minWidth: 0 }} />
-                      <Box sx={{ flex: "2.2 1 0", minWidth: 0 }} />
+                      <Box sx={{ flex: "3.4 1 0", minWidth: 0 }} />
                       {cols.map((c) => (
                         <Box
                           key={c.label}
@@ -1095,123 +1225,18 @@ function LedgerPanel({
                           </Typography>
                         </Box>
                       ))}
-                      {/* Date window — right after the totals. The overlay
-                          is pointer-events: none, so the chip opts back in. */}
-                      <Box
-                        component={onEditRange ? "button" : "div"}
-                        type={onEditRange ? "button" : undefined}
-                        onClick={onEditRange ?? undefined}
-                        title={
-                          onEditRange
-                            ? `Change the date range of this ledger (${rangeLabel})`
-                            : `Date range of this ledger (${rangeLabel})`
-                        }
-                        aria-label={onEditRange ? "Change date range" : undefined}
-                        sx={{
-                          alignSelf: "center",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 0.5,
-                          px: 0.9,
-                          borderRadius: "7px",
-                          height: 32,
-                          fontFamily: "inherit",
-                          textAlign: "center",
-                          cursor: onEditRange ? "pointer" : "default",
-                          border: `1px solid ${dateFilterActive ? colors.blue.border : colors.border}`,
-                          background: dateFilterActive ? colors.blue.bg : colors.inputBg,
-                          color: dateFilterActive ? colors.blue.text : colors.gray.sec,
-                          fontSize: "0.7rem",
-                          fontWeight: 600,
-                          lineHeight: 1.3,
-                          whiteSpace: "nowrap",
-                          flexShrink: 0,
-                          ml: 1,
-                          pointerEvents: "auto",
-                          ...(onEditRange && {
-                            transition:
-                              "border-color 0.15s ease, box-shadow 0.15s ease",
-                            "&:hover": {
-                              borderColor: colors.blue.border,
-                              boxShadow: `0 0 0 2px ${colors.blue.bg}`,
-                            },
-                            "&:focus-visible": {
-                              outline: "none",
-                              borderColor: colors.blue.border,
-                            },
-                          }),
-                        }}
-                      >
-                        <EventOutlined
-                          sx={{ fontSize: "0.95rem", color: colors.gray.muted }}
-                        />
-                        {rangeLabel}
-                      </Box>
                     </Box>
                   );
                 })()}
           </Box>
 
-        {entriesByAccount[account?.id]?.length > 0 && (
-          <EntryBranch
-            entries={entriesByAccount[account.id]}
-            colors={colors}
-            byJev={byJev}
-            nameById={nameById}
-            payeeByJevId={payeeByJevId}
-            receivedSupplierByJevId={receivedSupplierByJevId}
-            jevReceivedPurchasesKey={jevReceivedPurchasesKey}
-            onOpenJev={openJevModal}
-            onTransferEntry={handleTransferEntry}
-            sx={{ ml: "24px", mr: 1.25, mb: 0.5 }}
-          />
-        )}
-        {/* IF NO ENTRY AND LINKED ACCOUNTS */}
-        {total === 0 && !(entriesByAccount[account?.id]?.length > 0) ? (
-          <Box
-            sx={{
-              py: 5,
-              px: 2,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 1,
-              textAlign: "center",
-              border: `1px dashed ${colors.border}`,
-              borderRadius: "10px",
-            }}
-          >
-            <Box
-              sx={{
-                width: 40,
-                height: 40,
-                borderRadius: "10px",
-                background: colors.mutedBg,
-                border: `1px solid ${colors.border}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: colors.gray.muted,
-              }}
-            >
-              <FolderOffOutlined sx={{ fontSize: "1.1rem" }} />
-            </Box>
-            <Typography
-              sx={{
-                fontSize: "0.78rem",
-                fontWeight: 700,
-                color: colors.gray.pri,
-              }}
-            >
-              No linked accounts
-            </Typography>
-            <Typography sx={{ fontSize: "0.68rem", color: colors.gray.sec }}>
-              {account?.accountName
-                ? `“${account.accountName}” has no accounts linked to it yet.`
-                : "This account has no accounts linked to it yet."}
-            </Typography>
-          </Box>
-        ) : total === 0 ? null : (
+        {/* The reported account's own entries now live on its row inside
+            the linked-accounts list — it IS the first row of that list, so
+            no separate entry block is drawn under the banner anymore. */}
+        {/* The linked-accounts card ALWAYS renders — its search row and the
+            reported account's own row stay on top even when the account has
+            nothing linked to it; the "No linked accounts" banner then draws
+            inside the card, beneath them. */}
           <Box
             sx={{
               border: `1px solid ${colors.border}`,
@@ -1267,6 +1292,55 @@ function LedgerPanel({
                 />
               </Box>
 
+              {/* Date window of this report — sits left of the fold-all
+                  toggle (moved out of the banner's totals overlay). */}
+              <Box
+                component={onEditRange ? "button" : "div"}
+                type={onEditRange ? "button" : undefined}
+                onClick={onEditRange ?? undefined}
+                title={
+                  onEditRange
+                    ? `Change the date range of this ledger (${rangeLabel})`
+                    : `Date range of this ledger (${rangeLabel})`
+                }
+                aria-label={onEditRange ? "Change date range" : undefined}
+                sx={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 0.5,
+                  px: 0.9,
+                  borderRadius: "7px",
+                  height: 32,
+                  fontFamily: "inherit",
+                  textAlign: "center",
+                  cursor: onEditRange ? "pointer" : "default",
+                  border: `1px solid ${dateFilterActive ? colors.blue.border : colors.border}`,
+                  background: dateFilterActive ? colors.blue.bg : colors.inputBg,
+                  color: dateFilterActive ? colors.blue.text : colors.gray.sec,
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  lineHeight: 1.3,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                  ...(onEditRange && {
+                    transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+                    "&:hover": {
+                      borderColor: colors.blue.border,
+                      boxShadow: `0 0 0 2px ${colors.blue.bg}`,
+                    },
+                    "&:focus-visible": {
+                      outline: "none",
+                      borderColor: colors.blue.border,
+                    },
+                  }),
+                }}
+              >
+                <EventOutlined
+                  sx={{ fontSize: "0.95rem", color: colors.gray.muted }}
+                />
+                {rangeLabel}
+              </Box>
+
               <Box
                 component="button"
                 type="button"
@@ -1290,13 +1364,20 @@ function LedgerPanel({
 
             {/* ── Linked accounts ───────────────────────────────── */}
             {filtered.length === 0 ? (
-              <Box sx={{ py: 4, textAlign: "center" }}>
-                <Typography
-                  sx={{ fontSize: "0.72rem", color: colors.gray.muted }}
-                >
-                  No linked accounts match “{search.trim()}”
-                </Typography>
-              </Box>
+              noLinkedNoEntries ? (
+                // The account has nothing linked at all — the full empty
+                // banner replaces the search's "no match" line, which would
+                // otherwise just repeat the same fact.
+                emptyBanner
+              ) : (
+                <Box sx={{ py: 4, textAlign: "center" }}>
+                  <Typography
+                    sx={{ fontSize: "0.72rem", color: colors.gray.muted }}
+                  >
+                    No linked accounts match “{search.trim()}”
+                  </Typography>
+                </Box>
+              )
             ) : (
               <Box sx={{ maxHeight: "65vh", overflowY: "auto" }}>
                 {filtered.map(({ node, depth }, i) => {
@@ -1306,6 +1387,11 @@ function LedgerPanel({
                   const isCollapsed = collapsedIds.has(rowKey);
                   const entryCount = entriesByAccount[node.id]?.length ?? 0;
                   const foldable = isFoldable({ node, depth });
+                  // The reported account itself — the root of this list. It
+                  // reads as SELECTED (tinted + accent edge, heavier name)
+                  // and carries NO round toggle: folding it happens by
+                  // clicking the row itself, like every other foldable row.
+                  const isRootRow = node.id === account?.id;
                   // Solid separator on top of this account row when the row
                   // above it ends with a VISIBLE entry block — keeps each
                   // account's entries closed before the next account starts,
@@ -1345,7 +1431,14 @@ function LedgerPanel({
                           px: 1.25,
                           py: 0.75,
                           pl: 1.25 + depth * 2,
-                          background: "transparent",
+                          // Selected-account treatment on the root row: a
+                          // blue tint plus an inset accent edge on the left
+                          // (no layout shift) so it never reads as just
+                          // another account.
+                          background: isRootRow ? colors.blue.bg : "transparent",
+                          boxShadow: isRootRow
+                            ? `inset 3px 0 0 ${colors.blue.text}`
+                            : undefined,
                           borderTop: prevHadEntries
                             ? `1px solid ${colors.divider}`
                             : "none",
@@ -1353,10 +1446,16 @@ function LedgerPanel({
                           transition: "background .15s",
                           cursor: foldable ? "pointer" : "default",
                           outline: "none",
-                          "&:hover": { background: colors.hoverBg },
+                          "&:hover": {
+                            background: isRootRow
+                              ? colors.blue.bg
+                              : colors.hoverBg,
+                          },
                           ...(foldable && {
                             "&:focus-visible": {
-                              boxShadow: `inset 0 0 0 1px ${colors.blue.border}`,
+                              boxShadow: isRootRow
+                                ? `inset 3px 0 0 ${colors.blue.text}, inset 0 0 0 1px ${colors.blue.border}`
+                                : `inset 0 0 0 1px ${colors.blue.border}`,
                             },
                           }),
                         }}
@@ -1395,8 +1494,10 @@ function LedgerPanel({
                               title={node.accountName}
                               sx={{
                                 fontSize: "0.72rem",
-                                fontWeight: 600,
-                                color: colors.gray.pri,
+                                fontWeight: isRootRow ? 700 : 600,
+                                color: isRootRow
+                                  ? colors.blue.text
+                                  : colors.gray.pri,
                                 lineHeight: 1.2,
                                 whiteSpace: "nowrap",
                                 overflow: "hidden",
@@ -1449,31 +1550,110 @@ function LedgerPanel({
                           // fact about the account, not noise.
                           const { text } = formatBalance(net);
                           return (
-                            <Typography
-                              title={`From ₱${fmtAmt(from / 100)} · To ₱${fmtAmt(to / 100)}`}
+                            <Box
                               sx={{
-                                fontSize: "0.68rem",
-                                fontWeight: 700,
-                                ...NUM_FONT,
-                                color:
-                                  net > 0
-                                    ? colors.green.text
-                                    : net < 0
-                                      ? colors.red.text
-                                      : colors.gray.muted,
-                                whiteSpace: "nowrap",
-                                textAlign: "right",
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "flex-end",
                                 minWidth: "4.5rem",
                                 flexShrink: 0,
                                 mr: 0.5,
                               }}
                             >
-                              {text}
-                            </Typography>
+                              {/* The selected account's figure is the whole
+                                  ledger's total — say so over the number. */}
+                              {isRootRow && (
+                                <Typography
+                                  sx={{
+                                    fontSize: "0.5rem",
+                                    fontWeight: 700,
+                                    textTransform: "uppercase",
+                                    letterSpacing: "0.4px",
+                                    color: colors.gray.sec,
+                                    lineHeight: 1.2,
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  Total
+                                </Typography>
+                              )}
+                              <Typography
+                                title={`From ₱${fmtAmt(from / 100)} · To ₱${fmtAmt(to / 100)}`}
+                                sx={{
+                                  fontSize: "0.68rem",
+                                  fontWeight: 700,
+                                  ...NUM_FONT,
+                                  color:
+                                    net > 0
+                                      ? colors.green.text
+                                      : net < 0
+                                        ? colors.red.text
+                                        : colors.gray.muted,
+                                  whiteSpace: "nowrap",
+                                  textAlign: "right",
+                                  mt: isRootRow ? 0.1 : 0,
+                                }}
+                              >
+                                {text}
+                              </Typography>
+                            </Box>
                           );
                         })()}
 
-                        {foldable ? (
+                        {/* Selected account only — icon-only Export sitting
+                            where the other rows' fold toggle is. Its click
+                            must not fold the row: the row handler already
+                            ignores clicks from inside a button, and the
+                            stopPropagation keeps it that way even if the
+                            row handler changes. */}
+                        {isRootRow && onExport && (
+                          <Box
+                            component="button"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // The export re-runs this panel's exact filter
+                              // chain — hand it the voucher / inventory
+                              // company map so its Company filter resolves
+                              // the same entries the screen shows.
+                              onExport?.(companyIdByJevId);
+                            }}
+                            aria-label="Export this ledger"
+                            title="Export this ledger"
+                            sx={{
+                              flexShrink: 0,
+                              width: 24,
+                              height: 24,
+                              p: 0,
+                              ml: 0.25,
+                              lineHeight: 1,
+                              borderRadius: "6px",
+                              border: `1px solid ${colors.blue.border}`,
+                              background: colors.inputBg,
+                              color: colors.blue.text,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              transition: "background .15s",
+                              "&:hover": {
+                                background: colors.blue.bg,
+                                borderColor: colors.blue.text,
+                              },
+                              "&:focus-visible": {
+                                outline: "none",
+                                borderColor: colors.blue.text,
+                                boxShadow: `0 0 0 2px ${colors.blue.bg}`,
+                              },
+                            }}
+                          >
+                            <FileDownloadOutlined
+                              sx={{ fontSize: "0.85rem" }}
+                            />
+                          </Box>
+                        )}
+
+                        {foldable && !isRootRow ? (
                           <Box
                             component="button"
                             type="button"
@@ -1522,24 +1702,36 @@ function LedgerPanel({
                             )}
                           </Box>
                         ) : (
-                          // No toggle on this row — an invisible slot of the
-                          // same size keeps the balance on the same right
-                          // edge as every row that has a toggle.
-                          <Box
-                            aria-hidden
-                            sx={{ flexShrink: 0, width: 20, height: 20 }}
-                          />
+                          // No toggle on this row. The selected account's
+                          // Export button already occupies this end slot, so
+                          // only OTHER toggle-less rows get the invisible
+                          // spacer that keeps every balance on the same
+                          // right edge.
+                          !isRootRow && (
+                            <Box
+                              aria-hidden
+                              sx={{ flexShrink: 0, width: 20, height: 20 }}
+                            />
+                          )
                         )}
                       </Box>
 
-                      {!isCollapsed && entryCount > 0 && (
+                      {!isCollapsed &&
+                        // An entry block is drawn ONLY when the row has
+                        // entries of its own. A parent account whose money
+                        // all sits on its linked children (or the reported
+                        // account in a truly empty report) has none — so its
+                        // unfolded row shows nothing beneath it instead of a
+                        // "No data available" table that could never fill.
+                        entryCount > 0 && (
                         <EntryBranch
-                          entries={entriesByAccount[node.id]}
+                          entries={entriesByAccount[node.id] || []}
                           colors={colors}
                           byJev={byJev}
                           nameById={nameById}
                           payeeByJevId={payeeByJevId}
                           receivedSupplierByJevId={receivedSupplierByJevId}
+                          companyByJevId={companyByJevId}
                           jevReceivedPurchasesKey={jevReceivedPurchasesKey}
                           onOpenJev={openJevModal}
                           onTransferEntry={handleTransferEntry}
@@ -1557,8 +1749,12 @@ function LedgerPanel({
                 })}
               </Box>
             )}
+
+            {/* TRULY EMPTY — the banner sits inside the card, under the
+                reported account's own row, so the search row and that row
+                stay on top of it. */}
+            {noLinkedNoEntries && filtered.length > 0 && emptyBanner}
           </Box>
-        )}
       </Box>
 
       {/* ── JEV number click → the journal's own page (/jev-update) ──── */}

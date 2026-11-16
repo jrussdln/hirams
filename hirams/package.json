@@ -42,7 +42,8 @@
     "sweetalert2": "^11.26.2",
     "sweetalert2-react-content": "^5.1.0",
     "tailwindcss": "^4.1.14",
-    "ua-parser-js": "^2.0.10"
+    "ua-parser-js": "^2.0.10",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.36.0",

@@ -234,6 +234,17 @@ export default function JevViewPanel({
       : Boolean(isManagement || isFinanceOfficer)) &&
     (entryStatusGate === "all" || jev?.cStatus === pendingStatusKey);
 
+  // ── Title / date edit gate ────────────────────────────────────────────
+  // Softer than the entries' gate: finalizing a journal (Active) freezes
+  // its ENTRIES, but the title and date stay correctable. The other locks
+  // hold — a settled / cancelled journal (readOnly) and a caller that
+  // withheld editing rights show no icon, and so do non-finance roles.
+  const canEditTitle =
+    !readOnly &&
+    (typeof canEditEntries === "boolean"
+      ? canEditEntries
+      : Boolean(isManagement || isFinanceOfficer));
+
   const [entries, setEntries] = useState(jev?.entries ?? []);
   const [loading, setLoading] = useState(false);
   // The header's triangle opens and closes the From / To columns.
@@ -1083,8 +1094,10 @@ export default function JevViewPanel({
 
           {/* EDIT TITLE — a round icon button just left of the toggle.
               While the fields are open the actions live on the card
-              itself (Close / Save in its footer). */}
-          {canManageEntries && !titleEditing && (
+              itself (Close / Save in its footer). Shown on an Active
+              journal too — finalizing freezes the entries, not the
+              title / date (see canEditTitle). */}
+          {canEditTitle && !titleEditing && (
             <IconButton
               size="small"
               onClick={(e) => {

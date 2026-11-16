@@ -98,6 +98,7 @@ Route::middleware(['auth:sanctum', 'active'])->group(function () {
         Route::get('employee-performance', [DashboardController::class, 'employeePerformance']);
         Route::get('total-metrics', [DashboardController::class, 'totalMetrics']);
         Route::get('ongoing-transactions', [DashboardController::class, 'ongoingTransactions']);
+        Route::get('collectibles-collection', [DashboardController::class, 'collectiblesCollection']);
     });
 
     // ── USERS ───────────────────────────────────────────────

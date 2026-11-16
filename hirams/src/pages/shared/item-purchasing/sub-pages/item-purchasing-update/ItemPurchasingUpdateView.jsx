@@ -1298,8 +1298,16 @@ export default function ItemPurchasingUpdateView({
                   onBrandClick={brandLinkClick}
                   onArrivedViewChange={setIsArrivedView}
                   onFooterActionsChange={setArrivedFooterActions}
-                  onRemoved={() => {
-                    window.dispatchEvent(new CustomEvent("cart_data_updated"));
+                  onRemoved={async () => {
+                    // The removed line must leave THIS view's rows too —
+                    // a silent refetch drops it from liveOptions. Only
+                    // broadcasting `cart_data_updated` left the row on
+                    // screen: the navs key off that event, this view
+                    // never did.
+                    await fetchPO({ silent: true });
+                    window.dispatchEvent(
+                      new CustomEvent("cart_data_updated"),
+                    );
                   }}
                   onSavingChange={setLineItemSaving}
                   anyOptionArrived={anyOptionArrived}
