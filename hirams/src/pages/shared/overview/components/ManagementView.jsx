@@ -9,6 +9,7 @@ import {
   LinearProgress,
   Select,
   MenuItem,
+  Menu,
   FormControl,
   Collapse,
   IconButton,
@@ -20,7 +21,7 @@ import { useNavigate } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import ChartStructure from "../../../../components/ui/structure/ChartStructure";
-import { fmtDate } from "../../../../utils/helpers/timeZone";
+import { fmtDate, fmtDateTime } from "../../../../utils/helpers/timeZone";
 import { getDueDateColor } from "../../../../utils/helpers/dueDateColor";
 import useKeysLabels from "../../../../hooks/useKeysLabels";
 import { fmtPHP } from "../../../../utils/formatters/formatter";
@@ -51,8 +52,11 @@ import {
   TrendingUp,
   ExpandMore,
   ExpandLess,
+  KeyboardArrowDown,
+  QueryStatsOutlined,
 } from "@mui/icons-material";
 import OverviewAPI from "../../../../api/endpoints/overview.api";
+import { quickRange } from "../../../../components/ui/form/FilterDate.jsx";
 
 // ─── Data (dummy chart placeholders) ────────────────────────────────────────
 const monthlyData = [
@@ -473,6 +477,36 @@ const ledgerTotalsOf = (rows) => {
   return { amount, ewt, tax, retention, net };
 };
 
+// ── The section's date filter — the same This ▾ / Previous ▾ quick picks
+// the Ledger filter modal offers, resolved through FilterDate's quickRange.
+const FILTER_LABEL = {
+  week: "This Week",
+  month: "This Month",
+  year: "This Year",
+  week_prev: "Prev Week",
+  month_prev: "Prev Month",
+  year_prev: "Prev Year",
+};
+
+const FILTER_GROUPS = [
+  {
+    label: "This",
+    items: [
+      ["week", "Week"],
+      ["month", "Month"],
+      ["year", "Year"],
+    ],
+  },
+  {
+    label: "Previous",
+    items: [
+      ["week_prev", "Week"],
+      ["month_prev", "Month"],
+      ["year_prev", "Year"],
+    ],
+  },
+];
+
 // NOTE: defined at MODULE scope, not inside the panel — an inline component
 // gets a fresh identity every parent render, so React would unmount it (and
 // wipe its `open` state) whenever the dashboard data refreshed, making the
@@ -487,7 +521,22 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
   const green = getThemeColors(isDark).green.paid;
 
   const [open, setOpen] = useState(false);
-  const totals = useMemo(() => ledgerTotalsOf(rows), [rows]);
+  // Date filter — null means "All"; anything else is a quickRange key.
+  const [filter, setFilter] = useState(null);
+  const [filterAnchor, setFilterAnchor] = useState(null);
+
+  // A quick window keeps only rows whose date falls inside it; rows without
+  // a date can never match a window, so they only show under "All".
+  const filteredRows = useMemo(() => {
+    if (!filter) return rows;
+    const [from, to] = quickRange(filter);
+    return rows.filter((r) => {
+      const d = (r.date || "").slice(0, 10);
+      return d && d >= from && d <= to;
+    });
+  }, [rows, filter]);
+
+  const totals = useMemo(() => ledgerTotalsOf(filteredRows), [filteredRows]);
 
   const metricTiles = [
     { label: "Amount", value: totals.amount },
@@ -526,12 +575,128 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
               component="span"
               sx={{ color: "text.secondary", fontWeight: 500 }}
             >
-              ({rows.length})
+              ({filteredRows.length})
             </Box>
           </Typography>
         </Box>
-        {/* stopPropagation — the button's own click would otherwise bubble
-            up to the header and toggle the state straight back. */}
+        {/* Right corner — the filter field, then the toggle. The wrapper
+            stops propagation: picking a range must not collapse the section. */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
+          <Box
+            onClick={(e) => e.stopPropagation()}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              flexShrink: 0,
+            }}
+          >
+            <Typography
+              sx={{ fontSize: "0.6rem", color: "text.secondary" }}
+              component="span"
+            >
+              Filter:
+            </Typography>
+            {/* The "This ▾" style quick pick from the Ledger filter */}
+            <Box
+              component="button"
+              type="button"
+              onClick={(e) => setFilterAnchor(e.currentTarget)}
+              aria-haspopup="menu"
+              aria-expanded={Boolean(filterAnchor)}
+              sx={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 0.4,
+                px: 0.75,
+                py: 0.35,
+                borderRadius: "6px",
+                border: `1px solid ${theme.palette.divider}`,
+                background: "transparent",
+                color: "text.primary",
+                fontSize: "0.6rem",
+                fontWeight: 600,
+                lineHeight: 1.2,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                "&:hover": { background: theme.palette.action.hover },
+              }}
+            >
+              {filter ? FILTER_LABEL[filter] : "All"}
+              <KeyboardArrowDown
+                sx={{
+                  fontSize: "0.85rem",
+                  color: "text.secondary",
+                  transform: Boolean(filterAnchor)
+                    ? "rotate(180deg)"
+                    : "none",
+                  transition: "transform .15s",
+                }}
+              />
+            </Box>
+            <Menu
+              open={Boolean(filterAnchor)}
+              anchorEl={filterAnchor}
+              onClose={() => setFilterAnchor(null)}
+              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+              transformOrigin={{ vertical: "top", horizontal: "right" }}
+              PaperProps={{ sx: { mt: 0.5, minWidth: 130, py: 0.5 } }}
+            >
+              <MenuItem
+                selected={filter === null}
+                onClick={() => {
+                  setFilter(null);
+                  setFilterAnchor(null);
+                }}
+                sx={{
+                  fontSize: "0.68rem",
+                  fontWeight: 600,
+                  borderRadius: 1,
+                  mx: 0.5,
+                  py: 0.4,
+                }}
+              >
+                All
+              </MenuItem>
+              {FILTER_GROUPS.map((group) => [
+                <Typography
+                  key={group.label}
+                  sx={{
+                    px: 1.5,
+                    py: 0.5,
+                    fontSize: "0.6rem",
+                    fontWeight: 800,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.03em",
+                    color: "text.secondary",
+                  }}
+                >
+                  {group.label}
+                </Typography>,
+                ...group.items.map(([value, label]) => (
+                  <MenuItem
+                    key={value}
+                    selected={filter === value}
+                    onClick={() => {
+                      setFilter(value);
+                      setFilterAnchor(null);
+                    }}
+                    sx={{
+                      fontSize: "0.68rem",
+                      fontWeight: 600,
+                      borderRadius: 1,
+                      mx: 0.5,
+                      py: 0.4,
+                    }}
+                  >
+                    {label}
+                  </MenuItem>
+                )),
+              ])}
+            </Menu>
+          </Box>
+          {/* stopPropagation — the button's own click would otherwise bubble
+              up to the header and toggle the state straight back. */}
         <IconButton
           size="small"
           onClick={(e) => {
@@ -543,24 +708,38 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
         >
           {open ? <ExpandLess /> : <ExpandMore />}
         </IconButton>
+        </Box>
       </Box>
 
       {/* ── Horizontal boundary between the section label and the metrics ── */}
       <Divider sx={{ mt: 0.75 }} />
 
-      {/* ── The five ledger metrics — right-aligned ── */}
-      <Box
-        sx={{
-          display: "grid",
-          gridTemplateColumns: {
-            xs: "repeat(2, 1fr)",
-            sm: "repeat(3, 1fr)",
-            md: "repeat(5, 1fr)",
-          },
-          gap: 1.5,
-          mt: 1,
-        }}
-      >
+      {/* ── The five ledger metrics — icon at the left, tiles right-aligned ── */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 1 }}>
+        <QueryStatsOutlined
+          sx={{
+            fontSize: "1.7rem",
+            color: "text.secondary",
+            flexShrink: 0,
+            border: `1px solid ${theme.palette.divider}`,
+            borderRadius: 1,
+            p: 0.75,
+            ml: 0.75,
+          }}
+        />
+        <Box
+          sx={{
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "repeat(2, 1fr)",
+              sm: "repeat(3, 1fr)",
+              md: "repeat(5, 1fr)",
+            },
+            gap: 1.5,
+            flex: 1,
+            minWidth: 0,
+          }}
+        >
         {metricTiles.map((tile) => (
           <Box key={tile.label} sx={{ minWidth: 0, textAlign: "right" }}>
             <Typography
@@ -599,6 +778,7 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
             </Typography>
           </Box>
         ))}
+        </Box>
       </Box>
 
       {/* ── The transaction list — revealed by the toggle ── */}
@@ -616,14 +796,16 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
             overflowY: "auto",
           }}
         >
-          {rows.length === 0 && (
+          {filteredRows.length === 0 && (
             <Typography
               sx={{ fontSize: "0.66rem", color: "text.disabled", py: 1, px: 1 }}
             >
-              {emptyLabel}
+              {filter && filteredRows.length === 0 && rows.length > 0
+                ? "Nothing in this period."
+                : emptyLabel}
             </Typography>
           )}
-          {rows.map((r, idx) => {
+          {filteredRows.map((r, idx) => {
             const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
             const amount = num(r.amount);
             const rowEwt = num(calculateCollectionEWT(amount, r.cItemType));
@@ -667,7 +849,8 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
                 </Typography>
 
                 <Box flex={1} minWidth={0}>
-                  {/* The transaction code sits ABOVE the title */}
+                  {/* The code and the client nickname share the top line:
+                      "code - client" */}
                   <Typography
                     sx={{
                       fontSize: "0.56rem",
@@ -679,6 +862,7 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
                     noWrap
                   >
                     {r.strCode || "—"}
+                    {r.clientNickName ? ` - ${r.clientNickName}` : ""}
                   </Typography>
                   <Typography
                     sx={{ fontSize: "0.72rem", fontWeight: 500 }}
@@ -686,11 +870,19 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
                   >
                     {r.strTitle || "--"}
                   </Typography>
+                  {/* The row's date — same styling as the code line,
+                      formatted through the shared fmtDateTime helper */}
                   <Typography
-                    sx={{ fontSize: "0.62rem", color: "text.secondary" }}
+                    sx={{
+                      fontSize: "0.56rem",
+                      fontWeight: 500,
+                      color: "text.secondary",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.03em",
+                    }}
                     noWrap
                   >
-                    {r.clientNickName || "—"}
+                    {fmtDateTime(r.date)}
                   </Typography>
                 </Box>
 

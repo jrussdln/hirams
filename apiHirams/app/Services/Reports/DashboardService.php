@@ -301,7 +301,7 @@ class DashboardService
         // ── Collectibles: at For Collection, no journal raised yet ──
         $collectibleTxns = collect();
         if ($forCollection !== '') {
-            $collectibleTxns = Transactions::with('client')
+            $collectibleTxns = Transactions::with(['client', 'latestHistory'])
                 ->whereHas('latestHistory', fn($q) => $q->where('nStatus', $forCollection))
                 ->whereDoesntHave('collection')
                 ->get();
@@ -310,7 +310,11 @@ class DashboardService
         // ── Collection: transactions with a Collection (C) journal ──
         $collectionLinks = collect();
         if ($typeCollection !== '') {
-            $collectionLinks = CollectionLink::with(['transaction.client', 'jev.entries'])
+            $collectionLinks = CollectionLink::with([
+                'transaction.client',
+                'transaction.latestCompletedHistory',
+                'jev.entries',
+            ])
                 ->whereHas('jev', fn($q) => $q->where('cJEVLinkType', $typeCollection))
                 ->get()
                 ->filter(fn($link) => $link->transaction);
@@ -346,7 +350,9 @@ class DashboardService
                 isset($chosen[$txn->nTransactionId])
                     ? FormulaHelper::calculateTotalSellingPrice($chosen[$txn->nTransactionId])
                     : 0.0,
-                $retentionMap[$txn->nTransactionId] ?? 0.0
+                $retentionMap[$txn->nTransactionId] ?? 0.0,
+                // When it reached "For Collection" — the date the filter windows
+                $txn->latestHistory?->dtOccur
             ))
             ->values()
             ->all();
@@ -363,7 +369,9 @@ class DashboardService
                 return $this->collectionCardRow(
                     $link->transaction,
                     $amount,
-                    $retentionMap[$txnId] ?? 0.0
+                    $retentionMap[$txnId] ?? 0.0,
+                    // When the transaction itself was completed (103)
+                    $link->transaction->latestCompletedHistory?->dtOccur
                 );
             })
             ->values()
@@ -419,7 +427,8 @@ class DashboardService
     private function collectionCardRow(
         ?Transactions $txn,
         ?float $amount,
-        ?float $retention = null
+        ?float $retention = null,
+        ?string $date = null
     ): array {
         return [
             'id'             => $txn?->nTransactionId,
@@ -430,6 +439,8 @@ class DashboardService
             'cItemType'      => $txn?->cItemType,
             'retention'      => round($retention ?? 0, 2),
             'amount'         => round($amount ?? 0, 2),
+            // Full dtOccur — the frontend renders it through fmtDateTime
+            'date'           => $date,
         ];
     }
 

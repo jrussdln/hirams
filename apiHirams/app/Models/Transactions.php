@@ -76,6 +76,23 @@ class Transactions extends Model
             ->latestOfMany('dtOccur'); // fetch the latest history
     }
     /**
+     * The moment the transaction was marked "Transaction Completed" (103) —
+     * the latest history row written at that status. Used as the Collection
+     * card's filter date.
+     */
+    public function latestCompletedHistory()
+    {
+        $completed = (string) (array_search(
+            'Transaction Completed',
+            config('mappings.status_transaction', []),
+            true
+        ) ?: '103');
+
+        return $this->hasOne(TransactionHistory::class, 'nTransactionId')
+            ->where('nStatus', $completed)
+            ->latestOfMany('dtOccur');
+    }
+    /**
      * The Collection row that binds this transaction to its journal — the
      * JEV link lives on tblcollections, not on the transaction itself.
      */
