@@ -129,7 +129,7 @@ function NotificationMenu() {
                 boxShadow: `0 0 0 2px ${colors.slateOuterBgSolid}`,
               }}
             >
-              {feed.unreadCount > 9 ? "9+" : feed.unreadCount}
+              {feed.unreadCount > 99 ? "99+" : feed.unreadCount}
             </Box>
           )}
         </button>

@@ -625,6 +625,11 @@ export default function useTransaction() {
               ? txnCode === String(forPurchaseKey)
               : txnCode === String(forPurchaseKey) &&
                   String(t.creator_id) === String(userId);
+          case forCollectionKey:
+            return isProcurementTL
+              ? txnCode === String(forCollectionKey)
+              : txnCode === String(forCollectionKey) &&
+                  String(t.creator_id) === String(userId);
           default:
             return false;
         }
@@ -638,7 +643,8 @@ export default function useTransaction() {
         if (
           selectedStatusCode === itemsVerificationKey ||
           selectedStatusCode === canvasVerificationKey ||
-          selectedStatusCode === forPurchaseKey
+          selectedStatusCode === forPurchaseKey ||
+          selectedStatusCode === forCollectionKey
         )
           return txnCode === String(selectedStatusCode);
         return (
@@ -689,6 +695,7 @@ export default function useTransaction() {
     procPriceApprovalKey,
     procPriceApprovedKey,
     forPurchaseKey,
+    forCollectionKey,
     isProcurementTL,
   ]);
 

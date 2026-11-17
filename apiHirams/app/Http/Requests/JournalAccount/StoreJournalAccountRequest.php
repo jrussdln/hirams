@@ -19,6 +19,7 @@ class StoreJournalAccountRequest extends FormRequest
             'strAccountName'   => 'required|string|max:50',
             'nParentAccountId' => 'nullable|integer|exists:tbljournalaccounts,nJournalAccountId',
             'cAccountType'     => 'nullable|in:C,S,F,E',
+            'bAllowNegative'   => 'nullable|boolean',
         ];
     }
 }

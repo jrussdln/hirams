@@ -71,6 +71,8 @@ class JournalAccountService
             'nParentAccountId' => $request->nParentAccountId,
             'nRecordId'        => $this->resolveRecordId($request),
             'cAccountType'     => $request->cAccountType,
+            // DB column default is 1 — a request that omits the flag keeps it.
+            'bAllowNegative'   => $request->boolean('bAllowNegative', true),
         ]);
         broadcast(new JournalAccountUpdated('created', $journalAccount->nJournalAccountId))->toOthers();
 
@@ -85,6 +87,8 @@ class JournalAccountService
             'nParentAccountId' => $request->nParentAccountId,
             'nRecordId'        => $this->resolveRecordId($request),
             'cAccountType'     => $request->cAccountType,
+            // DB column default is 1 — a request that omits the flag keeps it.
+            'bAllowNegative'   => $request->boolean('bAllowNegative', true),
         ]);
         broadcast(new JournalAccountUpdated('updated', $journalAccount->nJournalAccountId))->toOthers();
 

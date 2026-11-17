@@ -14,6 +14,7 @@ import DirectCostModal from "./modal/DirectCostModal";
 import ATransactionInfoModal from "./modal/TransactionInfoModal";
 import ArchiveModal from "../archive/modal/ArchiveModal";
 import SyncMenu from "../../../components/ui/form/SyncMenu";
+import OfficerCell from "./components/OfficerCell";
 import PriceChangeRequestModal from "./modal/PriceChangeRequestModal";
 import PurchaseOptionAPI from "../../../api/endpoints/purchase-option.api";
 import { getDueDateColor } from "../../../utils/helpers/dueDateColor";
@@ -435,6 +436,8 @@ function buildActions(row, opts) {
       <EmojiEvents />
     ) : forPurchaseKey?.includes(statusCode) ? (
       <ShoppingCart />
+    ) : isForCollection ? (
+      <PriceCheck />
     ) : (
       <Visibility />
     );
@@ -457,7 +460,9 @@ function buildActions(row, opts) {
                     ? "View Approved Pricing"
                     : forPurchaseKey?.includes(statusCode)
                       ? "For Purchase"
-                      : "View Transaction";
+                      : isForCollection
+                        ? "For Collection"
+                        : "View Transaction";
 
     const handleView = (e) => {
       e.stopPropagation();
@@ -655,6 +660,8 @@ function buildActions(row, opts) {
       <AssignmentInd />
     ) : forPurchaseKey?.includes(statusCode) ? (
       <ShoppingCart />
+    ) : forCollectionKey?.includes(statusCode) ? (
+      <PriceCheck />
     ) : (
       <Visibility />
     );
@@ -675,7 +682,9 @@ function buildActions(row, opts) {
                   ? "Verify Canvas"
                   : forPurchaseKey?.includes(statusCode)
                     ? "For Purchase"
-                    : "View Transaction";
+                    : forCollectionKey?.includes(statusCode)
+                      ? "For Collection"
+                      : "View Transaction";
 
     return (
       <div className="flex justify-center gap-0">
@@ -1049,7 +1058,88 @@ function TransactionView(props) {
     .filter(Boolean)
     .includes(selectedStatusCode);
   const columns = useMemo(
-    () => [
+    () => {
+      // The AO cell — the officer's name over their date line: the delivery
+      // date on the For Purchase stages, the AO due date everywhere else.
+      // Shared by the AO column (purchase stages) and the For Collection
+      // view's AO column, so both read identically.
+      const renderAODetail = (row) => {
+        // For Purchase/Delivery the AO is waiting on the goods to
+        // ship, not on a due date — so the second line reads the
+        // delivery date and the standalone Delivery column is gone.
+        const isForPurchaseStage = Boolean(
+          forPurchaseKey && selectedStatusCode === forPurchaseKey,
+        );
+        const hasAo = Boolean(row.aoName?.trim());
+        const hasSecond = isForPurchaseStage
+          ? Boolean(row.dtDelivery)
+          : Boolean(row.dtAODueDate);
+        const lineClass =
+          "truncate uppercase tracking-wide text-[0.625rem] font-medium leading-tight";
+
+        // Nothing to say — one placeholder beats two stacked dashes.
+        if (!hasAo && !hasSecond) {
+          return (
+            <span
+              className="text-xs font-light italic"
+              style={{ color: colors.textMuted }}
+            >
+              {NOT_YET_ASSIGNED}
+            </span>
+          );
+        }
+
+        const secondDate = isForPurchaseStage
+          ? row.dtDelivery
+          : row.dtAODueDate;
+        // red / orange when the date is overdue or close, null when
+        // there is no date (or the date is comfortably in the future).
+        const secondColor = getDueDateColor(secondDate);
+        // ONE grid holding both rows, not a grid per row: a shared
+        // grid resolves the label column to the width of the widest
+        // label, so both labels start on the same edge and the
+        // values line up with each other.
+        const valueClass = "text-left truncate";
+
+        return (
+          <div className="flex min-w-0 justify-start">
+            <div className={`${OFFICER_GRID_CLASS} ${lineClass}`}>
+              <LabelIcon icon={PersonOutline} title="AO" />
+              <span className={valueClass}>
+                {hasAo ? row.aoName : "—"}
+              </span>
+              {isForPurchaseStage ? (
+                <LabelIcon
+                  icon={LocalShipping}
+                  title="Delivery"
+                  className="-mt-0.5"
+                />
+              ) : (
+                <LabelIcon icon={Event} title="Due" className="-mt-0.5" />
+              )}
+              <span
+                className={`${valueClass} -mt-0.5`}
+                style={{
+                  // No date ⇒ the muted placeholder colour, exactly
+                  // like the Procurement Officer's "Open date". Only a
+                  // real date can turn red/orange.
+                  color: hasSecond
+                    ? (secondColor ?? "inherit")
+                    : colors.textMuted,
+                  fontWeight: secondColor ? 600 : 500,
+                }}
+              >
+                {hasSecond
+                  ? isForPurchaseStage
+                    ? row.deliveryDate
+                    : row.aoDueDate
+                  : OPEN_DATE}
+              </span>
+            </div>
+          </div>
+        );
+      };
+      return [
       // Here the code has no meaning of its own — it only identifies the row
       // the title belongs to — so it rides above the title instead of
       // taking a column that would sit half empty beside it.
@@ -1224,82 +1314,7 @@ function TransactionView(props) {
               label: "AO",
               align: "left",
               xs: 1.5,
-              render: (_, row) => {
-                // For Purchase/Delivery the AO is waiting on the goods to
-                // ship, not on a due date — so the second line reads the
-                // delivery date and the standalone Delivery column is gone.
-                const isForPurchaseStage = Boolean(
-                  forPurchaseKey && selectedStatusCode === forPurchaseKey,
-                );
-                const hasAo = Boolean(row.aoName?.trim());
-                const hasSecond = isForPurchaseStage
-                  ? Boolean(row.dtDelivery)
-                  : Boolean(row.dtAODueDate);
-                const lineClass =
-                  "truncate uppercase tracking-wide text-[0.625rem] font-medium leading-tight";
-
-                // Nothing to say — one placeholder beats two stacked dashes.
-                if (!hasAo && !hasSecond) {
-                  return (
-                    <span
-                      className="text-xs font-light italic"
-                      style={{ color: colors.textMuted }}
-                    >
-                      {NOT_YET_ASSIGNED}
-                    </span>
-                  );
-                }
-
-                const secondDate = isForPurchaseStage
-                  ? row.dtDelivery
-                  : row.dtAODueDate;
-                // red / orange when the date is overdue or close, null when
-                // there is no date (or the date is comfortably in the future).
-                const secondColor = getDueDateColor(secondDate);
-                // ONE grid holding both rows, not a grid per row: a shared
-                // grid resolves the label column to the width of the widest
-                // label, so both labels start on the same edge and the
-                // values line up with each other.
-                const valueClass = "text-left truncate";
-
-                return (
-                  <div className="flex min-w-0 justify-start">
-                  <div className={`${OFFICER_GRID_CLASS} ${lineClass}`}>
-                      <LabelIcon icon={PersonOutline} title="AO" />
-                      <span className={valueClass}>
-                        {hasAo ? row.aoName : "—"}
-                      </span>
-                      {isForPurchaseStage ? (
-                        <LabelIcon
-                          icon={LocalShipping}
-                          title="Delivery"
-                          className="-mt-0.5"
-                        />
-                      ) : (
-                        <LabelIcon icon={Event} title="Due" className="-mt-0.5" />
-                      )}
-                      <span
-                        className={`${valueClass} -mt-0.5`}
-                        style={{
-                          // No date ⇒ the muted placeholder colour, exactly
-                          // like the Procurement Officer's "Open date". Only a
-                          // real date can turn red/orange.
-                          color: hasSecond
-                            ? (secondColor ?? "inherit")
-                            : colors.textMuted,
-                          fontWeight: secondColor ? 600 : 500,
-                        }}
-                      >
-                        {hasSecond
-                          ? isForPurchaseStage
-                            ? row.deliveryDate
-                            : row.aoDueDate
-                          : OPEN_DATE}
-                      </span>
-                    </div>
-                  </div>
-                );
-              },
+              render: (_, row) => renderAODetail(row),
             },
           ]
         : []),
@@ -1370,9 +1385,9 @@ function TransactionView(props) {
           ? [
               {
                 key: "collectionAmount",
-                label: "Collection Amount",
+                label: "Amount",
                 align: "right",
-                xs: 2.5,
+                xs: 1.5,
                 render: (_, row) => {
                   const data = txnCollectibleMap[row.id];
                   if (!data)
@@ -1402,6 +1417,21 @@ function TransactionView(props) {
                   );
                 },
               },
+              // The collection view has its own OFFICER cell — who owns the
+              // transaction (AO) over who raised it (PO); no date line here.
+              {
+                key: "aoName",
+                label: "OFFICER",
+                align: "left",
+                xs: 1,
+                render: (_, row) => (
+                  <OfficerCell
+                    aoName={row.aoName}
+                    createdBy={row.createdBy}
+                    mutedColor={colors.textMuted}
+                  />
+                ),
+              },
             ]
           : isCreatedByColumnVisible && !hideCreatedCol
             ? [{ key: "createdBy", label: "Created", xs: 1 }]
@@ -1419,7 +1449,8 @@ function TransactionView(props) {
             },
           ]
         : []),
-    ],
+      ];
+    },
     [
       isAssignedToColumnVisible,
       isCreatedByColumnVisible,

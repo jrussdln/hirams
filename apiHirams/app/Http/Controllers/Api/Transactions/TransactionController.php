@@ -161,7 +161,8 @@ class TransactionController extends ApiController
             $priceApprovedCode = $procCodes[7]; // '330'
 
             $forPurchaseCode = $procCodes[8] ?? null; // '340' For Purchase
-            $realStatuses = array_filter([$draftCode, $finalizeCode, $priceSettingCode, $priceFinalCode, $priceApprovalCode, $priceApprovedCode, $forPurchaseCode]);
+            $forCollectionCode = $procCodes[9] ?? null; // '350' For Collection
+            $realStatuses = array_filter([$draftCode, $finalizeCode, $priceSettingCode, $priceFinalCode, $priceApprovalCode, $priceApprovedCode, $forPurchaseCode, $forCollectionCode]);
 
             $transactions = Transactions::with(['company', 'client', 'user', 'latestHistory', 'histories.user'])
                 ->whereHas('latestHistory', function ($q) use ($realStatuses) {
@@ -197,7 +198,7 @@ class TransactionController extends ApiController
                     return [2, PHP_INT_MAX];         // no date — absolute last
                 })
                 ->values()
-                ->map(function ($txn) use ($userId, $request, $draftCode, $finalizeCode, $priceSettingCode, $priceFinalCode, $forPurchaseCode) {
+                ->map(function ($txn) use ($userId, $request, $draftCode, $finalizeCode, $priceSettingCode, $priceFinalCode, $forPurchaseCode, $forCollectionCode) {
                     $latest = $txn->latestHistory;
 
                     // Determine the creator of this transaction (the user who first created it at status 100)
@@ -222,6 +223,12 @@ class TransactionController extends ApiController
 
                         // For Purchase: non-TL can only see their own
                         if ($latest->nStatus == ($forPurchaseCode ?? '') && !$isProcTL && !$isMyTransaction) {
+                            return null;
+                        }
+
+                        // For Collection: same rule — non-TL sees only what
+                        // they created, the TL sees everything in the bucket
+                        if ($latest->nStatus == ($forCollectionCode ?? '') && !$isProcTL && !$isMyTransaction) {
                             return null;
                         }
 
@@ -330,9 +337,12 @@ class TransactionController extends ApiController
             $canvasFinalCode     = $aotlKeys[5]; // '240'
             // $canvasVerifCode  = $aotlKeys[6]; // '245' — virtual, never in DB
             $forPurchaseCode     = $aotlKeys[7]; // '340' — for purchase, AOTL only
+            // '350' — for collection. Same key position works for both maps:
+            // aotl_status adds it at index 8, ao_status at index 7.
+            $forCollectionCode   = $aotlKeys[8] ?? null; // '350'
 
             // Real DB statuses for AO/AOTL scope
-            $realStatuses = [$forAssignmentCode, $itemsMgmtCode, $itemsFinalCode, $forCanvasCode, $canvasFinalCode,  $forPurchaseCode];
+            $realStatuses = [$forAssignmentCode, $itemsMgmtCode, $itemsFinalCode, $forCanvasCode, $canvasFinalCode,  $forPurchaseCode, $forCollectionCode];
 
             // To this:
             $transactions = Transactions::with(['company', 'client', 'user', 'latestHistory', 'histories.user'])
@@ -376,7 +386,7 @@ class TransactionController extends ApiController
                     return [2, PHP_INT_MAX];         // no date — absolute last
                 })
                 ->values()
-                ->map(function ($txn) use ($userId, $isAOTL, $itemsFinalCode, $canvasFinalCode, $forPurchaseCode) {
+                ->map(function ($txn) use ($userId, $isAOTL, $itemsFinalCode, $canvasFinalCode, $forPurchaseCode, $forCollectionCode) {
                     $latest = $txn->latestHistory;
 
                     // ── ADD: resolve creator from the first status (100 = Draft) ─────
@@ -399,6 +409,9 @@ class TransactionController extends ApiController
                             $displayStatus = '245';
                         } elseif ($latest->nStatus == $forPurchaseCode && !$isAOTL && !$isAssignedAO) {
                             // AO can only see For Purchase if assigned to them
+                            return null; // filter out below
+                        } elseif ($latest->nStatus == ($forCollectionCode ?? '') && !$isAOTL && !$isAssignedAO) {
+                            // AO can only see For Collection if assigned to them
                             return null; // filter out below
                         }
                     }

@@ -867,8 +867,11 @@ function LedgerPanel({
     return cache;
   }, [account, children, flat, entriesByAccount]);
 
-  const formatBalance = (net) => {
-    const isNeg = net < 0;
+  // An account's bAllowNegative = 0 → its row balance never reads negative:
+  // a -500 total prints 500 (sign dropped, positive colour), since the
+  // account has declared its balance must not go negative.
+  const formatBalance = (net, allowNegative = true) => {
+    const isNeg = allowNegative && net < 0;
     const value = Math.abs(net).toLocaleString(undefined, {
       minimumFractionDigits: 2,
     });
@@ -1148,13 +1151,21 @@ function LedgerPanel({
                     to: 0,
                     net: 0,
                   };
+                  // Same rule the row balances follow: an account with
+                  // bAllowNegative = 0 shows a negative total as its
+                  // absolute value (-500 reads 500, positive colour).
+                  const allowNegative =
+                    Number(account?.bAllowNegative ?? 1) !== 0;
                   const cols = [
                     { label: "From", value: from / 100, color: colors.red.text },
                     { label: "To", value: to / 100, color: colors.green.text },
                     {
                       label: "Total",
-                      value: net,
-                      color: net < 0 ? colors.red.text : colors.green.text,
+                      value: allowNegative ? net : Math.abs(net),
+                      color:
+                        net < 0 && allowNegative
+                          ? colors.red.text
+                          : colors.green.text,
                     },
                   ];
                   return (
@@ -1546,9 +1557,15 @@ function LedgerPanel({
                             to: 0,
                             net: 0,
                           };
+                          // The row balance sits to the left of the fold
+                          // toggle — an account with bAllowNegative = 0
+                          // shows a negative total as its absolute value
+                          // (-500 reads 500, in the positive colour).
+                          const allowNegative =
+                            Number(node?.bAllowNegative ?? 1) !== 0;
                           // Zero prints explicitly: a balance of 0.00 is a
                           // fact about the account, not noise.
-                          const { text } = formatBalance(net);
+                          const { text } = formatBalance(net, allowNegative);
                           return (
                             <Box
                               sx={{
@@ -1584,7 +1601,7 @@ function LedgerPanel({
                                   fontWeight: 700,
                                   ...NUM_FONT,
                                   color:
-                                    net > 0
+                                    net > 0 || (net < 0 && !allowNegative)
                                       ? colors.green.text
                                       : net < 0
                                         ? colors.red.text

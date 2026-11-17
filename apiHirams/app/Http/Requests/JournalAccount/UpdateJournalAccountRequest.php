@@ -24,6 +24,7 @@ class UpdateJournalAccountRequest extends FormRequest
             'strAccountName'   => 'required|string|max:50',
             'nParentAccountId' => 'nullable|integer|exists:tbljournalaccounts,nJournalAccountId',
             'cAccountType'     => 'nullable|in:C,S,P,F,E',
+            'bAllowNegative'   => 'nullable|boolean',
         ];
     }
 }

@@ -232,6 +232,10 @@ export default function CollectionView(props) {
     isArchiveView,
   } = props;
 
+  // Procurement (Officer & TL) and Account Officers (AO & AOTL) are
+  // read-only viewers on the For Collection page — no right-side actions.
+  const isCollectionViewer = isProcurement || isAccountOfficer;
+
   const [unarchiveOpen, setUnarchiveOpen] = useState(false);
 
   if (!transaction) return null;
@@ -325,6 +329,7 @@ export default function CollectionView(props) {
         />
       }
       footerRActions={
+        isCollectionViewer ? null : (
         <>
          {!isCompareActive && isAssignedToMe && (
             <BaseButton
@@ -413,6 +418,7 @@ export default function CollectionView(props) {
             />
           )}
         </>
+        )
       }
       loading={itemsLoading}
     >

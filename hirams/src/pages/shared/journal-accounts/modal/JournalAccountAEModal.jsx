@@ -284,6 +284,7 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
     nParentAccountId: "",
     cAccountType: "",
     nRecordId: "",
+    bAllowNegative: true,
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -305,6 +306,9 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
           nParentAccountId: initialData.nParentAccountId ?? "",
           cAccountType: type,
           nRecordId: initialData.nRecordId ?? "",
+          // The API ships the column cast to boolean; a missing / NULL value
+          // falls back to the column's own default (1 = allowed).
+          bAllowNegative: Number(initialData.bAllowNegative ?? 1) !== 0,
         });
       } else if (isAddChildMode) {
         setFormData({
@@ -312,6 +316,7 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
           nParentAccountId: initialData.nParentAccountId,
           cAccountType: "",
           nRecordId: "",
+          bAllowNegative: true,
         });
       } else {
         setFormData({
@@ -319,6 +324,7 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
           nParentAccountId: "",
           cAccountType: "",
           nRecordId: "",
+          bAllowNegative: true,
         });
       }
       setErrors({});
@@ -425,6 +431,11 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
+  // Switches write a boolean, not a string value.
+  const handleSwitchChange = (e) => {
+    const { name, checked } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: checked }));
+  };
   // Picking a client / supplier links it and fills the account name
   const handlePickRecord = (record) => {
     setFormData((prev) => ({
@@ -468,6 +479,7 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
           cAccountType: isUnderFund ? null : formData.cAccountType || null,
           nRecordId:
             isLinkType && formData.nRecordId ? formData.nRecordId : null,
+          bAllowNegative: formData.bAllowNegative ? 1 : 0,
         };
         if (isEditMode) {
           await JournalAccountAPI.update(initialData.id, payload);
@@ -523,7 +535,9 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
       name: "nParentAccountId",
       label: "Parent Account",
       type: "select",
-      xs: 12,
+      // Parent Account and Account Type share one row; the parent keeps the
+      // full width whenever the type field is hidden (fund-parented accounts).
+      xs: isUnderFund ? 12 : 6,
       placeholder: parentAccountsLoading
         ? "Loading…"
         : "None — this will be a parent account",
@@ -537,7 +551,7 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
             name: "cAccountType",
             label: "Account Type",
             type: "select",
-            xs: 12,
+            xs: 6,
             placeholder: "Default — standard account",
             options: [
               { value: "", label: "Default — standard account" },
@@ -547,6 +561,14 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
             ],
           },
         ]),
+  ];
+
+  const switches = [
+    {
+      name: "bAllowNegative",
+      label: "Allow Negative Balance",
+      xs: 12,
+    },
   ];
 
   return (
@@ -564,9 +586,11 @@ function JournalAccountAEModal({ open, onClose, initialData = null, onSaved }) {
       <Box sx={{ mt: 1 }}>
         <FormGrid
           fields={fields}
+          switches={switches}
           formData={formData}
           errors={errors}
           handleChange={handleChange}
+          handleSwitchChange={handleSwitchChange}
           onLastFieldTab={handleSave}
           autoFocus={true}
         />

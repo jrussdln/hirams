@@ -15,10 +15,12 @@ class JournalAccount extends Model
         'nParentAccountId',
         'nRecordId',      // C = client id, S = supplier id
         'cAccountType',   // C = client, S = supplier, F = fund, E = ...
+        'bAllowNegative', // 1 = the ledger row balance may go negative, 0 = a negative balance displays as its absolute value
     ];
 
     protected $casts = [
         'bIsFund' => 'boolean',
+        'bAllowNegative' => 'boolean',
     ];
 
     protected $appends = ['display_name'];

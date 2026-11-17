@@ -262,9 +262,10 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
           case priceFinalizeKey:
           case procPriceApprovalKey:
           case forPurchaseKey:
+          case forCollectionKey:
             counts[code] = transactions.filter((t) => {
               if (txnCode(t) !== code) return false;
-              if ([priceSettingKey, forPurchaseKey].includes(code))
+              if ([priceSettingKey, forPurchaseKey, forCollectionKey].includes(code))
                 return isProcurementTL || isMine(t);
               return isMine(t);
             }).length;
@@ -303,6 +304,7 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
           case itemsVerificationKey:
           case canvasVerificationKey:
           case forPurchaseKey:
+          case forCollectionKey:
             counts[code] = transactions.filter(
               (t) => txnCode(t) === code,
             ).length;
@@ -320,6 +322,7 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
         case forCanvasKey:
         case canvasFinalizeKey:
         case forPurchaseKey:
+        case forCollectionKey:
           counts[code] = transactions.filter(
             (t) => txnCode(t) === code && isMe(t),
           ).length;
@@ -359,6 +362,7 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
     procPriceApprovalKey,
     procPriceApprovedKey,
     forPurchaseKey,
+    forCollectionKey,
   ]);
 
   const dueCounts = useMemo(() => {

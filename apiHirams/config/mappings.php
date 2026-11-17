@@ -122,6 +122,7 @@ return [
         '320' => 'Price Approval', //it filters and fetch transactions that code = 320 the created_by is equal to the current nUserID, and displays count
         '330' => 'Awaiting Award', //7
         '340' => 'For Purchase/Delivery', //8
+        '350' => 'For Collection', //9 - it filters and fetch transactions that code = 350 the created_by is equal to the current nUserID (TL sees all), and displays count
     ],
     'ao_status' => [ // this is for account officer
         '210' => 'Items Management', //it filters and fetch transactions that code = 210 the created_by is equal to the current nUserID, and displays count
@@ -131,6 +132,7 @@ return [
         '240' => 'Canvas Finalized', //it filters and fetch transactions that code = 240 and the created_by is equal to the current nUserID, and displays count
         '245' => 'Canvas Verification', //it filters and fetch transactions that code = 245 and the created_by is not equal to the current nUserID, and displays count
         '340' => 'For Purchase/Delivery', //it filters and fetch transactions that code = 340 the created_by is equal to the current nUserID, and displays count
+        '350' => 'For Collection', //it filters and fetch transactions that code = 350 the nAssignedAO is equal to the current nUserID (AOTL sees all), and displays count
 
     ],
     'aotl_status' => [ //this is for account officer team leader
@@ -142,6 +144,7 @@ return [
         '240' => 'Canvas Finalized', //it filters and fetch transactions that code = 240 and the created_by is equal to the current nUserID, and displays count
         '245' => 'Canvas Verification', //it filters and fetch transactions that code = 245 and the created_by is not equal to the current nUserID, and displays count
         '340' => 'For Purchase/Delivery', //it filters and fetch transactions that code = 340 the created_by is equal to the current nUserID, and displays count
+        '350' => 'For Collection', //it filters and fetch transactions that code = 350 the created_by is equal to the current nUserID, and displays count
     ],
     'finance_status' => [ //this is for finance officer
      '340' => 'For Purchase/Delivery',
