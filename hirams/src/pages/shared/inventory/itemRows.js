@@ -25,6 +25,14 @@ export const mapInventoryItems = (items = []) =>
     _raw: i,
     id: i.nInventoryId,
     nInventoryId: i.nInventoryId,
+    // The ITEM NAME the batch was bought as — the transaction item's own
+    // strName (the API eager-loads purchaseOption.transactionItem; both
+    // relation spellings are read, same trick txnItemOf uses). The Items
+    // table prints it UPPERCASE under the brand · model.
+    strItemName:
+      i.purchaseOption?.transactionItem?.strName ??
+      i.purchaseOption?.transaction_item?.strName ??
+      "",
     // "·" (U+00B7 middle dot) sits on the x-height, so it reads as a centred
     // separator between brand and model where a "|" looked like a table edge.
     strBrandModel:

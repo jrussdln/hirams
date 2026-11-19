@@ -50,7 +50,6 @@ export default function useClient() {
   );
   const {
     //Mappings
-    userTypes,
     clientstatus,
     loading: mappingLoading,
     //Keys
@@ -72,6 +71,29 @@ export default function useClient() {
       setItem(SESSION_KEY, activeStatusKey);
     }
   }, [mappingLoading, activeStatusKey]);
+
+  // Deep link from a notification: /client?status=P selects that tab.
+  // The param is removed after applying so the URL stays clean.
+  useEffect(() => {
+    if (mappingLoading) return;
+
+    const requested = searchParams.get("status");
+    if (!requested) return;
+
+    const code = requested.toUpperCase();
+    if (clientstatus?.[code]) {
+      setSelectedStatusCode(code);
+      setItem(SESSION_KEY, code);
+      setPage(0);
+      window.dispatchEvent(
+        new CustomEvent("client_status_changed", { detail: { code } }),
+      );
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("status");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, mappingLoading, clientstatus]);
 
   // Sync status from sidebar
   useEffect(() => {

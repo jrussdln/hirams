@@ -193,12 +193,23 @@ export default function useJournalAccounts() {
     // JEV entries change → the Account Report panel must stay in sync
     window.addEventListener("jev_entry_data_updated", handleUpdated);
     window.addEventListener("jev_entry_data_deleted", handleUpdated);
+    // A JEV write from anywhere (title / date / status — JevViewPanel
+    // dispatches jev_data_updated after JevAPI.update, JevAPI's own
+    // deletes raise jev_data_deleted) must reach this page too: the
+    // ledger's Title column reads the entries' nested jev.strTitle, and
+    // without this refetch it kept showing the OLD title after the
+    // journal was renamed on /jev-update or the embedded panel. A deleted
+    // journal's lines must not linger in the ledger either.
+    window.addEventListener("jev_data_updated", handleUpdated);
+    window.addEventListener("jev_data_deleted", handleUpdated);
 
     return () => {
       window.removeEventListener("journal_account_data_deleted", handleDeleted);
       window.removeEventListener("journal_account_data_updated", handleUpdated);
       window.removeEventListener("jev_entry_data_updated", handleUpdated);
       window.removeEventListener("jev_entry_data_deleted", handleUpdated);
+      window.removeEventListener("jev_data_updated", handleUpdated);
+      window.removeEventListener("jev_data_deleted", handleUpdated);
     };
   }, []);
   // ── Computed Values ───────────────────────────────────────────────────

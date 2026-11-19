@@ -511,6 +511,11 @@ export default function ItemsTable({
   // renders every PO code as plain text. The JEV viewer turns it off for
   // finance; on the PO itself management keeps the jump.
   poNavigable = true,
+  // Prints the ITEM NAME (uppercase) under the brand · model. The JEV
+  // hosts always show it; the inventory page only on its Pending status
+  // (the drill-down of the Pending JEV workspace) — other tabs stay as
+  // they were.
+  showItemName = false,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -885,6 +890,28 @@ export default function ItemsTable({
                     >
                       {row.strBrandModel}
                     </Typography>
+                    {/* The ITEM NAME the batch was bought as — uppercase,
+                      between the brand · model and the date. Only hosts
+                      that ask for it paint it (showItemName). */}
+                    {showItemName && row.strItemName && (
+                      <Typography
+                        title={row.strItemName}
+                        sx={{
+                          fontSize: "0.55rem",
+                          fontWeight: 600,
+                          color: colors.gray.textSecondary,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.03em",
+                          lineHeight: 1.1,
+                          mt: 0.15,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {row.strItemName}
+                      </Typography>
+                    )}
                     <Typography
                       sx={{
                         fontSize: "0.58rem",

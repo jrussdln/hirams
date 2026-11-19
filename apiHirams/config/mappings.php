@@ -23,6 +23,11 @@ return [
         'X' => 'Account Officer TL', //5
         'F' => 'Finance Officer', //6
     ],
+    // Roles the frontend groups as isManagement. Client approval
+    // notifications are addressed to each of these roles.
+    'management_roles' => ['M', 'G'],
+    // Supplier approval is shared between Management and Finance.
+    'supplier_approval_roles' => ['M', 'F'],
     'default_user_type' => [
         'V' => 'User', //0
     ],
@@ -246,5 +251,9 @@ return [
     'notif_category' => [
         'A' => 'auth', //0
         'B' => 'account', //
+        'C' => 'client', //1
+        'D' => 'supplier', //
+        'E' => 'cart', //2
+        'F' => 'inventory', //
     ],
 ];

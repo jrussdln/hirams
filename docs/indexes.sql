@@ -102,9 +102,14 @@ ALTER TABLE `tblassignees`  ADD INDEX `idx_asg_nick`   (`strAssigneeNickName`);
 ALTER TABLE `tblassignees`  ADD INDEX `idx_asg_status` (`cStatus`);
 
 -- notifications
-ALTER TABLE `tblnotifications` ADD INDEX `idx_notif_user` (`nUserId`);
-ALTER TABLE `tblnotifications` ADD INDEX `idx_notif_read` (`bIsRead`);
-ALTER TABLE `tblnotifications` ADD INDEX `idx_notif_user_read` (`nUserId`, `bIsRead`);
+ALTER TABLE `tblnotifications` ADD INDEX `idx_user_feed` (`nUserId`, `dtNotifiedAt`);
+ALTER TABLE `tblnotifications` ADD INDEX `idx_audience_role` (`cAudience`, `cTargetRole`, `dtNotifiedAt`);
+ALTER TABLE `tblnotifications` ADD INDEX `idx_reference` (`strReferenceType`, `nReferenceId`);
+ALTER TABLE `tblnotifications` ADD INDEX `idx_created_by` (`nCreatedBy`);
+
+-- per-user notification read/dismiss state
+ALTER TABLE `tblnotificationreads` ADD UNIQUE INDEX `uq_notification_user` (`nNotificationId`, `nUserId`);
+ALTER TABLE `tblnotificationreads` ADD INDEX `idx_user_unread` (`nUserId`, `bIsRead`, `bIsDismissed`);
 
 -- supplier banks / contacts
 ALTER TABLE `tblsupplierbanks`    ADD INDEX `idx_sbank_supplier` (`nSupplierId`);

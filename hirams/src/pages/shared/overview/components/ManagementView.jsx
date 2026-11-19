@@ -17,7 +17,6 @@ import {
 } from "@mui/material";
 import { motion } from "framer-motion";
 import CountUp from "react-countup";
-import { useNavigate } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import ChartStructure from "../../../../components/ui/structure/ChartStructure";
@@ -54,8 +53,12 @@ import {
   ExpandLess,
   KeyboardArrowDown,
   QueryStatsOutlined,
+  WarningAmberRounded,
+  ChevronRight,
 } from "@mui/icons-material";
 import OverviewAPI from "../../../../api/endpoints/overview.api";
+import useAttentionItems from "../../../../hooks/useAttentionItems";
+import NeedsAttentionBanner from "./NeedsAttentionBanner";
 import { quickRange } from "../../../../components/ui/form/FilterDate.jsx";
 
 // ─── Data (dummy chart placeholders) ────────────────────────────────────────
@@ -211,6 +214,17 @@ const useColors = (c) => ({
   metricCompany: { color: c.metric.company.color, bg: c.metric.company.bg },
   metricClients: { color: c.metric.clients.color, bg: c.metric.clients.bg },
   metricSuppliers: { color: c.metric.suppliers.color, bg: c.metric.suppliers.bg },
+
+  // Needs Attention banner — the amber warn family
+  warn: {
+    bg: c.amber.warnBg,
+    border: c.amber.warnBorder,
+    text: c.amber.warnText,
+    hoverBg: c.amber.warnHoverBg,
+    surface: c.amber.surface,
+    signalBorder: c.amber.signalBorder,
+    signalText: c.amber.signalText,
+  },
 });
 
 function SectionHeader({ icon: Icon, title }) {
@@ -1265,8 +1279,10 @@ export default function ManagementView() {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const colors = useColors(getThemeColors(isDark));
-  const navigate = useNavigate();
-  const { transacstatus, loading: mappingLoading } = useKeysLabels();
+  const {
+    transacstatus,
+    loading: mappingLoading,
+  } = useKeysLabels();
 
   // ── LOCAL STORAGE CACHE ─────────────────────────────────────────────
   // Each widget seeds from its cache so a revisit renders instantly and
@@ -1436,6 +1452,16 @@ export default function ManagementView() {
       }));
   }, [transacstatus, mappingLoading]);
 
+  // ── NEEDS ATTENTION — clients, suppliers & carts still at "For Approval"
+  // The pill list lives in the shared useAttentionItems hook so the
+  // finance dashboard renders the exact same banner; the bell in the
+  // sidebar rings off the same numbers.
+  const attentionItems = useAttentionItems();
+
+  // The chime is NOT here anymore — it lives in the sidebar shell
+  // (SidebarContent) so it rings on every page, not just /dashboard.
+  // This view only renders the banner and its pill.
+
   const availableYears = useMemo(() => {
     const currentYear = new Date().getFullYear();
     let earliestYear = currentYear;
@@ -1455,6 +1481,10 @@ export default function ManagementView() {
 
   return (
     <div className="space-y-6">
+      {/* Needs Attention — only mounts when something actually needs a
+          human (e.g. clients waiting on approval); hidden otherwise. */}
+      <NeedsAttentionBanner items={attentionItems} theme={theme} />
+
       {/* Overview Metrics — commented out for now */}
       {/* <Grid container spacing={1.5}>
         {metrics.map((item, i) => (

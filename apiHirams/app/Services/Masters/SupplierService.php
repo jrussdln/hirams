@@ -68,6 +68,16 @@ class SupplierService extends CrudService
     }
 
     /**
+     * The status code that marks a supplier FOR APPROVAL.
+     */
+    public function forApprovalStatusCode(): string
+    {
+        $code = array_search('For Approval', config('mappings.status_user', []), true);
+
+        return $code !== false ? (string) $code : 'P';
+    }
+
+    /**
      * TRUE when the supplier still carries purchase options — such a
      * supplier cannot be deleted, it has to be transferred first.
      */

@@ -412,6 +412,10 @@ export default function PendingInventory({
       readonly={readonly}
       onRowClick={handleRowClick}
       sellingPrices={sellingPrices}
+      // Pending JEV status only — the item name under the brand · model
+      // is a Pending-tab affordance; the other inventory tabs stay as
+      // they were.
+      showItemName
     />
   );
 

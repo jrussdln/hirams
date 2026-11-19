@@ -11,6 +11,7 @@ import SidebarItem from "../../sidebar/SidebarItem";
 import SidebarSubmenu from "../../sidebar/SidebarSubmenu";
 import useKeysLabels from "../../../../../../../hooks/useKeysLabels.js";
 import InventoryAPI from "../../../../../../../api/endpoints/inventory.api.js";
+import { countPendingJevGroups } from "../../../../../../../utils/helpers/pendingJevGroups.js";
 import {
   getItem,
   setItem,
@@ -31,10 +32,19 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
     isProcurement, // Procurement Officer and TL alike
     isAO,
     isAOTL,
+    isManagement,
+    isFinanceOfficer,
     inventoryStatus,
     inventoryPendingKey,
     loading: mappingLoading,
   } = useKeysLabels();
+
+  // Pending JEV needs a decision — MANAGEMENT, FINANCE, and the
+  // ACCOUNT OFFICERS (a plain AO counts only the groups of transactions
+  // assigned to them; the team lead sees all). Other roles never see
+  // the alarm on the row.
+  const canActOnPendingJev =
+    isManagement || isFinanceOfficer || isAO || isAOTL;
 
   // Account Officers use the full inventory status (including Pending JEV).
   // Procurement uses the procurement list (without Pending JEV).
@@ -149,31 +159,16 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
 
   // ── Pending JEV badge — counts GROUPS, not items ───────────────────
   // Mirrors the Pending screen: per supplier (qty > 0) / client (qty < 0)
-  // WITHIN a company. A plain AO (not the team lead) only counts the
-  // groups of transactions ASSIGNED to them — same rule as the page.
+  // WITHIN a company — the shared counter in pendingJevGroups.js. A
+  // plain AO (not the team lead) only counts the groups of transactions
+  // ASSIGNED to them — same rule as the page.
   const pendingGroupCount = useMemo(() => {
     if (!pendingEntryCode) return 0;
     const aoScoped = isAO && !isAOTL && currentUserId != null;
-    const seen = new Set();
-    inventoryItems.forEach((i) => {
-      if (String(i.cStatus) !== pendingEntryCode) return;
-      const qty = Number(i.nQuantity ?? 0);
-      if (qty === 0) return;
-      if (aoScoped) {
-        // Laravel snake-cases relation keys in JSON ("transaction_item").
-        const txn =
-          i.purchaseOption?.transactionItem?.transaction ??
-          i.purchaseOption?.transaction_item?.transaction;
-        if (Number(txn?.nAssignedAO) !== Number(currentUserId)) return;
-      }
-      const scope = qty > 0 ? "supplier" : "client";
-      const name =
-        (scope === "supplier" ? i.strSupplierNickName : i.strClientNickName) ||
-        "—";
-      const company = i.strCompanyNickName || "—";
-      seen.add(`${scope}\u0000${name}\u0000${company}`);
-    });
-    return seen.size;
+    return countPendingJevGroups(
+      inventoryItems.filter((i) => String(i.cStatus) === pendingEntryCode),
+      { aoUserId: aoScoped ? currentUserId : undefined },
+    );
   }, [inventoryItems, pendingEntryCode, isAO, isAOTL, currentUserId]);
 
   if (mappingLoading) return null;
@@ -187,6 +182,11 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}
+        // While the status list is folded away, the parent row itself
+        // carries the alarm — a blinking triangle before the chevron
+        // (management and finance only). Open the section and the row
+        // calms — the Pending JEV sub-row takes over.
+        attentionWhenCollapsed={canActOnPendingJev && pendingGroupCount > 0}
       >
         {entries.length > 0 ? (
           entries.map(([code, label]) => (
@@ -202,6 +202,14 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
                     ).length
               }
               countLoading={countLoading}
+              // Inventory rows waiting for their JEV keep the blinking
+              // triangle on the row until one of the approvers acts —
+              // management and finance only.
+              attention={
+                canActOnPendingJev &&
+                String(code) === String(pendingEntryCode) &&
+                pendingGroupCount > 0
+              }
               onClick={() => handleSelect(String(code))}
             />
           ))

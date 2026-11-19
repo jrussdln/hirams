@@ -2,18 +2,23 @@ import React, { useMemo, useState } from "react";
 import { useTheme } from "@mui/material/styles";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowRightIcon from "@mui/icons-material/KeyboardArrowRight";
+import { WarningAmberRounded } from "@mui/icons-material";
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
 
 const useColors = (c) => ({
   label: c.gray.textDisabled,
   chevron: c.gray.textMuted,
   hoverOverlay: c.slate.hoverOverlay,
+  attentionIcon: c.amber.signalText,
 });
 
 /**
  * Section title. When `onToggle` is given, the title becomes a switch for
  * everything under it (chevron ▸ hidden / ▾ shown, choice is persisted by
  * useSectionToggle). Without it, it stays a plain label.
+ *
+ * `attention` — the section hides something that needs a human: a blinking
+ * triangle sits before its chevron until the section is opened again.
  */
 const SectionHeader = ({
   label,
@@ -21,6 +26,7 @@ const SectionHeader = ({
   onToggle,
   collapsed,
   forceExpanded,
+  attention = false,
 }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -72,6 +78,17 @@ const SectionHeader = ({
           style={{ color: c.chevron }}
           aria-hidden="true"
         >
+          {/* The blinking alarm sits at the RIGHT, immediately before
+              the toggle icon. */}
+          {attention && (
+            <WarningAmberRounded
+              sx={{
+                fontSize: 14,
+                color: c.attentionIcon,
+                mr: 0.25,
+              }}
+            />
+          )}
           {open ? (
             <KeyboardArrowDownIcon sx={{ fontSize: 14 }} />
           ) : (

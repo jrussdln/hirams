@@ -79,15 +79,26 @@ export default function useNotifications({ fetchOnMount = true } = {}) {
   /* Live sync — the backend broadcasts notification.updated on every
      write (created / read / read_all / deleted) through the
      notifications channel (RealtimeProvider → notification_data_updated
-     here). Events for another user are ignored; for our user the feed
-     refetches once (the in-flight promise de-dupes across instances). */
+     here). Events for another user are ignored; role-targeted creates
+     are ignored unless the role matches; all-user creates refetch for
+     everyone. The feed refetches once (the in-flight promise de-dupes
+     across instances). */
   useEffect(() => {
     const onDataUpdated = (e) => {
       const me = getItem("user", {});
-      const userId = e.detail?.userId;
-      if (userId != null && me?.nUserId != null
-        && String(userId) !== String(me.nUserId)) {
-        return;
+      const { userId, audience, targetRole } = e.detail || {};
+
+      if (userId != null) {
+        if (me?.nUserId != null
+          && String(userId) !== String(me.nUserId)) {
+          return;
+        }
+      } else if (audience === "R") {
+        const myRole = me?.cUserType || getItem("role");
+        if (!myRole
+          || String(targetRole).toUpperCase() !== String(myRole).toUpperCase()) {
+          return;
+        }
       }
       fetchAll();
     };

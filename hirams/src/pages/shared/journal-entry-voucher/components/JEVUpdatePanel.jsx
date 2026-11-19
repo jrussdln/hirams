@@ -116,6 +116,9 @@ export default function JEVUpdatePanel({
         // — management only (finance reads plain text, same as the PO
         // card above).
         onBrandClick={isManagement ? openInventoryRowTransaction : undefined}
+        // The ITEM NAME prints under the brand · model — every JEV host
+        // shows it (the inventory page scopes it to its Pending status).
+        showItemName
       />
     ) : null;
 

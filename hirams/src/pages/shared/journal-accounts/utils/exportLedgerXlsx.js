@@ -233,8 +233,7 @@ export const exportLedgerXlsx = ({
       ]);
     });
 
-    // Block total. The block's net follows THIS account's bAllowNegative —
-    // 0 = the total prints its absolute value (-500 reads 500), matching
+    // Block total. The block's net always keeps its real sign, matching
     // the row balance the ledger panel shows for the account.
     const blockFrom = sorted.reduce(
       (s, e) => s + Math.min(Number(e.dAmount) || 0, 0),
@@ -247,19 +246,14 @@ export const exportLedgerXlsx = ({
     grand.from += blockFrom;
     grand.to += blockTo;
     grand.net += running;
-    const blockAllowNegative = Number(node?.bAllowNegative ?? 1) !== 0;
-    const blockNet = blockAllowNegative ? running : Math.abs(running);
-    aoa.push(["TOTAL", "", "", blockFrom, blockTo, blockNet]);
+    aoa.push(["TOTAL", "", "", blockFrom, blockTo, running]);
     aoa.push([]); // blank spacer between blocks
   });
 
-  // GRAND TOTAL over every block the report holds. The reported account's
-  // own bAllowNegative decides whether the grand balance keeps its sign —
+  // GRAND TOTAL over every block the report holds — the real signed net,
   // same rule the violet banner's Total on screen follows.
   if (grand.from || grand.to || grand.net) {
-    const accountAllowNegative = Number(account?.bAllowNegative ?? 1) !== 0;
-    const grandNet = accountAllowNegative ? grand.net : Math.abs(grand.net);
-    aoa.push(["GRAND TOTAL", "", "", grand.from, grand.to, grandNet]);
+    aoa.push(["GRAND TOTAL", "", "", grand.from, grand.to, grand.net]);
   }
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);

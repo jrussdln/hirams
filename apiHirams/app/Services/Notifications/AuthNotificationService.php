@@ -231,7 +231,11 @@ class AuthNotificationService
     private function record(array $attributes): void
     {
         try {
-            $notification = Notification::create($attributes);
+            // Auth events are always addressed to one user; cTargetRole
+            // stays null and the shared readers are never involved.
+            $notification = Notification::create(array_merge([
+                'cAudience' => 'U',
+            ], $attributes));
             broadcast(new NotificationUpdated(
                 'created',
                 $notification->nUserId,

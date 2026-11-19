@@ -8,6 +8,7 @@ use App\Http\Requests\Supplier\TransferSupplierOptionsRequest;
 use App\Http\Requests\Supplier\UpdateStatusSupplierRequest;
 use App\Http\Requests\Supplier\UpdateSupplierRequest;
 use App\Services\Masters\SupplierService;
+use App\Services\Notifications\SupplierNotificationService;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -15,8 +16,10 @@ use Illuminate\Http\Request;
 
 class SupplierController extends ApiController
 {
-    public function __construct(private readonly SupplierService $service)
-    {
+    public function __construct(
+        private readonly SupplierService $service,
+        private readonly SupplierNotificationService $notifications,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -37,6 +40,10 @@ class SupplierController extends ApiController
     {
         try {
             $supplier = $this->service->create($request->validated());
+
+            // A new supplier from AO lands at For Approval — let
+            // every Finance and Management role know.
+            $this->notifications->notifySubmitted($supplier, $request->user());
 
             return response()->json([
                 'message'  => __('messages.create_success', ['name' => 'Supplier']),
@@ -63,9 +70,12 @@ class SupplierController extends ApiController
         }
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
         try {
+            $supplier = $this->service->find($id);
+            $wasPending = (string) $supplier->cStatus === $this->service->forApprovalStatusCode();
+
             // A supplier that still carries purchase options (canvass
             // results) cannot be removed — the options would be left
             // pointing at nothing. They have to be transferred to another
@@ -76,11 +86,17 @@ class SupplierController extends ApiController
                 ], 422);
             }
 
-            $supplier = $this->service->delete($id);
+            $deleted = $this->service->delete($id);
+
+            // Deleting a pending supplier is the rejection path: account for
+            // the request and notify the user who submitted it.
+            if ($wasPending) {
+                $this->notifications->notifyDeleted($deleted, $request->user());
+            }
 
             return response()->json([
                 'message'          => __('messages.delete_success', ['name' => 'Supplier']),
-                'deleted_supplier' => $supplier,
+                'deleted_supplier' => $deleted,
             ]);
         } catch (ModelNotFoundException) {
             return $this->notFound('Supplier');
@@ -141,7 +157,16 @@ class SupplierController extends ApiController
     public function updateStatus(UpdateStatusSupplierRequest $request, int $id): JsonResponse
     {
         try {
+            $previous = $this->service->find($id);
+            $wasPending = (string) $previous->cStatus === $this->service->forApprovalStatusCode();
+
             $supplier = $this->service->updateStatus($id, $request->validated('statusCode'));
+
+            // Approving a For Approval supplier sends the submitter a direct
+            // notification and clears the Finance/Management approval alert.
+            if ($wasPending && (string) $supplier->cStatus === $this->service->activeStatusCode()) {
+                $this->notifications->notifyApproved($supplier, $request->user());
+            }
 
             return response()->json([
                 'message'  => __('messages.update_success', ['name' => 'Supplier Status']),

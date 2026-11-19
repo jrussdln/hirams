@@ -64,6 +64,16 @@ class ClientService extends CrudService
     }
 
     /**
+     * The status code that marks a client FOR APPROVAL.
+     */
+    public function forApprovalStatusCode(): string
+    {
+        $code = array_search('For Approval', config('mappings.status_client', []), true);
+
+        return $code !== false ? (string) $code : 'P';
+    }
+
+    /**
      * TRUE when the client still carries transactions — such a client
      * cannot be deleted, it has to be transferred first.
      */

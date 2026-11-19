@@ -545,7 +545,7 @@ export default function JevViewPanel({
     // A voucher JEV is capped by its particulars. An R/D JEV is NOT: the
     // only rule there is To = From, which the form shows as a line instead
     // of refusing the save.
-    if (grandTotal > 0 && !isInventoryJev) {
+    if (grandTotal > 0 && !isInventoryJev && flowType !== "voucher") {
       const currentTotal = formSide === "from" ? fromTotal : toTotal;
       let newSideTotal;
 
@@ -1252,6 +1252,7 @@ export default function JevViewPanel({
           open={formOpen}
           onClose={closeForm}
           side={formSide}
+          jevStatus={jev?.cStatus ?? ""}
           editingEntry={editingEntry}
           formData={formData}
           setFormData={setFormData}

@@ -4,6 +4,8 @@ import { KeyboardArrowDown, SearchOutlined } from "@mui/icons-material";
 import JournalAccountAPI from "../../../../api/endpoints/journal-account.api.js";
 import JevEntriesAPI from "../../../../api/endpoints/jev-entries.api.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import { fmtPHP } from "../../../../utils/formatters/formatter.js";
+import { loadFundBalances } from "../utils/fundBalances.js";
 
 // ── Shared caches for the journal account lists ──────────────────────────
 // Several selectors on screen (From / To) reuse one request instead of each
@@ -18,15 +20,17 @@ const parentsCache = { data: null, promise: null, at: 0 };
 const requestOnce = (cache, run) => {
   if (!cache.promise) {
     cache.at = Date.now();
-    cache.promise = run()
+    const request = run()
       .then((res) => {
         cache.data = res;
         return res;
       })
-      .catch((err) => {
-        cache.promise = null; // allow a retry on the next call
-        throw err;
+      .finally(() => {
+        // Clear the in-flight marker once settled, otherwise the stale check
+        // below can never start a background revalidation.
+        if (cache.promise === request) cache.promise = null;
       });
+    cache.promise = request;
   }
   return cache.promise;
 };
@@ -57,6 +61,23 @@ export const warmAccountCache = () => {
   fetchAllAccounts().catch(() => {});
 };
 
+// Fund balance shown after a fund account's name in the chain. Returns null
+// when there is nothing to show; otherwise the raw value (for its colour) and
+// the already-formatted "• ₱1,234.00" text.
+const getFundBalance = (account, balances) => {
+  if (!balances || account?.cAccountType !== "F") return null;
+  const value = balances[Number(account.nJournalAccountId)];
+  if (value == null) return null;
+  return { value, text: `• ${fmtPHP(value)}` };
+};
+
+const fundBalanceColor = (value, colors) =>
+  value > 0
+    ? colors.green.text
+    : value < 0
+      ? colors.red.text
+      : colors.gray.textMuted;
+
 const MAX_DEPTH = 15;
 const SEARCH_THRESHOLD = 5;
 const DROPDOWN_MAX_HEIGHT = 180;
@@ -67,24 +88,30 @@ const DROPDOWN_MAX_HEIGHT = 180;
 // its descendants. Entries are NOT cached so the balance is always fresh.
 const resolveFundMeta = async (accountId, jevActiveKey) => {
   try {
+    // The From gate reads bAllowNegative, which can change on the Journal
+    // Accounts page while this component stays warm. Fetch the accounts
+    // directly instead of using the 60-second option cache so the gate
+    // follows an edit immediately (no page refresh required).
     const [allRes, entRes] = await Promise.all([
-      fetchAllAccounts(),
+      JournalAccountAPI.getAll(),
       JevEntriesAPI.getAll(),
     ]);
     const accounts = Array.isArray(allRes) ? allRes : (allRes?.data ?? []);
     const entries = Array.isArray(entRes) ? entRes : (entRes?.data ?? []);
     const byId = new Map(accounts.map((a) => [Number(a.nJournalAccountId), a]));
 
-    let isFund = false;
+    let fund = null;
     let cur = byId.get(Number(accountId));
     for (let d = 0; cur && d < MAX_DEPTH; d++) {
       if (cur.cAccountType === "F") {
-        isFund = true;
+        fund = cur;
         break;
       }
       cur = byId.get(Number(cur.nParentAccountId));
     }
-    if (!isFund) return { isFund: false, balance: null };
+    if (!fund) {
+      return { isFund: false, balance: null, bAllowNegative: false };
+    }
 
     const childrenOf = {};
     accounts.forEach((a) => {
@@ -101,6 +128,7 @@ const resolveFundMeta = async (accountId, jevActiveKey) => {
     }
 
     const active = String(jevActiveKey ?? "").trim() || "A";
+    
     const balance = entries.reduce((sum, e) => {
       if (String(e?.jev?.cStatus ?? "").trim() !== active) return sum;
       if (!ids.has(Number(e.nJournalAccountId))) return sum;
@@ -110,10 +138,13 @@ const resolveFundMeta = async (accountId, jevActiveKey) => {
     return {
       isFund: true,
       balance: Math.round((balance + Number.EPSILON) * 100) / 100,
+      // The nearest Fund owns the "Allow Negative Balance" switch; a linked
+      // account under it inherits that fund's setting for the From gate.
+      bAllowNegative: Number(fund.bAllowNegative ?? 1) !== 0,
     };
   } catch (err) {
     console.error("Fund balance lookup failed:", err);
-    return { isFund: false, balance: null };
+    return { isFund: false, balance: null, bAllowNegative: false };
   }
 };
 
@@ -130,6 +161,7 @@ const useColors = (c) => ({
     hover: c.slate.hover,
   },
   blue: { bg: c.blue.bg, border: c.blue.border, text: c.blue.text },
+  green: { text: c.green.text },
   red: { text: c.red.text },
   amber: { warnText: c.amber.warnText },
   skeleton: { overlay: c.skeleton.overlay },
@@ -166,6 +198,7 @@ function ChainLevelSelect({
   placeholder,
   hasError,
   colors,
+  fundBalances,
   onChange,
 }) {
   const [open, setOpen] = useState(false);
@@ -202,6 +235,9 @@ function ChainLevelSelect({
   const selected = options.find(
     (a) => Number(a.nJournalAccountId) === Number(value),
   );
+  const selectedFund = selected
+    ? getFundBalance(selected, fundBalances)
+    : null;
 
   const filteredOptions = useMemo(() => {
     if (!showSearch) return options;
@@ -250,11 +286,26 @@ function ChainLevelSelect({
             noWrap
             sx={{
               fontSize: "0.75rem",
+              minWidth: 0,
+              flexShrink: 1,
               color: selected ? colors.gray.textPrimary : colors.gray.textMuted,
             }}
           >
             {selected ? getLabel(selected) : placeholder}
           </Typography>
+          {selectedFund && (
+            <Typography
+              noWrap
+              sx={{
+                fontSize: "0.68rem",
+                fontStyle: "italic",
+                flexShrink: 0,
+                color: fundBalanceColor(selectedFund.value, colors),
+              }}
+            >
+              {selectedFund.text}
+            </Typography>
+          )}
         </Box>
         <KeyboardArrowDown
           sx={{
@@ -365,6 +416,7 @@ function ChainLevelSelect({
               filteredOptions.map((acc) => {
                 const isSelected =
                   Number(acc.nJournalAccountId) === Number(value);
+                const fundBalance = getFundBalance(acc, fundBalances);
                 return (
                   <Box
                     key={acc.nJournalAccountId}
@@ -374,7 +426,7 @@ function ChainLevelSelect({
                       py: 0.75,
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "space-between",
+                      justifyContent: "flex-start",
                       gap: 0.75,
                       fontSize: "0.75rem",
                       fontWeight: isSelected ? 600 : 400,
@@ -396,10 +448,26 @@ function ChainLevelSelect({
                         fontSize: "inherit",
                         fontWeight: "inherit",
                         color: "inherit",
+                        minWidth: 0,
+                        flexShrink: 1,
                       }}
                     >
                       {getLabel(acc)}
                     </Typography>
+                    {fundBalance && (
+                      <Typography
+                        noWrap
+                        sx={{
+                          fontSize: "0.68rem",
+                          fontWeight: 400,
+                          fontStyle: "italic",
+                          color: fundBalanceColor(fundBalance.value, colors),
+                          flexShrink: 0,
+                        }}
+                      >
+                        {fundBalance.text}
+                      </Typography>
+                    )}
                   </Box>
                 );
               })
@@ -431,6 +499,7 @@ export default function AccountChainSelect({
   const [parentsList, setParentsList] = useState([]);
   const [parentsLoaded, setParentsLoaded] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [fundBalances, setFundBalances] = useState(null);
 
   const skipRebuildRef = useRef(false);
   const emitSeqRef = useRef(0);
@@ -484,6 +553,22 @@ export default function AccountChainSelect({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fund balances power the "BDO • ₱1,234.00" suffix on fund accounts.
+  // Loading them never blocks the chain itself — the labels paint first and
+  // the suffix appears as soon as the figures arrive.
+  useEffect(() => {
+    let active = true;
+    fetchAllAccounts()
+      .then((accounts) => loadFundBalances(accounts, { jevActiveKey }))
+      .then((map) => {
+        if (active) setFundBalances(map);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [jevActiveKey]);
 
   useEffect(() => {
     if (skipRebuildRef.current) {
@@ -660,6 +745,7 @@ export default function AccountChainSelect({
                 }
                 hasError={error && isLastLevel && !hasChildren}
                 colors={colors}
+                fundBalances={fundBalances}
                 onChange={(newValue) => handleSelectAt(idx, newValue)}
               />
 

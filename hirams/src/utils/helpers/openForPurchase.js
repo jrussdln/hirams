@@ -53,9 +53,17 @@ export const fetchTransactionForPurchase = async (
  * @param navigate   react-router's navigate
  * @param ctx.transaction       the transaction to open (may be partial)
  * @param ctx.keys              every status key / mapping the state carries
+ * @param ctx.initialTab        optional workspace tab to land on ("info" /
+ *                              "canvas" / "pricing" / "purchase" /
+ *                              "collection") — the workspace's header-right
+ *                              buttons start there instead of the status
+ *                              default. The item-purchasing brand · model
+ *                              links pass "purchase": the click MEANS "view
+ *                              for purchase", so a For Collection
+ *                              transaction still opens its Purchase tab.
  */
 export const openForPurchase = async (navigate, ctx) => {
-  const { transaction, keys = {}, currentUserId } = ctx;
+  const { transaction, keys = {}, currentUserId, initialTab } = ctx;
   const id = transaction?.nTransactionId;
   if (!id) {
     console.warn("No transaction found to view for purchase");
@@ -113,6 +121,9 @@ export const openForPurchase = async (navigate, ctx) => {
         transaction: finalTransaction,
         transactionCode: finalTransaction.transactionId,
         selectedStatusCode: statusCode,
+        // The caller's preferred landing tab — undefined from callers that
+        // don't care, so the workspace keeps its status-driven default.
+        ...(initialTab ? { initialTab } : {}),
         currentStatusLabel,
         forPurchaseKey: keys.forPurchaseKey,
         currentUserId,

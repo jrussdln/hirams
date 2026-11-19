@@ -520,7 +520,9 @@ export default function useKeysLabels() {
       : "";
   const transactionVerificationLabel = isManagement
     ? (transacstatus?.[mgmtTransactionVerificationKey] ?? "")
-    : "";
+    : isProcurement
+      ? (proc_status?.[procTransactionVerificationKey] ?? "")
+      : "";
   const forAssignmentLabel = isManagement
     ? (transacstatus?.[mgmtFAssignmentKey] ?? "")
     : isAOTL

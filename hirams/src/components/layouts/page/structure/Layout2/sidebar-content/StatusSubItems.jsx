@@ -9,6 +9,9 @@ const StatusSubItems = ({
   isOnPage,
   statusCodeKey = "statusCode",
   countLoading,
+  // The status code that should wear the Needs Attention treatment
+  // (blinking triangle + amber pulse) whenever its count is above zero.
+  attentionCode,
 }) => (
   <>
     {Object.entries(statusMap).map(([code, label]) => {
@@ -20,6 +23,11 @@ const StatusSubItems = ({
           key={code}
           label={label}
           active={isOnPage && selectedCode === String(code)}
+          attention={
+            attentionCode != null &&
+            String(code) === String(attentionCode) &&
+            count > 0
+          }
           count={count}
           countLoading={countLoading}
           onClick={() => onSelect(String(code))}

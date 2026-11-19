@@ -39,8 +39,8 @@ const STATUS_PENDING = "P";
 //     per JEV id. Only printed when it has rows.
 //   • R / D types (Received Purchases / Delivered Items) → NO voucher
 //     exists behind them, so the block is the inventory Items table.
-//     R lists the batches this JEV actually covers; D lists the WHOLE
-//     delivered group (same client + company), as JEVEntryAEModal does.
+//     Each lists ONLY the batches its own JEV id is stamped on (the R
+//     side including the purchase's later aggregates).
 //   • N (No Type / Other JEV) → neither a voucher nor inventory stands
 //     behind it, so the JEV names ITSELF: `strTitle` is edited right in
 //     the JEV Info row, alongside the date, and is required there.
@@ -292,8 +292,8 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
 
   // Every inventory row this JEV actually covers: the pending batches
   // before it is finalized, the API's already-aggregated 'A' entry after.
-  // (A D JEV is the exception — it widens to its whole delivered group,
-  // see the branch below.)
+  // (A D JEV is scoped to its own rows too — it never widens to the
+  // whole delivered group, see the branch below.)
   // Rows cancelled later keep their nJEVId and stay listed — dropping them
   // would silently shrink the total this JEV was built on.
   //
@@ -313,38 +313,22 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
     const matched = inventory.filter((i) => idsOf(i).includes(jevId));
 
     // ── D (Delivered Items) ─────────────────────────────────────────
-    // The WHOLE delivered group, never just this JEV's own rows — the
-    // very table JEVEntryAEModal shows for the same JEV (PendingInventory
-    // builds that one from the open group: every delivered batch of the
-    // same client + company). bulkCreateJev books a whole group on ONE
-    // JEV per direction, but a group can still hold more than one JEV
-    // (both directions, or legacy per-item ones), so scoping to `matched`
-    // alone could list only part of what the entry modal beside it lists.
-    //
-    // The group is keyed off the rows this JEV covers (same client, same
-    // company); the rows this JEV itself carries are always kept, so a
-    // batch booked under another JEV of the group can never drop out.
-    // Direction guard, delivered side: a Delivered entry also lists the
-    // purchase's R JEV (so the item details can show it) — those rows are
-    // not part of a D JEV's own table. isDeliveredRow knows both shapes:
-    // raw rows by their negative qty, the aggregated one by its 'D'
-    // status (its qty is already abs).
+    // ONLY the rows this JEV itself covers — the same JEV id stamped on
+    // the inventory rows by bulkCreateJev (nJEVId, or any id inside the
+    // aggregated entry's nJEVIds). Two JEVs can stand behind one
+    // transaction, and widening to the delivered GROUP (same client +
+    // company) made every one of them list the entire group — identical
+    // item tables on journals that were booked for different batches.
+    // The rows this JEV carries are always delivered rows; the direction
+    // guard only keeps a received-side row out should one ever carry the
+    // id (a delivered aggregate also names the purchase's R JEV — those
+    // rows belong to that R JEV's table, never to this one).
+    // isDeliveredRow knows both shapes: raw rows by their negative qty,
+    // the aggregated one by its 'D' status (its qty is already abs).
     if (linkType === "D") {
-      const seed = matched.find((i) => isDeliveredRow({ _raw: i }));
-      if (!seed) return []; // nothing delivered carries this JEV
-      const client = String(seed.strClientNickName ?? "—");
-      const company = String(seed.strCompanyNickName ?? "—");
-      const ownIds = new Set(matched.map((i) => i.nInventoryId));
-
-      return mapInventoryItems(
-        inventory.filter(
-          (i) =>
-            isDeliveredRow({ _raw: i }) &&
-            (ownIds.has(i.nInventoryId) ||
-              (String(i.strClientNickName ?? "—") === client &&
-                String(i.strCompanyNickName ?? "—") === company)),
-        ),
-      );
+      const delivered = matched.filter((i) => isDeliveredRow({ _raw: i }));
+      if (!delivered.length) return []; // nothing delivered carries this JEV
+      return mapInventoryItems(delivered);
     }
 
     // ── R (Received Purchases), and an absent/unknown type ──────────

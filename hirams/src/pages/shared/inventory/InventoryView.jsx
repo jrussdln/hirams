@@ -229,6 +229,17 @@ export default function InventoryView({
                   <span className="block truncate italic tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
                     {val}
                   </span>
+                  {/* The ITEM NAME the batch was bought as — uppercase, under
+                      the brand · model (same line the Pending tab's drill-down
+                      Items table prints). */}
+                  {row.strItemName && (
+                    <span
+                      title={row.strItemName}
+                      className="block truncate uppercase tracking-wide text-[0.55rem] font-semibold leading-tight text-gray-500 dark:text-gray-400"
+                    >
+                      {row.strItemName}
+                    </span>
+                  )}
                 </div>
               ),
             },

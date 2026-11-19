@@ -1,9 +1,10 @@
-import { useEffect, useCallback, useMemo, useRef } from "react";
+import { useEffect, useCallback, useMemo, useRef, useState } from "react";
 import { Box, Typography, useTheme } from "@mui/material";
 import {
   StoreOutlined,
   BusinessOutlined,
   DoubleArrowOutlined,
+  WarningAmberOutlined,
 } from "@mui/icons-material";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer.jsx";
 import FormGrid from "../../../../components/ui/form/FormGrid.jsx";
@@ -15,6 +16,7 @@ import POListPanel from "../../voucher/components/POListPanel.jsx";
 import AssigneeListPanel from "../../voucher/components/AssigneeListPanel.jsx";
 import useKeysLabels from "../../../../hooks/useKeysLabels.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
+import { fmtPHP } from "../../../../utils/formatters/formatter.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -26,8 +28,8 @@ const useColors = (c) => ({
   },
   slate: { btnBg: c.slate.btnBg },
   orange: { text: c.orange.text, border: c.orange.border },
-  // Red is saveError's ink — the only feedback colour under the fields.
-  red: { text: c.red.text },
+  // Red is saveError's ink and the From balance-gate banner.
+  red: { text: c.red.text, bg: c.red.bg, border: c.red.border },
 });
 
 const ARROW_INDEXES = [0, 1, 2, 3, 4];
@@ -124,6 +126,7 @@ export default function JEVEntryAEModal({
   onClose,
   side,
   jevActiveKey = "A",
+  jevStatus = "",
   editingEntry,
   formData,
   setFormData,
@@ -162,6 +165,17 @@ export default function JEVEntryAEModal({
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const colors = useMemo(() => useColors(getThemeColors(isDark)), [isDark]);
+
+  // Latest { isFund, balance, bAllowNegative } reported by AccountChainSelect
+  // for the From side. The id is stamped so a lookup from a previously
+  // selected/previous-open account can never guard the current one.
+  const [accountMeta, setAccountMeta] = useState(null);
+
+  // Drop the previous open's guard metadata while the modal is closed, so
+  // reopening the same account cannot show a stale balance for a frame.
+  useEffect(() => {
+    if (!open) setAccountMeta(null);
+  }, [open]);
 
   // The clickable navigations (the PO numbers in the particulars list) are
   // finance / management only — every other role reads them as plain text.
@@ -246,32 +260,6 @@ export default function JEVEntryAEModal({
     }));
   }, [formData.nJournalAccountId, validateAccountIsUnique, setFormErrors]);
 
-  // ── Input handling ───────────────────────────────────────────────────
-  const handleChange = useCallback(
-    ({ target: { name, value } }) => {
-      if (name === "amount") {
-        // digits + one decimal point, max 2 decimals (no upper limit)
-        let s = String(value ?? "").replace(/[^0-9.]/g, "");
-        const parts = s.split(".");
-        if (parts.length > 2) s = parts[0] + "." + parts.slice(1).join("");
-        const [int, dec] = s.split(".");
-        if (dec !== undefined) s = `${int}.${dec.slice(0, 2)}`;
-        setFormData((prev) => ({ ...prev, amount: s }));
-        return;
-      }
-      setFormData((prev) => ({ ...prev, [name]: value }));
-    },
-    [setFormData],
-  );
-
-  // Account picked
-  const handleAccountChange = useCallback(
-    (id) => {
-      setFormData((prev) => ({ ...prev, nJournalAccountId: id }));
-    },
-    [setFormData],
-  );
-
   // ── Click-to-fill ─────────────────────────────────────────────────────
   // Any money figure in the panel above (particulars / items / assignees)
   // can be clicked into Amount — same digits the field accepts itself, so
@@ -290,17 +278,111 @@ export default function JEVEntryAEModal({
     [setFormData, setFormErrors],
   );
 
+  // ── From balance gate ────────────────────────────────────────────────
+  // The From side may only spend a fund branch's ACTIVE balance when the
+  // fund's bAllowNegative is true/1 (per the business rule: that switch is
+  // the gate). To entries never guard. The id stamp in accountMeta keeps a
+  // lookup for a previous account from ever guarding the current one.
+  const selectedAccountId = Number(formData.nJournalAccountId) || 0;
+  const currentAccountMeta =
+    accountMeta && accountMeta.nJournalAccountId === selectedAccountId
+      ? accountMeta
+      : null;
+      
+  // Only guard account if bAllowNegative is explicitly false.
+  // If bAllowNegative is true (or undefined), it's allowed.
+  const fromGuardAccount =
+    side === "from" &&
+    selectedAccountId > 0 &&
+    currentAccountMeta?.isFund === true &&
+    currentAccountMeta?.bAllowNegative === false;
+
+  // The balance already contains an ACTIVE entry being edited, so add that
+  // entry's amount back before comparing. A pending/cancelled JEV is not in
+  // the balance, so its old amount must stay out of the available figure.
+  const currentJevIsActive =
+    String(editingEntry?.jev?.cStatus ?? jevStatus ?? "").trim() ===
+    String(jevActiveKey ?? "").trim();
+
+  // If we are editing, we are "releasing" the current amount back into the balance
+  // for the purpose of this check.
+  const editingAmount = editingEntry && currentJevIsActive 
+    ? Math.abs(Number(editingEntry.dAmount) || 0) 
+    : 0;
+
+  // Enforce strict balance: if currentAccountMeta.balance is negative, available balance is 0.
+  const availableFromBalance = !fromGuardAccount
+    ? null
+    : round2(
+        Math.max(0, (Number(currentAccountMeta.balance) || 0) + editingAmount)
+      );
+
+  const amountValue = Number(formData.amount) || 0;
+  
+  // The threshold is the available balance PLUS the amount currently being edited 
+  // (which we already added to availableFromBalance).
+  // If the user inputs more than availableFromBalance, it's invalid.
+  const insufficientFromBalance =
+    availableFromBalance != null &&
+    amountValue > 0 &&
+    Math.round(amountValue * 100) > Math.round(availableFromBalance * 100);
+
+  // Block the save if the balance is insufficient
+  const isBalanceInvalid = fromGuardAccount && insufficientFromBalance;
+
+  // ── Input handling ───────────────────────────────────────────────────
+  const handleChange = useCallback(
+    ({ target: { name, value } }) => {
+      if (name === "amount") {
+        // digits + one decimal point, max 2 decimals (no upper limit)
+        let s = String(value ?? "").replace(/[^0-9.]/g, "");
+        const parts = s.split(".");
+        if (parts.length > 2) s = parts[0] + "." + parts.slice(1).join("");
+        const [int, dec] = s.split(".");
+        if (dec !== undefined) s = `${int}.${dec.slice(0, 2)}`;
+
+        // Only enforce clamping if it's a guarded account
+        // if (fromGuardAccount && availableFromBalance != null) {
+        //   const numVal = Number(s) || 0;
+        //   // If balance is negative, force amount to 0
+        //   const limit = Math.max(0, availableFromBalance);
+        //   if (numVal > limit) {
+        //     s = limit.toFixed(2);
+        //   }
+        // }
+
+        setFormData((prev) => ({ ...prev, amount: s }));
+        return;
+      }
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    },
+    [setFormData, fromGuardAccount, availableFromBalance],
+  );
+
   // ── Fields ───────────────────────────────────────────────────────────
   const accountError = formErrors.nJournalAccountId;
 
-  const formFields = [
-    {
-      name: "account_wrapper",
-      type: "custom",
-      label: "Account Title",
-      xs: 12,
-      render: () => (
-        <Box sx={{ mb: 0.5 }}>
+  const handleAccountChange = useCallback(
+    (id, meta) => {
+      setFormData((prev) => ({ ...prev, nJournalAccountId: id }));
+      setAccountMeta(
+        meta && id ? { ...meta, nJournalAccountId: Number(id) } : null,
+      );
+    },
+    [setFormData],
+  );
+
+  // We need to inject the insufficient balance warning into the form
+  // when FormGrid is used. Since FormGrid doesn't have an "alert" slot,
+  // we add it to the formFields as a custom component if it exists.
+  const formFields = useMemo(() => {
+    const fields = [
+      {
+        name: "nJournalAccountId",
+        label: "Account Title",
+        type: "custom",
+        xs: 12,
+        render: () => (
           <AccountChainSelect
             value={formData.nJournalAccountId}
             preloadedAccount={formData.journalAccount}
@@ -308,21 +390,71 @@ export default function JEVEntryAEModal({
             side={side}
             onChange={handleAccountChange}
             error={accountError}
-            // This modal never reads { isFund, balance }, so skip the fund
-            // lookup: the account is committed the moment it is picked.
-            resolveFundInfo={false}
+            resolveFundInfo={side === "from"}
           />
-        </Box>
-      ),
-    },
-    {
-      name: "amount",
-      label: "Amount",
-      type: "peso",
-      xs: 12,
-      placeholder: "0.00",
-    },
-  ];
+        ),
+      },
+      {
+        name: "amount",
+        label: "Amount",
+        type: "peso",
+        xs: 12,
+      },
+    ];
+
+    if (insufficientFromBalance) {
+      fields.splice(1, 0, {
+        name: "balance_alert",
+        type: "custom",
+        xs: 12,
+        render: () => (
+          <Box
+            role="alert"
+            sx={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 0.75,
+              px: 1,
+              py: 0.75,
+              mb: 0.75,
+              borderRadius: "8px",
+              background: colors.red.bg,
+              border: `0.5px solid ${colors.red.border}`,
+            }}
+          >
+            <WarningAmberOutlined
+              sx={{
+                fontSize: "0.9rem",
+                color: colors.red.text,
+                flexShrink: 0,
+                mt: "1px",
+              }}
+            />
+            <Typography
+              sx={{
+                fontSize: "0.62rem",
+                fontWeight: 600,
+                lineHeight: 1.45,
+                color: colors.red.text,
+              }}
+            >
+              {availableFromBalance >= 0
+                ? `Insufficient fund balance — ${fmtPHP(availableFromBalance)} available`
+                : `Insufficient fund balance — Negative limit exceeded — ${fmtPHP(Math.abs(availableFromBalance))} available`
+              }
+            </Typography>
+          </Box>
+        ),
+      });
+    }
+
+    return fields;
+  }, [formData.nJournalAccountId, formData.journalAccount, jevActiveKey, side, handleAccountChange, accountError, insufficientFromBalance, availableFromBalance, amountValue, colors.red.bg, colors.red.border, colors.red.text]);
+
+  // A From account whose metadata is still resolving cannot be checked yet —
+  // keep its save button closed until the answer arrives.
+  const fromGuardPending =
+    side === "from" && selectedAccountId > 0 && currentAccountMeta == null;
 
   const errors = { ...formErrors };
 
@@ -337,7 +469,11 @@ export default function JEVEntryAEModal({
       cancelLabel="Back"
       onCancel={onClose}
       loading={saving}
-      disableSave={!!formErrors.nJournalAccountId}
+      disabled={
+        !!formErrors.nJournalAccountId ||
+        fromGuardPending ||
+        insufficientFromBalance
+      }
     >
       <AmountPickContext.Provider value={pickAmount}>
         <Box sx={{ px: 0.5, py: 0.5 }}>
@@ -387,6 +523,9 @@ export default function JEVEntryAEModal({
             />
           ) : null}
           <Box ref={formRef}>
+            {/* Error banner for balance/total cap issues moved from FormGrid render */}
+            {/* The individual field error message (formErrors.amount) remains visible */}
+
             <FormGrid
               fields={formFields}
               switches={[]}
@@ -395,21 +534,6 @@ export default function JEVEntryAEModal({
               handleChange={handleChange}
               autoFocus={true}
             />
-
-            {/* Save failure — the only feedback now that there is no Swal */}
-            {saveError && (
-              <Typography
-                sx={{
-                  px: 0.5,
-                  mt: 0.75,
-                  fontSize: "0.62rem",
-                  fontWeight: 600,
-                  color: colors.red.text,
-                }}
-              >
-                {saveError}
-              </Typography>
-            )}
           </Box>
         </Box>
       </AmountPickContext.Provider>

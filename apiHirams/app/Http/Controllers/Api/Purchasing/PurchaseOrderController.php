@@ -8,6 +8,7 @@ use App\Http\Requests\PurchaseOrder\ProceedToPODetailsRequest;
 use App\Http\Requests\PurchaseOrder\SyncPurchaseOrderStatusRequest;
 use App\Http\Requests\PurchaseOrder\UpdateCartStatusBulkRequest;
 use App\Http\Requests\PurchaseOrder\UpdateCartStatusRequest;
+use App\Services\Notifications\PurchaseOrderNotificationService;
 use App\Services\Purchasing\PurchaseOrderService;
 use App\Services\Purchasing\PurchaseOrderStatusSync;
 use Exception;
@@ -16,8 +17,10 @@ use Illuminate\Http\Request;
 
 class PurchaseOrderController extends ApiController
 {
-    public function __construct(private readonly PurchaseOrderService $service)
-    {
+    public function __construct(
+        private readonly PurchaseOrderService $service,
+        private readonly PurchaseOrderNotificationService $notifications,
+    ) {
     }
 
     public function store(Request $request): JsonResponse
@@ -53,6 +56,16 @@ class PurchaseOrderController extends ApiController
     {
         try {
             $purchaseOrder = $this->service->updateCartStatus($request->validated());
+            $newStatus = (string)$purchaseOrder->nStatus;
+
+            // If it becomes For Approval (status '120'), notify Finance and Management
+            if ($newStatus === '120') {
+                $this->notifications->notifySubmitted($purchaseOrder, $request->user());
+            } 
+            // If it becomes For Payment (status '130') from For Approval, notify creator
+            elseif ($newStatus === '130') {
+                $this->notifications->notifyApproved($purchaseOrder, $request->user());
+            }
 
             return response()->json([
                 'message'       => 'Status updated successfully.',

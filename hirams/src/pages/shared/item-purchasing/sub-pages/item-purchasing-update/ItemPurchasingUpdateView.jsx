@@ -445,6 +445,10 @@ export default function ItemPurchasingUpdateView({
     await openForPurchase(navigate, {
       transaction: transactionObj,
       currentUserId,
+      // Land on the Purchase tab even when the transaction has moved on to
+      // For Collection — the click MEANS "view for purchase", so the
+      // workspace must not open on its Collection tab.
+      initialTab: "purchase",
       keys: {
         isManagement,
         isAccountOfficer,

@@ -85,6 +85,13 @@ export default function JournalAccountsView({
     itemsTotal,
     sellingPrices,
     isReceivedSide,
+    // Collection (C) JEV — the receipt block above the journal. Without
+    // these the panel's top card never rendered when a Collection JEV was
+    // opened from the ledger (the /jev-update page forwards them).
+    isCollectionJev,
+    collectionTransaction,
+    collectibleAmount,
+    retentionAmount,
     balance,
     showBalanceBanner,
     dismissBalanceMsg,
@@ -266,6 +273,11 @@ export default function JournalAccountsView({
           itemsTotal={itemsTotal}
           sellingPrices={sellingPrices}
           isReceivedSide={isReceivedSide}
+          // Collection (C) JEV — the receipt block above the journal.
+          isCollectionJev={isCollectionJev}
+          collectionTransaction={collectionTransaction}
+          collectibleAmount={collectibleAmount}
+          retentionAmount={retentionAmount}
           balance={balance}
           showBalanceBanner={showBalanceBanner}
           dismissBalanceMsg={dismissBalanceMsg}

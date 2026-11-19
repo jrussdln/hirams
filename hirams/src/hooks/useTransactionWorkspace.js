@@ -95,6 +95,10 @@ export default function useTransactionWorkspace() {
     isProcurementTL,
     proc_status,
     forCollectionKey: stateForCollectionKey = "",
+    // The caller's preferred landing tab (openForPurchase writes it into
+    // the navigation state). Only a REAL tab key is honored — anything
+    // else falls back to the status-driven default below.
+    initialTab = "",
     priceSettingKey = "",
     finalizeVerificationKey = "",
     priceFinalizeVerificationKey = "",
@@ -202,13 +206,20 @@ export default function useTransactionWorkspace() {
   const [actionModal, setActionModal] = useState(null);
   // Completed archives open the stage they finished on — but landing on the
   // read-only reference should start where a reader starts: the Details tab.
-  const [activeTab, setActiveTab] = useState(() =>
-    isArchiveView
-      ? "info"
-      : (stateForCollectionKey || keysForCollectionKey).includes(selectedStatusCode)
-        ? "collection"
-        : "purchase",
-  );
+  // A caller-hinted tab (state.initialTab — the item-purchasing brand ·
+  // model links ask for "purchase" so a For Collection transaction still
+  // opens its Purchase tab) wins over the status default, but never over
+  // the archive's read-only Details.
+  const [activeTab, setActiveTab] = useState(() => {
+    if (isArchiveView) return "info";
+    const VALID_TABS = ["info", "canvas", "pricing", "purchase", "collection"];
+    if (VALID_TABS.includes(initialTab)) return initialTab;
+    return (stateForCollectionKey || keysForCollectionKey).includes(
+      selectedStatusCode,
+    )
+      ? "collection"
+      : "purchase";
+  });
   const [statusChangedAlert, setStatusChangedAlert] = useState(false);
   const [countdown, setCountdown] = useState(null);
   // Cache hit → no skeleton; the mount fetch below is then silent.

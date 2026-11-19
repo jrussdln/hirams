@@ -8,6 +8,7 @@ use App\Http\Requests\Client\TransferClientTransactionsRequest;
 use App\Http\Requests\Client\UpdateClientRequest;
 use App\Http\Requests\Client\UpdateStatusClientRequest;
 use App\Services\Masters\ClientService;
+use App\Services\Notifications\ClientNotificationService;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -15,8 +16,10 @@ use Illuminate\Http\Request;
 
 class ClientController extends ApiController
 {
-    public function __construct(private readonly ClientService $service)
-    {
+    public function __construct(
+        private readonly ClientService $service,
+        private readonly ClientNotificationService $notifications,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -44,6 +47,10 @@ class ClientController extends ApiController
         try {
             $client = $this->service->create($request->validated());
 
+            // A new client from Procurement lands at For Approval — let
+            // every Management role know there is something to action.
+            $this->notifications->notifySubmitted($client, $request->user());
+
             return response()->json([
                 'message' => __('messages.create_success', ['name' => 'Client']),
                 'client'  => $client,
@@ -69,9 +76,12 @@ class ClientController extends ApiController
         }
     }
 
-    public function destroy(int $id): JsonResponse
+    public function destroy(Request $request, int $id): JsonResponse
     {
         try {
+            $client = $this->service->find($id);
+            $wasPending = (string) $client->cStatus === $this->service->forApprovalStatusCode();
+
             // A client that still carries transactions cannot be removed —
             // the transactions would be left pointing at nothing. They have
             // to be transferred to another client first.
@@ -81,11 +91,17 @@ class ClientController extends ApiController
                 ], 422);
             }
 
-            $client = $this->service->delete($id);
+            $deleted = $this->service->delete($id);
+
+            // Deleting a pending client is the rejection path: account for
+            // the request and notify the user who submitted it.
+            if ($wasPending) {
+                $this->notifications->notifyDeleted($deleted, $request->user());
+            }
 
             return response()->json([
                 'message'        => __('messages.delete_success', ['name' => 'Client']),
-                'deleted_client' => $client,
+                'deleted_client' => $deleted,
             ]);
         } catch (ModelNotFoundException) {
             return $this->notFound('Client');
@@ -146,7 +162,16 @@ class ClientController extends ApiController
     public function updateStatus(UpdateStatusClientRequest $request, int $id): JsonResponse
     {
         try {
+            $previous = $this->service->find($id);
+            $wasPending = (string) $previous->cStatus === $this->service->forApprovalStatusCode();
+
             $client = $this->service->updateStatus($id, $request->validated('cStatus'));
+
+            // Approving a For Approval client sends the submitter a direct
+            // notification and clears the Management approval alert.
+            if ($wasPending && (string) $client->cStatus === $this->service->activeStatusCode()) {
+                $this->notifications->notifyApproved($client, $request->user());
+            }
 
             return response()->json([
                 'message' => __('messages.update_success', ['name' => 'Client Status']),
