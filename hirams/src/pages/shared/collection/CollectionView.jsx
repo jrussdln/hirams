@@ -223,6 +223,8 @@ export default function CollectionView(props) {
     creatingJev,
     handleCreateJev,
     jevPendingKey,
+    jevPendingClearanceKey,
+    jevActiveKey,
     isFinanceOfficer,
     handleToggleJevFinalize,
     jevToggling,
@@ -252,11 +254,30 @@ export default function CollectionView(props) {
   // ── The footer's Finalize gates — the same trio every finalize path
   // follows (the /jev-update page, the voucher page): the journal must
   // carry a title and its From / To sides must square before it can
-  // leave Pending. The workspace hook loads the FULL JEV record
+  // leave Draft. The workspace hook loads the FULL JEV record
   // (entries included), so its strTitle is on hand for the title gate.
-  const isPendingJev =
-    jev && String(jev.cStatus) === String(jevPendingKey);
+  //
+  // A Collection JEV finalizes in one of two states: Pending Clearance (R)
+  // or Cleared (A). The footer asks which in the dialog, then the R state
+  // gets a "Mark Cleared" action so it can later become Active.
+  const draftJevKey = jevPendingKey || "P";
+  const pendingClearanceJevKey = jevPendingClearanceKey || "R";
+  const activeJevKey = jevActiveKey || "A";
+  const currentJevStatus = String(jev?.cStatus ?? "");
+  const isPendingJev = !!jev && currentJevStatus === String(draftJevKey);
+  const isPendingClearanceJev =
+    !!jev && currentJevStatus === String(pendingClearanceJevKey);
+  const isActiveJev = !!jev && currentJevStatus === String(activeJevKey);
   const jevHasTitle = Boolean(String(jev?.strTitle ?? "").trim());
+  const jevFinalizeBlocked =
+    jevToggling || jevBalance.loading || !jevHasTitle || !jevBalance.balanced;
+  const jevFinalizeTooltip = jevBalance.loading
+    ? "Checking JEV balance…"
+    : !jevHasTitle
+      ? "Title is not yet added."
+      : !jevBalance.balanced
+        ? jevBalance.message || "JEV totals must be equal before finalizing"
+        : "Choose Pending Clearance or Cleared";
 
   return (
     <PageLayout
@@ -347,33 +368,73 @@ export default function CollectionView(props) {
             !isCompareActive &&
             jev &&
             (isManagement || isFinanceOfficer) && (
-              <BaseButton
-                label={isPendingJev ? "Finalize JEV" : "Undo Finalize"}
-                icon={isPendingJev ? icons.finalize : icons.revert}
-                onClick={() => setFinalizeJevConfirmOpen(true)}
-                actionColor={isPendingJev ? "approve" : "delete"}
-                disabled={
-                  jevToggling ||
-                  (isPendingJev &&
-                    (jevBalance.loading || !jevHasTitle || !jevBalance.balanced))
-                }
-                tooltip={
-                  isPendingJev
-                    ? jevBalance.loading
-                      ? "Checking JEV balance…"
-                      : !jevHasTitle
-                        ? "Title is not yet added."
-                        : !jevBalance.balanced
-                          ? jevBalance.message ||
-                            "JEV totals must be equal before finalizing"
-                          : "Finalize this JEV"
-                    : ""
-                }
-              />
+              <>
+                {isPendingJev && (
+                  <BaseButton
+                    label="Finalize JEV"
+                    icon={icons.finalize}
+                    onClick={() => setFinalizeJevConfirmOpen(true)}
+                    actionColor="approve"
+                    disabled={jevFinalizeBlocked}
+                    tooltip={jevFinalizeTooltip}
+                  />
+                )}
+                {/* Undo Finalize sits between Finalize and Mark Cleared so a
+                    finalized JEV can always be unwound before it is cleared. */}
+                {isActiveJev && (
+                  <BaseButton
+                    label="Undo Finalize"
+                    icon={icons.revert}
+                    onClick={() =>
+                      withSpinner("JEV", () =>
+                        handleToggleJevFinalize(draftJevKey),
+                      )
+                    }
+                    actionColor="delete"
+                    disabled={jevToggling}
+                    tooltip="Return this JEV to Draft"
+                  />
+                )}
+                {isPendingClearanceJev && (
+                  <>
+                    <BaseButton
+                      label="Undo Finalize"
+                      icon={icons.revert}
+                      onClick={() =>
+                        withSpinner("JEV", () =>
+                          handleToggleJevFinalize(draftJevKey),
+                        )
+                      }
+                      actionColor="delete"
+                      disabled={jevToggling}
+                      tooltip="Return this JEV to Draft"
+                    />
+                    <BaseButton
+                      label="Mark Cleared"
+                      icon={icons.check}
+                      onClick={() =>
+                        withSpinner("JEV", () =>
+                          handleToggleJevFinalize(activeJevKey),
+                        )
+                      }
+                      actionColor="submit"
+                      disabled={jevFinalizeBlocked}
+                      tooltip={
+                        jevBalance.loading
+                          ? "Checking JEV balance…"
+                          : !jevBalance.balanced
+                            ? jevBalance.message ||
+                              "JEV totals must be equal before clearing"
+                            : "Mark this JEV as Cleared (Active)"
+                      }
+                    />
+                  </>
+                )}
+              </>
             )}
           {!isCompareActive && isAssignedToMe && (
             <>
-              {jev && String(jev.cStatus) !== String(jevPendingKey) && (
+              {isActiveJev && (
                 <BaseButton
                   label="Transaction Completed"
                   icon={icons.check}
@@ -391,7 +452,7 @@ export default function CollectionView(props) {
               <BaseButton
                 label={creatingJev ? "Creating..." : "Create JEV"}
                 icon={icons.submit}
-                onClick={() => setCreateJevConfirmOpen(true)}
+                onClick={() => withSpinner("JEV", () => handleCreateJev())}
                 actionColor="approve"
                 disabled={creatingJev || jevLoading}
               />
@@ -656,17 +717,25 @@ export default function CollectionView(props) {
       />
       <JEVConfirmationModal
         open={finalizeJevConfirmOpen}
-        style={
-          String(jev?.cStatus) === String(jevPendingKey)
-            ? JEV_CONFIRM_STYLES.finalize_collection_jev
-            : JEV_CONFIRM_STYLES.undo_finalize_collection_jev
-        }
+        style={JEV_CONFIRM_STYLES.finalize_collection_choice}
+        badge={jev?.strJEVNumber}
         loading={jevToggling}
         onConfirm={() => {
+          // Hide the dialog on click — withSpinner owns the pending state.
           setFinalizeJevConfirmOpen(false);
-          withSpinner("JEV", () => handleToggleJevFinalize());
+          // Cleared -> Active (A), the state the ledger reads.
+          withSpinner("JEV", () => handleToggleJevFinalize(activeJevKey));
         }}
-        onClose={() => setFinalizeJevConfirmOpen(false)}
+        onSecondary={() => {
+          setFinalizeJevConfirmOpen(false);
+          // Still waiting to clear -> Pending Clearance (R).
+          withSpinner("JEV", () =>
+            handleToggleJevFinalize(pendingClearanceJevKey),
+          );
+        }}
+        onClose={() => {
+          if (!jevToggling) setFinalizeJevConfirmOpen(false);
+        }}
       />
       <ArchiveModal
         open={completeModalOpen}

@@ -41,6 +41,8 @@ const useColors = (c) => ({
   redBorder: c.red.border,
   orangeText: c.orange.text,
   greenText: c.green.text,
+  greenBg: c.green.bg,
+  greenBorder: c.green.border,
   amberWarnText: c.amber.warnText,
   // foreground for the row-index badge sitting on a status fill
   textOnFill: c.gray.textOnFill,
@@ -284,6 +286,7 @@ export default function CartRowPanel({
 
   // ── ITEM ROW VARIANT ──
   const p = opt.purchase_option;
+  const isAddOn = Number(p?.bAddOn) === 1 || p?.bAddOn === true;
   const tx = p?.transaction_item?.transaction;
   const lineTotal = (p?.nQuantity || 0) * (p?.dUnitPrice || 0);
   const txnCode = tx?.strCode ?? "—";
@@ -648,23 +651,55 @@ export default function CartRowPanel({
               {/* CODE — above the brand · model, plain text, exactly like the
                   code line of the card header (same size, weight, colour and
                   line spacing). */}
-              {tableLayout && !hideRowBadge && (
-                <Typography
+              {(tableLayout && !hideRowBadge) || isAddOn ? (
+                <Box
                   sx={{
-                    fontSize: "0.55rem",
-                    fontWeight: 600,
-                    color: c.textSecondary,
-                    textTransform: "uppercase",
-                    lineHeight: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.5,
+                    minWidth: 0,
                     mb: 0.05,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
                   }}
                 >
-                  {codeLine}
-                </Typography>
-              )}
+                  {tableLayout && !hideRowBadge && (
+                    <Typography
+                      sx={{
+                        fontSize: "0.55rem",
+                        fontWeight: 600,
+                        color: c.textSecondary,
+                        textTransform: "uppercase",
+                        lineHeight: 1,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        minWidth: 0,
+                      }}
+                    >
+                      {codeLine}
+                    </Typography>
+                  )}
+                  {isAddOn && (
+                    <Box
+                      component="span"
+                      sx={{
+                        flexShrink: 0,
+                        px: 0.45,
+                        py: 0.05,
+                        borderRadius: "4px",
+                        fontSize: "0.5rem",
+                        fontWeight: 700,
+                        lineHeight: 1.2,
+                        whiteSpace: "nowrap",
+                        color: c.greenText,
+                        background: c.greenBg,
+                        border: `0.5px solid ${c.greenBorder ?? c.greenText}`,
+                      }}
+                    >
+                      ADD-ONS
+                    </Box>
+                  )}
+                </Box>
+              ) : null}
               <Box
                 sx={{
                   display: "flex",

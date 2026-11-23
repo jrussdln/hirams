@@ -33,6 +33,7 @@ const parseData = (data, setters) => {
     setFinanceStatus,
     setJevTypes,
     setJevStatus,
+    setJevStatusPendingClearance,
     setItemPurchasingStatus,
     setItemPurchasingStatusFinance,
     setEwtBypassType,
@@ -80,6 +81,7 @@ const parseData = (data, setters) => {
   setFinanceStatus(data.finance_status || {});
   setJevTypes(data.jev_types || {});
   setJevStatus(data.jev_status || {});
+  setJevStatusPendingClearance(data.jev_status_pending_clearance || {});
   setItemPurchasingStatus(data.item_purchasing_status || {});
   setItemPurchasingStatusFinance(data.item_purchasing_status_finance);
   // The EWT types (the per-line bypass of the default EWT formula).
@@ -121,6 +123,9 @@ export default function useMapping() {
   const [financestatus, setFinanceStatus] = useState({});
   const [jev_types, setJevTypes] = useState({});
   const [jev_status, setJevStatus] = useState({});
+  const [jev_status_pending_clearance, setJevStatusPendingClearance] = useState(
+    {},
+  );
   const [itemPurchasingStatus, setItemPurchasingStatus] = useState({});
   const [itemPurchasingStatusFinance, setItemPurchasingStatusFinance] = useState({});
   // The EWT types: A = 0% of TC, B = 1% of TC, C = 2% of TC,
@@ -163,6 +168,7 @@ export default function useMapping() {
     setFinanceStatus,
     setJevTypes,
     setJevStatus,
+    setJevStatusPendingClearance,
     setItemPurchasingStatus,
     setItemPurchasingStatusFinance,
     setEwtBypassType,
@@ -177,10 +183,26 @@ export default function useMapping() {
     if (cached) {
       parseData(cached, setters);
       setLoading(false);
-      return; // ← skip API call entirely
+
+      // Stale-cache migration: Pending Clearance moved out of jev_status
+      // into jev_status_pending_clearance. Refresh in background so option
+      // lists pick up the Collection-only split without requiring relogin.
+      const cachedHasPendingInJevStatus = Object.values(
+        cached.jev_status || {},
+      ).some(
+        (label) =>
+          String(label ?? "").trim().toLowerCase() === "pending clearance",
+      );
+      const cachedHasSplitMap =
+        cached.jev_status_pending_clearance &&
+        Object.keys(cached.jev_status_pending_clearance).length > 0;
+      if (!(cachedHasPendingInJevStatus && !cachedHasSplitMap)) {
+        return; // ← cache is fine, skip API call entirely
+      }
+      // Fall through to fetch fresh mappings and update state/cache.
     }
 
-    // ── 2. Cache miss — fetch from API ─────────────────
+    // ── 2. Cache miss (or stale cache) — fetch from API ─────────────────
     try {
       const data = await MappingAPI.getMappings();
       parseData(data, setters);
@@ -227,6 +249,7 @@ export default function useMapping() {
     financestatus,
     jev_types,
     jev_status,
+    jev_status_pending_clearance,
     itemPurchasingStatus,
     itemPurchasingStatusFinance,
     ewtBypassType,

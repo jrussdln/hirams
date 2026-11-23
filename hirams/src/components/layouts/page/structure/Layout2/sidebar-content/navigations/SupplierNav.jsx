@@ -16,9 +16,6 @@ const SupplierNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   // ✅ Supplier statuses reuse the client mapping (A / I / P)
   const {
     clientstatus,
-    forApprovalStatusKey,
-    isManagement,
-    isFinanceOfficer,
     loading: mappingLoading,
   } = useKeysLabels();
 
@@ -33,16 +30,6 @@ const SupplierNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   const [suppliers, setSuppliers] = useState([]);
   const [countLoading, setCountLoading] = useState(true);
   const isOnPage = location.pathname === "/supplier" || location.pathname === "/supplier-contact" || location.pathname === "/supplier-bank";
-
-  // Suppliers still waiting on approval — the alarm count. Management
-  // AND finance share the supplier approval, so both roles see it
-  // (clients stay management-only). Derived from the list already
-  // fetched for the status badges.
-  const canActOnApproval = isManagement || isFinanceOfficer;
-  const pendingSuppliers =
-    canActOnApproval && forApprovalStatusKey
-      ? suppliers.filter((s) => s.cStatus === forApprovalStatusKey).length
-      : 0;
 
   // ── Sync status from localStorage ──
   useEffect(() => {
@@ -133,11 +120,6 @@ const SupplierNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}
-        // While the status list is folded away, the parent row itself
-        // carries the alarm: amber pulse + blinking triangle before the
-        // chevron. Open the section and the row calms — the For Approval
-        // sub-row takes over.
-        attentionWhenCollapsed={pendingSuppliers > 0}
       >
         {entries.length > 0 ? (
           <StatusSubItems
@@ -147,9 +129,6 @@ const SupplierNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
             onSelect={handleSelect}
             isOnPage={isOnPage}
             countLoading={countLoading}
-            // Suppliers waiting on approval keep the row amber + blinking
-            // until the last one is approved — management and finance.
-            attentionCode={canActOnApproval ? forApprovalStatusKey : undefined}
           />
         ) : (
           <div className="px-3 py-1 text-xs text-gray-500 italic">

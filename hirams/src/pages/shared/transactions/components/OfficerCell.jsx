@@ -1,4 +1,4 @@
-import { NOT_YET_ASSIGNED } from "../../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../../constants/tableDataFallbacks";
 
 /**
  * The "OFFICER" cell — who raised the transaction (PO) over who owns it
@@ -21,7 +21,7 @@ const OfficerCell = ({ aoName, createdBy, mutedColor }) => {
   if (ao === "—" && po === "—") {
     return (
       <span className="text-xs font-light italic" style={{ color: mutedColor }}>
-        {NOT_YET_ASSIGNED}
+        {DEFAULT_FALLBACK}
       </span>
     );
   }

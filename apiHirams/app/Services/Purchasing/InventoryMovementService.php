@@ -121,14 +121,14 @@ class InventoryMovementService
             $syncPoIds = array_values(array_unique($syncPoIds));
         }
 
-        foreach ($syncPoIds as $poId) {
-            app(PurchaseOrderStatusSync::class)->sync(
-                $poId,
-                $v['nReceivedStatus'],
-                $v['nDeliveredStatus'],
-                $v['nPaidStatus']
-            );
-        }
+        // ONE batched sync for every affected order instead of a load +
+        // aggregate + save loop per order.
+        app(PurchaseOrderStatusSync::class)->syncMany(
+            $syncPoIds,
+            $v['nReceivedStatus'],
+            $v['nDeliveredStatus'],
+            $v['nPaidStatus']
+        );
 
         // ONE broadcast for the whole batch
         broadcast(new InventoryUpdated('bulk_' . $v['mode'], $createdIds[0]))->toOthers();

@@ -11,8 +11,6 @@ import {
   MenuItem,
   Menu,
   FormControl,
-  Collapse,
-  IconButton,
   Divider,
 } from "@mui/material";
 import { motion } from "framer-motion";
@@ -60,6 +58,7 @@ import OverviewAPI from "../../../../api/endpoints/overview.api";
 import useAttentionItems from "../../../../hooks/useAttentionItems";
 import NeedsAttentionBanner from "./NeedsAttentionBanner";
 import { quickRange } from "../../../../components/ui/form/FilterDate.jsx";
+import CustomTable from "../../../../components/ui/form/Table.jsx";
 
 // ─── Data (dummy chart placeholders) ────────────────────────────────────────
 const monthlyData = [
@@ -487,8 +486,7 @@ const ledgerTotalsOf = (rows) => {
     0,
   );
   const retention = rows.reduce((s, r) => s + num(r.retention), 0);
-  const net = amount - ewt - tax - retention;
-  return { amount, ewt, tax, retention, net };
+  return { amount, ewt, tax, retention, net: amount - ewt - tax - retention };
 };
 
 // ── The section's date filter — the same This ▾ / Previous ▾ quick picks
@@ -523,55 +521,190 @@ const FILTER_GROUPS = [
 
 // NOTE: defined at MODULE scope, not inside the panel — an inline component
 // gets a fresh identity every parent render, so React would unmount it (and
-// wipe its `open` state) whenever the dashboard data refreshed, making the
-// section collapse itself.
-function CollectionLedgerSection({ title, rows, emptyLabel }) {
+// wipe its `viewAll` state) whenever the dashboard data refreshed.
+function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleViewAll }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
-  const colors = useColors(getThemeColors(isDark));
 
   // The metrics tiles read straight off the receipt's ledger. Net carries
   // the receipt's green — it is the figure the "Collection Amount" prints.
   const green = getThemeColors(isDark).green.paid;
+  const badgeColors = getThemeColors(isDark).blue;
+  const badgeBorder = getThemeColors(isDark).slate.border;
 
-  const [open, setOpen] = useState(false);
   // Date filter — null means "All"; anything else is a quickRange key.
   const [filter, setFilter] = useState(null);
   const [filterAnchor, setFilterAnchor] = useState(null);
 
+  // A Collection journal with no posted entries reads ₱0.00 and carries no
+  // completion date — drop it so the count, totals and table agree.
+  const validRows = useMemo(
+    () => (rows || []).filter((r) => Number(r.amount) > 0),
+    [rows],
+  );
+
   // A quick window keeps only rows whose date falls inside it; rows without
   // a date can never match a window, so they only show under "All".
   const filteredRows = useMemo(() => {
-    if (!filter) return rows;
+    if (!filter) return validRows;
     const [from, to] = quickRange(filter);
-    return rows.filter((r) => {
+    return validRows.filter((r) => {
       const d = (r.date || "").slice(0, 10);
       return d && d >= from && d <= to;
     });
-  }, [rows, filter]);
+  }, [validRows, filter]);
 
   const totals = useMemo(() => ledgerTotalsOf(filteredRows), [filteredRows]);
 
+  // Default dashboard tiles hide Tax and Retention; the View All header keeps
+  // the full five-figure ledger.
   const metricTiles = [
-    { label: "Amount", value: totals.amount },
+    { label: "BID Amount", value: totals.amount },
+    { label: "Less: EWT", value: totals.ewt, deduction: true },
+    { label: "Net Amount", value: totals.net, strong: true },
+  ];
+  const viewAllTiles = [
+    { label: "BID Amount", value: totals.amount },
     { label: "Less: EWT", value: totals.ewt, deduction: true },
     { label: "Less: Tax", value: totals.tax, deduction: true },
     { label: "Less: Retention", value: totals.retention, deduction: true },
     { label: "Net Amount", value: totals.net, strong: true },
   ];
 
+  // Rows for the shared Table component — every money cell pre-computed so
+  // the column renders stay plain and sorting/paging stay off.
+  const tableRows = useMemo(
+    () =>
+      filteredRows.map((r) => {
+        const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+        const amount = num(r.amount);
+        const ewt = num(calculateCollectionEWT(amount, r.cItemType));
+        const tax = num(calculateCollectionTax(amount));
+        const retention = num(r.retention);
+        return {
+          id: r.id ?? r.strCode,
+          code: r.strCode || "—",
+          company: r.companyNickName || "",
+          client: r.clientNickName || "",
+          office: r.officeNickName || "",
+          title: r.strTitle || "—",
+          date: r.date,
+          amount,
+          ewt,
+          tax,
+          retention,
+          net: amount - ewt - tax - retention,
+        };
+      }),
+    [filteredRows],
+  );
+
+  const tableColumns = useMemo(
+    () => [
+      {
+        key: "title",
+        label: "Transaction",
+        xs: 2.4,
+        render: (_, row) => (
+          <Box sx={{ textAlign: "left", lineHeight: 1.1 }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0, lineHeight: 1.1 }}>
+              <Typography
+                sx={{ fontSize: "0.56rem", color: "text.secondary", textTransform: "uppercase", lineHeight: 1.1 }}
+                noWrap
+              >
+                {row.code}
+              </Typography>
+              {(row.company || row.client) && (
+                <Box
+                  component="span"
+                  sx={{
+                    px: 0.5,
+                    py: "1px",
+                    borderRadius: "9999px",
+                    backgroundColor: badgeColors.bg,
+                    color: badgeColors.text,
+                    border: `1px solid ${badgeBorder}`,
+                    fontSize: "0.5rem",
+                    fontWeight: 500,
+                    textTransform: "uppercase",
+                    lineHeight: 1,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
+                  {row.company || ""}
+                  {row.company && row.client ? " ➟ " : ""}
+                  {row.client || ""}
+                  {row.office ? ` (${row.office})` : ""}
+                </Box>
+              )}
+            </Box>
+            <Typography sx={{ fontSize: "0.72rem", fontWeight: 500, lineHeight: 1.15 }} noWrap>
+              {row.title}
+            </Typography>
+            <Typography
+              sx={{
+                fontSize: "0.56rem",
+                color: "text.secondary",
+                textTransform: "uppercase",
+                letterSpacing: "0.03em",
+                lineHeight: 1.1,
+              }}
+              noWrap
+            >
+              {fmtDateTime(row.date)}
+            </Typography>
+          </Box>
+        ),
+      },
+      {
+        key: "amount",
+        label: "BID Amount",
+        xs: 1.1,
+        align: "right",
+        render: (v) => <Typography sx={{ fontSize: "0.68rem", fontWeight: 600 }}>{fmtPHP(v)}</Typography>,
+      },
+      {
+        key: "net",
+        label: "Net Amount",
+        xs: 1.4,
+        align: "right",
+        render: (v, row) => (
+          <Box sx={{ textAlign: "right", lineHeight: 1.45 }}>
+            <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: green }}>
+              {fmtPHP(v)}
+            </Typography>
+            {row.ewt > 0 && (
+              <Typography sx={{ fontSize: "0.58rem", color: "text.secondary" }}>
+                EWT: {fmtPHP(row.ewt)}
+              </Typography>
+            )}
+            {row.tax > 0 && (
+              <Typography sx={{ fontSize: "0.58rem", color: "text.secondary" }}>
+                Tax: {fmtPHP(row.tax)}
+              </Typography>
+            )}
+            {row.retention > 0 && (
+              <Typography sx={{ fontSize: "0.58rem", color: "text.secondary" }}>
+                Retention: {fmtPHP(row.retention)}
+              </Typography>
+            )}
+          </Box>
+        ),
+      },
+    ],
+    [green, badgeColors, badgeBorder],
+  );
+
   return (
     <Box>
-      {/* ── Header — clicking ANYWHERE on it toggles the section ── */}
+      {/* ── Header — the View All button swaps this section's body ── */}
       <Box
-        onClick={() => setOpen((o) => !o)}
         sx={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 1.5,
-          cursor: "pointer",
-          userSelect: "none",
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
@@ -593,11 +726,9 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
             </Box>
           </Typography>
         </Box>
-        {/* Right corner — the filter field, then the toggle. The wrapper
-            stops propagation: picking a range must not collapse the section. */}
+        {/* Right corner — the filter field, then View All. */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
           <Box
-            onClick={(e) => e.stopPropagation()}
             sx={{
               display: "flex",
               alignItems: "center",
@@ -709,26 +840,38 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
               ])}
             </Menu>
           </Box>
-          {/* stopPropagation — the button's own click would otherwise bubble
-              up to the header and toggle the state straight back. */}
-        <IconButton
-          size="small"
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen((o) => !o);
-          }}
-          aria-label={open ? `Collapse ${title}` : `Expand ${title}`}
-          sx={{ p: 0.25, flexShrink: 0 }}
-        >
-          {open ? <ExpandLess /> : <ExpandMore />}
-        </IconButton>
+          {!viewAll && (
+            <Box
+              component="button"
+              type="button"
+              onClick={onToggleViewAll}
+              sx={{
+                px: 0.9,
+                py: 0.4,
+                borderRadius: "6px",
+                border: `1px solid ${theme.palette.divider}`,
+                background: "transparent",
+                color: "text.primary",
+                fontSize: "0.6rem",
+                fontWeight: 700,
+                lineHeight: 1.2,
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+                flexShrink: 0,
+                "&:hover": { background: theme.palette.action.hover },
+              }}
+            >
+              View All
+            </Box>
+          )}
         </Box>
       </Box>
 
       {/* ── Horizontal boundary between the section label and the metrics ── */}
       <Divider sx={{ mt: 0.75 }} />
 
-      {/* ── The five ledger metrics — icon at the left, tiles right-aligned ── */}
+      {/* ── Default view: the five ledger metrics as tiles ── */}
+      {!viewAll && (
       <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mt: 1 }}>
         <QueryStatsOutlined
           sx={{
@@ -745,9 +888,9 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
           sx={{
             display: "grid",
             gridTemplateColumns: {
-              xs: "repeat(2, 1fr)",
+              xs: "repeat(1, 1fr)",
               sm: "repeat(3, 1fr)",
-              md: "repeat(5, 1fr)",
+              md: "repeat(3, 1fr)",
             },
             gap: 1.5,
             flex: 1,
@@ -794,183 +937,120 @@ function CollectionLedgerSection({ title, rows, emptyLabel }) {
         ))}
         </Box>
       </Box>
+      )}
 
-      {/* ── The transaction list — revealed by the toggle ── */}
-      <Collapse in={open}>
-        <Divider
-          sx={{ borderStyle: "dashed", mt: 1.5, mb: 0.75 }}
-        />
-        {/* The rows share one surface — no per-row cards, no container
-            card either: plain rows separated by thin dividers. Each row's
-            right corner stacks its amount and, when they exist, the small
-            EWT / TAX / RETENTION / NET ledger. */}
+      {/* ── View All: summary header + transaction table ── */}
+      {viewAll && (
+      <>
+        {/* Content header — the same five ledger figures, side by side */}
         <Box
           sx={{
-            maxHeight: 220,
-            overflowY: "auto",
+            display: "grid",
+            gridTemplateColumns: {
+              xs: "repeat(2, 1fr)",
+              sm: "repeat(3, 1fr)",
+              md: "repeat(5, 1fr)",
+            },
+            gap: 1.5,
+            mt: 1.25,
           }}
         >
-          {filteredRows.length === 0 && (
-            <Typography
-              sx={{ fontSize: "0.66rem", color: "text.disabled", py: 1, px: 1 }}
-            >
-              {filter && filteredRows.length === 0 && rows.length > 0
-                ? "Nothing in this period."
-                : emptyLabel}
-            </Typography>
-          )}
-          {filteredRows.map((r, idx) => {
-            const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-            const amount = num(r.amount);
-            const rowEwt = num(calculateCollectionEWT(amount, r.cItemType));
-            const rowTax = num(calculateCollectionTax(amount));
-            const rowRetention = num(r.retention);
-            const rowNet = amount - rowEwt - rowTax - rowRetention;
-            // "(if have)" — a deduction line only prints when it is nonzero,
-            // and NET only when something was actually deducted.
-            const deductions = [
-              { label: "EWT:", value: rowEwt },
-              { label: "TAX:", value: rowTax },
-              { label: "RETENTION:", value: rowRetention },
-            ].filter((d) => d.value > 0);
-            const showNet = deductions.length > 0;
-
-            return (
-              <Box
-                key={r.id ?? r.strCode}
+          {viewAllTiles.map((tile) => (
+            <Box key={tile.label} sx={{ minWidth: 0, textAlign: "right" }}>
+              <Typography
                 sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1.5,
-                  px: 1,
-                  py: 0.5,
-                  borderTop:
-                    idx > 0 ? `1px solid ${theme.palette.divider}` : "none",
+                  fontSize: "0.6rem",
+                  fontWeight: 600,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.03em",
+                  color: "text.secondary",
+                  mb: 0.35,
+                  whiteSpace: "nowrap",
                 }}
               >
-                {/* Far left — the row's 1-based position in the list */}
-                <Typography
-                  sx={{
-                    fontSize: "0.62rem",
-                    fontWeight: 500,
-                    color: "text.secondary",
-                    minWidth: 16,
-                    textAlign: "right",
-                    flexShrink: 0,
-                  }}
-                >
-                  {idx + 1}
-                </Typography>
-
-                <Box flex={1} minWidth={0}>
-                  {/* The code and the client nickname share the top line:
-                      "code - client" */}
-                  <Typography
-                    sx={{
-                      fontSize: "0.56rem",
-                      fontWeight: 500,
-                      color: "text.secondary",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.03em",
-                    }}
-                    noWrap
-                  >
-                    {r.strCode || "—"}
-                    {r.clientNickName ? ` - ${r.clientNickName}` : ""}
-                  </Typography>
-                  <Typography
-                    sx={{ fontSize: "0.72rem", fontWeight: 500 }}
-                    noWrap
-                  >
-                    {r.strTitle || "--"}
-                  </Typography>
-                  {/* The row's date — same styling as the code line,
-                      formatted through the shared fmtDateTime helper */}
-                  <Typography
-                    sx={{
-                      fontSize: "0.56rem",
-                      fontWeight: 500,
-                      color: "text.secondary",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.03em",
-                    }}
-                    noWrap
-                  >
-                    {fmtDateTime(r.date)}
-                  </Typography>
-                </Box>
-
-                {/* Right corner — the amount is the headline figure; the
-                    small EWT / TAX lines only print when there is something
-                    to deduct, and the green NET figure closes the ledger. */}
-                <Box
-                  sx={{
-                    textAlign: "right",
-                    flexShrink: 0,
-                    lineHeight: 1.35,
-                  }}
-                >
-                  <Typography
-                    sx={{
-                      fontSize: "0.66rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {fmtPHP(amount)}
-                  </Typography>
-                  {showNet && (
-                    <>
-                      {deductions.map((d) => (
-                        <Typography
-                          key={d.label}
-                          sx={{
-                            fontSize: "0.52rem",
-                            fontWeight: 400,
-                            color: "text.secondary",
-                          }}
-                        >
-                          {d.label} {fmtPHP(d.value)}
-                        </Typography>
-                      ))}
-                      <Typography
-                        sx={{
-                          fontSize: "0.66rem",
-                          fontWeight: 600,
-                          color: green,
-                        }}
-                      >
-                        {fmtPHP(rowNet)}
-                      </Typography>
-                    </>
-                  )}
-                </Box>
-              </Box>
-            );
-          })}
+                {tile.label}
+              </Typography>
+              <Typography
+                sx={{
+                  fontSize: "0.85rem",
+                  fontWeight: tile.strong ? 700 : 600,
+                  color: tile.strong
+                    ? green
+                    : tile.deduction
+                      ? getThemeColors(isDark).orange.text
+                      : "text.primary",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {fmtPHP(tile.value)}
+              </Typography>
+            </Box>
+          ))}
         </Box>
-      </Collapse>
+
+        <Divider sx={{ my: 1.25 }} />
+        {filteredRows.length === 0 ? (
+          <Typography
+            sx={{ fontSize: "0.66rem", color: "text.disabled", py: 1.5, textAlign: "center" }}
+          >
+            {filter && validRows.length > 0 ? "Nothing in this period." : emptyLabel}
+          </Typography>
+        ) : (
+          <CustomTable
+            columns={tableColumns}
+            rows={tableRows}
+            getRowId={(row) => row.id}
+            enableSorting={false}
+            showPagination={false}
+            rowsPerPage={-1}
+            maxHeight="57vh"
+          />
+        )}
+      </>)}
     </Box>
   );
 }
 
-function CollectiblesCollectionPanel({ collectibles, collections, theme }) {
+function CollectiblesCollectionPanel({
+  collectibles,
+  collections,
+  theme,
+  viewingAll,
+  onViewingAllChange,
+}) {
+  const toggle = (title) =>
+    onViewingAllChange(viewingAll === title ? null : title);
+
+  // Viewing one ledger in full hides the other section entirely — header,
+  // count and all — so only what was opened stays on screen.
+  const showCollectibles = !viewingAll || viewingAll === "Collectibles";
+  const showCollection = !viewingAll || viewingAll === "Collection";
+
   return (
     <Card sx={{ ...cardSx(theme), p: 2 }}>
       {/* ── Section 1 — Collectibles ── */}
-      <CollectionLedgerSection
-        title="Collectibles"
-        rows={collectibles}
-        emptyLabel="Nothing pending collection."
-      />
+      {showCollectibles && (
+        <CollectionLedgerSection
+          title="Collectibles"
+          rows={collectibles}
+          emptyLabel="Nothing pending collection."
+          viewAll={viewingAll === "Collectibles"}
+          onToggleViewAll={() => toggle("Collectibles")}
+        />
+      )}
 
-      <Divider sx={{ my: 2 }} />
+      {showCollectibles && showCollection && <Divider sx={{ my: 2 }} />}
 
       {/* ── Section 2 — Collection ── */}
-      <CollectionLedgerSection
-        title="Collection"
-        rows={collections}
-        emptyLabel="No collections raised yet."
-      />
+      {showCollection && (
+        <CollectionLedgerSection
+          title="Collection"
+          rows={collections}
+          emptyLabel="No collections raised yet."
+          viewAll={viewingAll === "Collection"}
+          onToggleViewAll={() => toggle("Collection")}
+        />
+      )}
     </Card>
   );
 }
@@ -1275,7 +1355,7 @@ function EmployeeRankingPanel({ data, selectedYear, theme }) {
 
 // ─── Management view ─────────────────────────────────────────────────────────
 
-export default function ManagementView() {
+export default function ManagementView({ viewingAll, onViewingAllChange }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
   const colors = useColors(getThemeColors(isDark));
@@ -1481,9 +1561,10 @@ export default function ManagementView() {
 
   return (
     <div className="space-y-6">
-      {/* Needs Attention — only mounts when something actually needs a
-          human (e.g. clients waiting on approval); hidden otherwise. */}
-      <NeedsAttentionBanner items={attentionItems} theme={theme} />
+      {/* Needs Attention — hidden entirely while viewing a ledger in full. */}
+      {!viewingAll && (
+        <NeedsAttentionBanner items={attentionItems} theme={theme} />
+      )}
 
       {/* Overview Metrics — commented out for now */}
       {/* <Grid container spacing={1.5}>
@@ -1499,6 +1580,8 @@ export default function ManagementView() {
             collectibles={collectiblesData.collectibles}
             collections={collectiblesData.collections}
             theme={theme}
+            viewingAll={viewingAll}
+            onViewingAllChange={onViewingAllChange}
           />
         </Grid>
       </Grid>

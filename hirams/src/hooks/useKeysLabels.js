@@ -32,11 +32,44 @@ export default function useKeysLabels() {
     financestatus,
     jev_types,
     jev_status,
+    jev_status_pending_clearance,
     archiveStatus, // ✅ ADD THIS LINE — MISSING!
     itemPurchasingStatus, // ✅ ADD THIS LINE — MISSING!
     itemPurchasingStatusFinance,
     removedFromCartStatus, // ✅ ADD THIS LINE — MISSING!
   } = useMapping();
+
+  // Common JEV statuses apply to every JEV type. Pending Clearance is
+  // Collection-only and comes from its own mapping. Normalize stale/old
+  // payloads where Pending Clearance still lived inside jev_status.
+  const rawJevStatus = jev_status || {};
+  const rawJevPendingClearance = jev_status_pending_clearance || {};
+  let jev_status_common = { ...rawJevStatus };
+  let jev_status_collection_only = { ...rawJevPendingClearance };
+
+  if (Object.keys(jev_status_collection_only).length === 0) {
+    const pendingClearanceEntry = Object.entries(jev_status_common).find(
+      ([, label]) =>
+        String(label ?? "").trim().toLowerCase() === "pending clearance",
+    );
+    if (pendingClearanceEntry) {
+      const [code, label] = pendingClearanceEntry;
+      jev_status_collection_only = { [code]: label };
+      delete jev_status_common[code];
+    }
+  } else {
+    // Defensive: never let collection-only statuses leak into common.
+    Object.keys(jev_status_collection_only).forEach((code) => {
+      delete jev_status_common[code];
+    });
+  }
+
+  const jev_status_all = {
+    ...jev_status_common,
+    ...jev_status_collection_only,
+  };
+  const jevStatusAllKeys = Object.keys(jev_status_all || {});
+
   // ──────────────────────────────────────────────────────────────
   // ✅ DERIVE KEY LISTS
   // ──────────────────────────────────────────────────────────────
@@ -46,7 +79,7 @@ export default function useKeysLabels() {
   const cartStatusKeys = Object.keys(cartStatus || {});
   const forPurchaseStatusKeys = Object.keys(forPurchaseStatus || {});
   const jevTypeKeys = Object.keys(jev_types || {});
-  const jevStatusKeys = Object.keys(jev_status || {});
+  const jevStatusKeys = jevStatusAllKeys;
   const itemTypeKeys = Object.keys(itemType || {});
   const vatKeys = Object.keys(vat || {});
   const ewtKeys = Object.keys(ewt || {});
@@ -106,9 +139,23 @@ export default function useKeysLabels() {
   const jevDeliveredItemsKey = jevTypeKeys[2] ?? "";
   const jevCollectionKey = jevTypeKeys[3] ?? "";
 
-  const jevActiveKey = jevStatusKeys[0] ?? "";
-  const jevCancelledKey = jevStatusKeys[1] ?? "";
-  const jevPendingKey = jevStatusKeys[2] ?? "";
+  // JEV statuses are looked up BY LABEL, never by position: common statuses
+  // live in jev_status and Pending Clearance lives in the Collection-only
+  // jev_status_pending_clearance mapping.
+  const jevStatusKeyByLabel = (label) =>
+    jevStatusAllKeys.find(
+      (key) =>
+        String(jev_status_all?.[key] ?? "").trim().toLowerCase() ===
+        label.toLowerCase(),
+    ) ?? "";
+  const jevDraftKey =
+    jevStatusKeyByLabel("Draft") || jevStatusKeyByLabel("Pending");
+  const jevPendingClearanceKey = jevStatusKeyByLabel("Pending Clearance");
+  const jevActiveKey = jevStatusKeyByLabel("Active");
+  const jevCancelledKey = jevStatusKeyByLabel("Cancelled");
+  // Legacy alias: every older screen asks for jevPendingKey meaning "not
+  // finalized yet" — that state is Draft now.
+  const jevPendingKey = jevDraftKey;
 
   // --- Voucher ---
   const voucherActiveKey = voucherStatusKeys[0] ?? "";
@@ -425,9 +472,12 @@ export default function useKeysLabels() {
   const jevReceivedPurchasesLabel = jev_types?.[jevReceivedPurchasesKey] ?? "";
   const jevDeliveredItemsLabel = jev_types?.[jevDeliveredItemsKey] ?? "";
   const jevCollectionLabel = jev_types?.[jevCollectionKey] ?? "";
-  const jevActiveLabel = jev_status?.[jevActiveKey] ?? "";
-  const jevCancelledLabel = jev_status?.[jevCancelledKey] ?? "";
-  const jevPendingLabel = jev_status?.[jevPendingKey] ?? "";
+  const jevDraftLabel = jev_status_all?.[jevDraftKey] ?? "";
+  const jevPendingClearanceLabel =
+    jev_status_all?.[jevPendingClearanceKey] ?? "";
+  const jevActiveLabel = jev_status_all?.[jevActiveKey] ?? "";
+  const jevCancelledLabel = jev_status_all?.[jevCancelledKey] ?? "";
+  const jevPendingLabel = jevDraftLabel;
 
   // --- Status Transaction Labels ---
   const createTransactionLabel =
@@ -631,7 +681,12 @@ export default function useKeysLabels() {
     inventoryStatusAoProc,
     financestatus,
     jev_types,
-    jev_status,
+    // Merged map for backward-compatible display/label lookups (includes
+    // Collection-only Pending Clearance when present).
+    jev_status: jev_status_all,
+    jev_status_common,
+    jev_status_all,
+    jev_status_pending_clearance: jev_status_collection_only,
     archiveStatus,
     itemPurchasingStatus,
     itemPurchasingStatusFinance,
@@ -705,6 +760,8 @@ export default function useKeysLabels() {
     jevReceivedPurchasesKey,
     jevDeliveredItemsKey,
     jevCollectionKey,
+    jevDraftKey,
+    jevPendingClearanceKey,
     jevActiveKey,
     jevCancelledKey,
     jevPendingKey,
@@ -713,6 +770,8 @@ export default function useKeysLabels() {
     jevReceivedPurchasesLabel,
     jevDeliveredItemsLabel,
     jevCollectionLabel,
+    jevDraftLabel,
+    jevPendingClearanceLabel,
     jevActiveLabel,
     jevCancelledLabel,
     jevPendingLabel,

@@ -16,7 +16,7 @@ import ArchiveModal from "./modal/ArchiveModal";
 import useArchive from "./useArchive";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import OfficerCell from "../transactions/components/OfficerCell";
-import { NO_TRANSACTION_ABC } from "../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — consistent with BankModal & ContactModal pattern
@@ -151,7 +151,7 @@ export default function ArchiveView() {
                   className="text-xs font-light italic"
                   style={{ color: colors.textMuted }}
                 >
-                  {NO_TRANSACTION_ABC}
+                  {DEFAULT_FALLBACK}
                 </span>
               ) : (
                 `₱ ${Number(val).toLocaleString(undefined, {

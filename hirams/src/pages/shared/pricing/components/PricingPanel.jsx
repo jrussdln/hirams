@@ -27,10 +27,7 @@ import { fmtPHP, fmtQty } from "../../../../utils/formatters/formatter.js";
 import { calculateItemTax } from "../../../../utils/helpers/calculateTax.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import CardStructure from "../../../../components/ui/structure/CardStructure.jsx";
-import {
-  NO_TRANSACTION_ABC,
-  OPEN_DATE,
-} from "../../../../constants/tableDataFallbacks.js";
+import { DEFAULT_FALLBACK } from "../../../../constants/tableDataFallbacks.js";
 /* ──────────────────────────────────────────────────────────── */
 /* 🔧 LOCAL COLOR MAP — Prompt 1 pattern, only used tokens       */
 /* ──────────────────────────────────────────────────────────── */
@@ -1608,7 +1605,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                     ) : totals.totalABCAll > 0 ? (
                       fmtPHP(totals.totalABCAll)
                     ) : (
-                      NO_TRANSACTION_ABC
+                      DEFAULT_FALLBACK
                     )
                   }
                 />
@@ -1623,7 +1620,7 @@ const PricingPanel = React.forwardRef(function PricingPanel(
                   value={
                     transaction?.dtDocSubmission
                       ? `${new Date(transaction.dtDocSubmission).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })} — ${new Date(transaction.dtDocSubmission).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`
-                      : OPEN_DATE
+                      : DEFAULT_FALLBACK
                   }
                 />
               </Box>

@@ -53,9 +53,8 @@ export default function JEVAEModal({
       <Box
         sx={{
           display: "flex",
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-          gap: 1,
+          flexDirection: "column",
+          gap: 2,
         }}
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose?.();
@@ -65,6 +64,7 @@ export default function JEVAEModal({
           label="Title"
           size="small"
           required
+          fullWidth
           value={titleValue}
           onChange={onTitleChange}
           error={!!titleError}
@@ -72,19 +72,18 @@ export default function JEVAEModal({
           inputProps={{ maxLength: 100 }}
           inputRef={titleInputRef}
           autoFocus
-          sx={{ flex: "1 1 180px", minWidth: 140 }}
         />
         <TextField
           label="Date"
           type="date"
           size="small"
           required
+          fullWidth
           value={dateValue}
           onChange={onDateChange}
           error={!!dateError}
           helperText={dateError}
           InputLabelProps={{ shrink: true }}
-          sx={{ flex: "0 1 200px", minWidth: 180 }}
         />
       </Box>
     </ModalContainer>

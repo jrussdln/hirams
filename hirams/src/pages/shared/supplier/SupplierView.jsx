@@ -1,4 +1,4 @@
-﻿import React, { useMemo } from "react";
+import React, { useMemo } from "react";
 import { useTheme } from "@mui/material";
 import {
   Add,
@@ -23,15 +23,7 @@ import InfoSupplierModal from "./modal/InfoSupplierModal";
 import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
-import {
-  NO_NAME,
-  NO_NICKNAME,
-  NO_ADDRESS,
-  NO_TIN,
-  NO_ADDRESS_TIN,
-  NO_TAX_VAT,
-  NO_TAX_EWT,
-} from "../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
 
 const useColors = (c) => ({
   activeBg: c.green.bg,
@@ -116,12 +108,12 @@ export default function SupplierView({
                 </span>
               ) : (
                 <span className="block text-xs font-light italic leading-tight">
-                  {NO_NAME}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span className="flex items-center gap-1.5 min-w-0">
                 <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
-                  {hasNickname ? row.supplierNickName : NO_NICKNAME}
+                  {hasNickname ? row.supplierNickName : DEFAULT_FALLBACK}
                 </span>
                 {optionCount > 0 && (
                   <span className="inline-flex items-center gap-0.5 text-[0.5625rem] font-light italic leading-tight text-gray-500 dark:text-gray-400 -mt-0.5">
@@ -145,7 +137,7 @@ export default function SupplierView({
           if (!hasAddress && !hasTin) {
             return (
               <span className="block text-xs font-light italic leading-tight">
-                {NO_ADDRESS_TIN}
+                {DEFAULT_FALLBACK}
               </span>
             );
           }
@@ -158,11 +150,11 @@ export default function SupplierView({
                 </span>
               ) : (
                 <span className="block text-xs font-light italic leading-tight">
-                  {NO_ADDRESS}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span className="block text-xs font-light italic leading-tight -mt-0.5">
-                TIN: {hasTin ? row.supplierTIN : NO_TIN}
+                TIN: {hasTin ? row.supplierTIN : DEFAULT_FALLBACK}
               </span>
             </div>
           );
@@ -186,7 +178,7 @@ export default function SupplierView({
                 color: row.vatActive ? colors.activeText : colors.inactiveText,
               }}
             >
-              {row.vat?.trim() ? row.vat : NO_TAX_VAT}
+              {row.vat?.trim() ? row.vat : DEFAULT_FALLBACK}
             </span>
             <span>-</span>
             <span
@@ -200,7 +192,7 @@ export default function SupplierView({
                 color: row.ewtActive ? colors.activeText : colors.inactiveText,
               }}
             >
-              {row.ewt?.trim() ? row.ewt : NO_TAX_EWT}
+              {row.ewt?.trim() ? row.ewt : DEFAULT_FALLBACK}
             </span>
           </div>
         ),

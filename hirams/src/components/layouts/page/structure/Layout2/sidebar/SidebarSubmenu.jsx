@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
 import { useTheme } from "@mui/material/styles";
-import { WarningAmberRounded } from "@mui/icons-material";
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
 import DotSpinner from "../../../../../../components/ui/loader/DotSpinner";
 
@@ -23,14 +22,10 @@ const useColors = (c) => ({
   redBadgeText: c.red.text,
   orangeBadgeBg: c.orange.bg,
   orangeBadgeText: c.orange.text,
-  // Needs Attention — the amber family from the dashboard banner
-  attentionIcon: c.amber.signalText,
 });
 
 // ── shine sweep keyframe, injected once globally (same pattern as
-// the pip-kf style in HorizontalProgressTracker). The Needs Attention
-// pulse/blink live in utils/style/attentionKeyframes (shared, so every
-// amber surface runs in phase). ──
+// the pip-kf style in HorizontalProgressTracker). ──
 const KEYFRAMES = `
   @keyframes submenu-shine {
     0%   { left: -150%; }
@@ -52,10 +47,6 @@ const SidebarSubmenu = ({
   redCount,
   orangeCount,
   countLoading = false,
-  // Needs Attention — an amber, pulsing row with a blinking warning
-  // triangle. The caller decides when (ClientNav: the For Approval row
-  // while its pending count is above zero).
-  attention = false,
   onClick,
   indent = "pl-5",
 }) => {
@@ -64,9 +55,6 @@ const SidebarSubmenu = ({
   const base = useMemo(() => getThemeColors(isDark), [isDark]);
   const colors = useMemo(() => useColors(base), [base]);
 
-  // Attention no longer touches the row background (the blinking
-  // triangle is the whole signal), so the normal active tint applies
-  // exactly like every other row — highlighted blue when navigated to.
   const rowStyle = active
     ? {
         backgroundColor: colors.activeBg,
@@ -114,27 +102,15 @@ const SidebarSubmenu = ({
             pointerEvents: "none",
           }}
         />
-      )}      {attention ? (
-        // The blinking triangle — standing in for the plain dot.
-        <WarningAmberRounded
-          sx={{
-            fontSize: 13,
-            color: colors.attentionIcon,
-            flexShrink: 0,
-            position: "relative",
-            zIndex: 1,
-          }}
-        />
-      ) : (
-        <span
-          className="w-1 h-1 rounded-full flex-shrink-0"
-          style={{
-            backgroundColor: active ? colors.dotActive : colors.dotInactive,
-            position: "relative",
-            zIndex: 1,
-          }}
-        />
       )}
+      <span
+        className="w-1 h-1 rounded-full flex-shrink-0"
+        style={{
+          backgroundColor: active ? colors.dotActive : colors.dotInactive,
+          position: "relative",
+          zIndex: 1,
+        }}
+      />
       <span
         className={`flex-1 truncate text-[11.5px] ${active ? "font-medium" : ""}`}
         style={{ position: "relative", zIndex: 1 }}

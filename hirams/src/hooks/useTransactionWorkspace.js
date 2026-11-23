@@ -132,6 +132,9 @@ export default function useTransactionWorkspace() {
     deliveredKey,
     cancelledPOKey,
     removedFromCartKey,
+    jevDraftKey,
+    jevPendingClearanceKey,
+    jevActiveKey,
     jevPendingKey,
     isFinanceOfficer,
     forCollectionKey: keysForCollectionKey,
@@ -836,14 +839,29 @@ export default function useTransactionWorkspace() {
       setCreatingJev(false);
     }
   };
-  const handleToggleJevFinalize = async () => {
-    if (!jev?.nJEVId || jevToggling) return;
+  // Finalize / undo of the transaction's JEV. The Collection workspace
+  // passes the target explicitly — R Pending Clearance or A Cleared — while
+  // the fallback keeps the old two-state behaviour (Draft -> Active,
+  // finalized -> Draft) for any caller that passes nothing.
+  const handleToggleJevFinalize = async (targetStatus) => {
+    if (!jev?.nJEVId || jevToggling) return false;
+
+    const current = String(jev.cStatus ?? "");
+    const draftStatus = jevDraftKey || jevPendingKey || "P";
+    const activeStatus = jevActiveKey || "A";
+    const nextStatus =
+      targetStatus ||
+      (current === draftStatus ? activeStatus : draftStatus);
+    if (!nextStatus || nextStatus === current) return false;
+
     setJevToggling(true);
     try {
-      await JevAPI.update(jev.nJEVId, { cStatus: "toggle" });
+      await JevAPI.update(jev.nJEVId, { cStatus: nextStatus });
       await fetchJev();
+      return true;
     } catch (err) {
-      console.error("Failed to toggle JEV status:", err);
+      console.error("Failed to update JEV status:", err);
+      return false;
     } finally {
       setJevToggling(false);
     }
@@ -1386,6 +1404,9 @@ export default function useTransactionWorkspace() {
     showJev,
     setShowJev,
     handleCreateJev,
+    jevDraftKey,
+    jevPendingClearanceKey,
+    jevActiveKey,
     jevPendingKey,
     isFinanceOfficer,
     handleToggleJevFinalize,

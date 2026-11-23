@@ -16,8 +16,6 @@ const ClientNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   // ✅ Single source from useKeysLabels
   const {
     clientstatus,
-    forApprovalStatusKey,
-    isManagement,
     loading: mappingLoading,
   } = useKeysLabels();
 
@@ -32,14 +30,6 @@ const ClientNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   const [clients, setClients] = useState([]);
   const [countLoading, setCountLoading] = useState(true);
   const isOnPage = location.pathname === "/client";
-
-  // Clients still waiting on approval — management's alarm count. The
-  // clients list is already fetched for the status badges, so this is
-  // free. Zero for every other role: no row pulse, no triangle.
-  const pendingClients =
-    isManagement && forApprovalStatusKey
-      ? clients.filter((c) => c.cStatus === forApprovalStatusKey).length
-      : 0;
 
   // ── Sync status from localStorage ──
   useEffect(() => {
@@ -125,11 +115,6 @@ const ClientNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}
-        // While the status list is folded away, the parent row itself
-        // carries the alarm: amber pulse + blinking triangle before the
-        // chevron. Open the section and the row calms — the For Approval
-        // sub-row takes over.
-        attentionWhenCollapsed={pendingClients > 0}
       >
         {entries.length > 0 ? (
           <StatusSubItems
@@ -139,10 +124,6 @@ const ClientNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
             onSelect={handleSelect}
             isOnPage={isOnPage}
             countLoading={countLoading}
-            // Clients waiting on approval keep the row amber + blinking
-            // until the last one is approved — MANAGEMENT ONLY, other
-            // roles see the plain row.
-            attentionCode={isManagement ? forApprovalStatusKey : undefined}
           />
         ) : (
           <div className="px-3 py-1 text-xs text-gray-500 italic">

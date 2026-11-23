@@ -34,6 +34,8 @@ export default function ForDeliveryPanel({
   suggestedReceiptNo = "",
   // Edit button → receive form. Saves ONE line (returns true when recorded).
   onSaveReceive,
+  // Footer bulk save — every edited line in one call (one spinner/popup).
+  onSaveReceiveAll,
   savingReceive = false,
   // The receipt number the line was recorded under (its inventory rows carry
   // it) — the form opens with it instead of a blank field.
@@ -66,8 +68,28 @@ export default function ForDeliveryPanel({
   // on submit the delivery is split over the purchase items it covers, so the
   // shared qty really can go out from here.
   const rowFree = (opt) => {
-    const t = txnTotals?.[opt?.purchase_option?.transaction_item?.nTransactionItemId];
-    return t ? Math.max(num(t.rcvd) - num(t.dlvd), 0) : toDeliver(opt);
+    const p = opt?.purchase_option;
+    const parts = opt?.__parts?.length ? opt.__parts : [p];
+    const isAddOn = Number(p?.bAddOn) === 1 || p?.bAddOn === true;
+    const free = toDeliver(opt);
+
+    // Add-ons are separate rows now — cap at that line's own ordered qty so
+    // it prints the Pending Receipt figure (e.g. 2,857) instead of repeating
+    // the whole transaction's pooled 5,715.
+    if (isAddOn) {
+      const ordered = num(parts[0]?.nQuantity);
+      return ordered > 0 ? Math.min(free, ordered) : free;
+    }
+
+    // The requested item's pooled figure includes its add-ons. Cap it at the
+    // row's OWN non-add-on ordered qty (still summed across suppliers sharing
+    // this item) so the add-on quantities are not counted twice.
+    const ownOrdered = parts
+      .filter((q) => Number(q?.bAddOn) !== 1 && q?.bAddOn !== true)
+      .reduce((s, q) => s + num(q?.nQuantity), 0);
+    const t = txnTotals?.[p?.transaction_item?.nTransactionItemId];
+    const pooled = t ? Math.max(num(t.rcvd) - num(t.dlvd), 0) : free;
+    return ownOrdered > 0 ? Math.min(pooled, ownOrdered) : pooled;
   };
 
   // Serial numbers written when the goods were RECEIVED (Pending Receipt),
@@ -113,6 +135,24 @@ export default function ForDeliveryPanel({
   // The row carries TWO forms — the deliver form and the receive (edit)
   // form — and only one of them may be open on a row at a time. Opening
   // either one closes the other.
+  // Seed the draft as soon as a form OPENS — the parent's Confirm Delivered
+  // button reads `forms` directly, so a pre-filled qty that only lived in
+  // getForm's fallback left it disabled until the user typed something.
+  const seedForm = (k, opt) =>
+    setForms((prev) =>
+      prev[k]
+        ? prev
+        : {
+            ...prev,
+            [k]: {
+              qty: String(rowFree(opt)),
+              receiptNo: suggestedReceiptNo || "",
+              showSN: false,
+              serials: [],
+            },
+          },
+    );
+
   const toggleOne = (k, opt) => {
     const willOpen = !expandedIds.has(k);
     setExpandedIds((prev) => {
@@ -120,8 +160,11 @@ export default function ForDeliveryPanel({
       next.has(k) ? next.delete(k) : next.add(k);
       return next;
     });
-    // Opening the deliver form closes the receive form on the same row.
-    if (willOpen && editIds.has(k)) closeEdit(k, opt);
+    if (willOpen) {
+      seedForm(k, opt);
+      // Opening the deliver form closes the receive form on the same row.
+      if (editIds.has(k)) closeEdit(k, opt);
+    }
   };
 
   const toggleAll = () => {
@@ -130,31 +173,38 @@ export default function ForDeliveryPanel({
       return;
     }
     setExpandedIds(new Set(allKeys));
-    // Opening every deliver form closes the receive forms on those rows.
     visible.forEach(({ opt, origIdx }) => {
       const k = getKey(opt, origIdx);
+      seedForm(k, opt);
       if (editIds.has(k)) closeEdit(k, opt);
     });
   };
 
-  const getForm = (k) =>
+  // An untouched form starts at the row's current To Deliver figure; once the
+  // user edits it, forms[k] keeps whatever they typed.
+  const getForm = (k, defaultQty) =>
     forms[k] ?? {
-      qty: "",
+      qty: defaultQty != null ? String(defaultQty) : "",
       // Untouched rows track the card's number; a row the user edited keeps
       // whatever is in forms[k].
       receiptNo: suggestedReceiptNo || "",
       showSN: false,
       serials: [],
     };
-  const setForm = (k, patch) =>
-    setForms((prev) => ({ ...prev, [k]: { ...getForm(k), ...patch } }));
+  const setForm = (k, patch, defaultQty) =>
+    setForms((prev) => ({ ...prev, [k]: { ...getForm(k, defaultQty), ...patch } }));
 
   // The receive form opened from a row's Edit button — one draft per row,
   // cleared again as soon as its line has been recorded.
   const getEditForm = (k) =>
     editForms[k] ?? { qty: "", receiptNo: "", showSN: false, serials: [] };
-  const setEditForm = (k, patch) =>
+  // Only a real user edit of the receipt field wins over the inventory value.
+  const receiptTouchedRef = React.useRef(new Set());
+  const setEditForm = (k, patch) => {
+    if (Object.prototype.hasOwnProperty.call(patch, "receiptNo"))
+      receiptTouchedRef.current.add(String(k));
     setEditForms((prev) => ({ ...prev, [k]: { ...getEditForm(k), ...patch } }));
+  };
 
   // ── Suppliers behind this row's quantity ──────────────────────────────
   // The row adds every PO of the item together (5 + 7 = 12), but each
@@ -197,6 +247,7 @@ export default function ForDeliveryPanel({
   // receipt number the row was written under.
   const seedEditForm = (q) => {
     const id = String(q?.nPurchaseItemId);
+    receiptTouchedRef.current.delete(id);
     const recorded = (q?.receivedSerialNumbers || [])
       .filter(Boolean)
       .map(String);
@@ -217,14 +268,18 @@ export default function ForDeliveryPanel({
     }));
 
     if (!onLoadReceiptNo || receiptByRow[id] != null) return;
-    onLoadReceiptNo(Number(id))
+    // sign 1 = RECEIVED inventory rows — the receipt number the goods came in
+    // under, which is what this edit form must show.
+    onLoadReceiptNo(Number(id), 1)
       .then((r) => {
         setReceiptByRow((prev) => ({ ...prev, [id]: r || "" }));
         setEditForms((prev) => {
           const cur = prev[id];
-          // Keep whatever the user has already typed in the field.
-          if (!cur || (cur.receiptNo || "").trim()) return prev;
-          return { ...prev, [id]: { ...cur, receiptNo: r || "", origReceiptNo: r || "" } };
+          if (!cur || receiptTouchedRef.current.has(id)) return prev;
+          return {
+            ...prev,
+            [id]: { ...cur, receiptNo: r || "", origReceiptNo: r || "" },
+          };
         });
       })
       .catch((err) =>
@@ -309,6 +364,8 @@ export default function ForDeliveryPanel({
   };
 
   const saveAllOpenForms = async () => {
+    const lines = [];
+    const openRows = [];
     let anyFailed = false;
     for (const k of [...editIds]) {
       const entry = visible.find(
@@ -319,17 +376,29 @@ export default function ForDeliveryPanel({
         anyFailed = true;
         continue;
       }
-      let rowFailed = false;
+      openRows.push({ k, opt: entry.opt });
       for (const q of list) {
-        // Nothing typed on this line — nothing to record; the row's form
-        // just closes with its neighbours.
+        // Nothing typed on this line — nothing to record.
         if (lineUnchanged(q)) continue;
-        const ok = await saveLine(String(q?.nPurchaseItemId));
-        if (!ok) rowFailed = true;
+        const id = String(q?.nPurchaseItemId);
+        const qForm = getEditForm(id);
+        lines.push({
+          nPurchaseItemId: Number(id),
+          target: Number(qForm.qty),
+          strReceiptNumber: (qForm.receiptNo || "").trim() || null,
+          serials: qForm.serials || [],
+        });
       }
-      if (rowFailed) anyFailed = true;
-      else closeEdit(k, entry.opt);
     }
+
+    if (lines.length) {
+      // ONE call for the whole batch — no load → success cycle per item.
+      const ok = onSaveReceiveAll
+        ? await onSaveReceiveAll(lines)
+        : (await Promise.all(lines.map(saveLine))).every(Boolean);
+      if (!ok) anyFailed = true;
+    }
+    if (!anyFailed) openRows.forEach(({ k, opt }) => closeEdit(k, opt));
     return !anyFailed;
   };
 
@@ -424,7 +493,10 @@ export default function ForDeliveryPanel({
     );
     return () => onFooterEntryChange(null);
   }, [entryOpen, onFooterEntryChange]);
-  const scanForm = scanKey != null ? getForm(scanKey) : { serials: [] };
+  const scanForm =
+    scanKey != null
+      ? getForm(scanKey, scanEntry ? rowFree(scanEntry.opt) : undefined)
+      : { serials: [] };
   const scanCap = scanEntry
     ? Math.max(0, Math.min(Number(scanForm.qty) || 0, rowFree(scanEntry.opt)))
     : 0;
@@ -491,7 +563,7 @@ export default function ForDeliveryPanel({
           const left = rowFree(opt);
           const k = getKey(opt, origIdx);
           const expanded = expandedIds.has(k);
-          const form = getForm(k);
+          const form = getForm(k, left);
           // Edit → RECEIVE form. The row's quantity can be shared by several
           // suppliers (one PO each) — each of them gets its own form, so one
           // supplier is never corrected against another's numbers.
@@ -520,26 +592,34 @@ export default function ForDeliveryPanel({
           const applyQty = (nextQty) => {
             const cap = capSerials(nextQty);
             const trimmed = (form.serials || []).slice(0, cap);
-            setForm(k, {
-              qty: nextQty,
-              serials:
-                trimmed.length === 0 && form.showSN && cap > 0
-                  ? onHand.slice(0, cap)
-                  : trimmed,
-            });
+            setForm(
+              k,
+              {
+                qty: nextQty,
+                serials:
+                  trimmed.length === 0 && form.showSN && cap > 0
+                    ? onHand.slice(0, cap)
+                    : trimmed,
+              },
+              left,
+            );
           };
 
           // Opening the S/N box pre-fills it with the received serials.
           const toggleSN = () => {
             const open = !form.showSN;
             const current = form.serials || [];
-            setForm(k, {
-              showSN: open,
-              serials:
-                open && current.length === 0
-                  ? onHand.slice(0, capSerials(form.qty))
-                  : current,
-            });
+            setForm(
+              k,
+              {
+                showSN: open,
+                serials:
+                  open && current.length === 0
+                    ? onHand.slice(0, capSerials(form.qty))
+                    : current,
+              },
+              left,
+            );
           };
 
           return (
@@ -839,7 +919,7 @@ export default function ForDeliveryPanel({
                         value={form.receiptNo}
                         placeholder="e.g. RR-2025-0001"
                         onChange={(e) =>
-                          setForm(k, { receiptNo: e.target.value })
+                          setForm(k, { receiptNo: e.target.value }, left)
                         }
                         sx={{
                           ...inputSx,
@@ -900,9 +980,16 @@ export default function ForDeliveryPanel({
                                 <SyncOutlined sx={{ fontSize: "0.85rem" }} />
                               ),
                               onClick: () =>
-                                setForm(k, {
-                                  serials: onHand.slice(0, capSerials(form.qty)),
-                                }),
+                                setForm(
+                                  k,
+                                  {
+                                    serials: onHand.slice(
+                                      0,
+                                      capSerials(form.qty),
+                                    ),
+                                  },
+                                  left,
+                                ),
                               disabled: syncableSerials.length === 0,
                               title: syncableSerials.length
                                 ? `Fill with ${syncableSerials.length} received serial number(s) not yet delivered`
@@ -916,7 +1003,7 @@ export default function ForDeliveryPanel({
                       errors={{}}
                       handleChange={(e) => {
                         if (e.target.name === "serials")
-                          setForm(k, { serials: e.target.value });
+                          setForm(k, { serials: e.target.value }, left);
                       }}
                       autoFocus={false}
                     />
@@ -990,7 +1077,11 @@ export default function ForDeliveryPanel({
         subTitle={scanLabel}
         onChange={(next) => {
           if (scanKey != null)
-            setForm(scanKey, { serials: next, showSN: true });
+            setForm(
+              scanKey,
+              { serials: next, showSN: true },
+              scanEntry ? rowFree(scanEntry.opt) : undefined,
+            );
         }}
       />
     </>

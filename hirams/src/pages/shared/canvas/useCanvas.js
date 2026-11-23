@@ -12,7 +12,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import { fmtDate, fmtPHP } from "../../../utils/formatters/formatter.js";
 import { getDueDateColor } from "../../../utils/helpers/dueDateColor";
 import { ewtOfOption } from "../../../utils/helpers/calculateEWT.js";
-import { NO_TRANSACTION_ABC } from "../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
 import { getItem, setItem, removeItem, hasItem } from "../../../utils/storage/localStorage";
 
 const mapSuppliers = (suppliers) =>
@@ -422,10 +422,10 @@ export default function useCanvas() {
   const abcValue = transactionHasABC
     ? Number(transaction.dTotalABC || 0) > 0
       ? `${fmtPHP(transaction.dTotalABC)}`
-      : NO_TRANSACTION_ABC
+      : DEFAULT_FALLBACK
     : Number(totalItemsABC || 0) > 0
       ? `${fmtPHP(totalItemsABC)}`
-      : NO_TRANSACTION_ABC;
+      : DEFAULT_FALLBACK;
   const abcSub =
     (itemsManagementKey.includes(selectedStatusCode) ||
       itemsVerificationKey.includes(selectedStatusCode) ||

@@ -10,9 +10,7 @@ import CreateVoucherModal from "./modal/CreateVoucherModal";
 import VoucherAPI from "../../../api/endpoints/voucher.api.js";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import icons from "../../../utils/style/iconFormatStyles";
-import SettingsConfirmationModal from "../../../pages/utility/settings/modal/SettingsConfirmationModal.jsx";
-import { VOUCHER_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
-import { NO_NAME, NO_ADDRESS, NO_TIN, NO_ADDRESS_TIN, NO_CREATOR, NO_VOUCHER_NO, OPEN_DATE } from "../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
 import { Tooltip } from "@mui/material";
 import PersonIcon from "@mui/icons-material/PersonOutline";
 import EventIcon from "@mui/icons-material/Event";
@@ -99,12 +97,7 @@ export default function VoucherView({
   fetchVouchers,
   setVoucherModalOpen,
   paymentTerms,
-  confirmAction,
-  setConfirmAction,
-  confirmRow,
-  setConfirmRow,
-  confirmLoading,
-  handleConfirmMark,
+  runMark,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -165,7 +158,7 @@ export default function VoucherView({
           <div className="min-w-0 text-left">
             <div className="flex items-center gap-1.5">
               <span className="truncate text-[0.625rem] font-medium uppercase tracking-wide leading-tight text-gray-500 dark:text-gray-400">
-                {hasNumber ? row.strNumber : NO_VOUCHER_NO}
+                {hasNumber ? row.strNumber : DEFAULT_FALLBACK}
               </span>
               {showTypeBadge && badgeText && (
                 <span
@@ -185,7 +178,7 @@ export default function VoucherView({
                 hasName ? "text-[0.8125rem] font-medium" : "text-xs font-light italic"
               }`}
             >
-              {hasName ? row.displayName : NO_NAME}
+              {hasName ? row.displayName : DEFAULT_FALLBACK}
             </span>
             {/* Closed vouchers are mid-workflow: say which JEV step comes
                 next. Same font color as the DV number line above. */}
@@ -240,7 +233,7 @@ export default function VoucherView({
         if (!hasAddress && !hasTin) {
           return (
             <span className="block text-xs font-light italic leading-tight">
-              {NO_ADDRESS_TIN}
+              {DEFAULT_FALLBACK}
             </span>
           );
         }
@@ -253,11 +246,11 @@ export default function VoucherView({
               </span>
             ) : (
               <span className="block text-xs font-light italic leading-tight">
-                {NO_ADDRESS}
+                {DEFAULT_FALLBACK}
               </span>
             )}
             <span className="block text-xs font-light italic leading-tight -mt-0.5">
-              TIN: {hasTin ? row.displayTIN : NO_TIN}
+              TIN: {hasTin ? row.displayTIN : DEFAULT_FALLBACK}
             </span>
           </div>
         );
@@ -284,7 +277,7 @@ export default function VoucherView({
               className="text-xs font-light italic"
               style={{ color: colors.textMuted }}
             >
-              {NO_CREATOR}
+              {DEFAULT_FALLBACK}
             </span>
           );
         }
@@ -294,11 +287,11 @@ export default function VoucherView({
             <div className={`${OFFICER_GRID_CLASS} ${lineClass}`}>
               <LabelIcon icon={PersonIcon} title="Created by" />
               <span className={valueClass}>
-                {hasName ? row.strCreatedByName : NO_CREATOR}
+                {hasName ? row.strCreatedByName : DEFAULT_FALLBACK}
               </span>
               <LabelIcon icon={EventIcon} title="Created at" className="-mt-0.5" />
               <span className={`${valueClass} -mt-0.5`}>
-                {hasDate ? row.dtCreated : OPEN_DATE}
+                {hasDate ? row.dtCreated : DEFAULT_FALLBACK}
               </span>
             </div>
           </div>
@@ -376,8 +369,7 @@ export default function VoucherView({
                 disabled={isPaidStatus ? !canMarkUnpaid : !canMarkPaid}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setConfirmRow(row);
-                  setConfirmAction(isPaidStatus ? "unpaid" : "paid");
+                  runMark(row, isPaidStatus ? "unpaid" : "paid");
                 }}
               />
             ) : null}
@@ -462,22 +454,6 @@ export default function VoucherView({
         editVoucher={editingVoucher}
       />
 
-      {/* Mark as Paid / Unpaid confirmation — same shell as Settings panels */}
-      <SettingsConfirmationModal
-        open={!!confirmAction}
-        style={
-          confirmAction
-            ? VOUCHER_CONFIRM_STYLES[confirmAction]
-            : null
-        }
-        badge={confirmRow?.strNumber ?? ""}
-        loading={confirmLoading}
-        onConfirm={handleConfirmMark}
-        onClose={() => {
-          setConfirmAction(null);
-          setConfirmRow(null);
-        }}
-      />
     </PageLayout>
   );
 }

@@ -75,6 +75,7 @@ export default function useJournalAccounts() {
     jevActiveKey,
     jevCancelledKey,
     jevPendingKey,
+    jevPendingClearanceKey,
     // ─── JEV Labels ───
     jevDisbursementVoucherLabel,
     jevReceivedPurchasesLabel,
@@ -405,7 +406,9 @@ export default function useJournalAccounts() {
     jevStatusOptions,
     jevActiveKey,
     jevCancelledKey,
+    jevCollectionKey,
     jevReceivedPurchasesKey,
+    jevPendingClearanceKey,
     mappingLoading,
 
     // Computed

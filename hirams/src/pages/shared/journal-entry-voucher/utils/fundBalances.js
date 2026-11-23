@@ -35,7 +35,7 @@ const computeFundBalances = (accounts, entries, jevActiveKey) => {
 
   const balances = {};
   accounts.forEach((account) => {
-    if (account.cAccountType !== "F") return;
+    if (Number(account.bAllowNegative ?? 1) !== 0) return;
     const rootId = Number(account.nJournalAccountId);
     if (!rootId) return;
 
@@ -77,7 +77,7 @@ export const loadFundBalances = (
     try {
       const accounts = asList(accountsResponse);
       // No fund accounts → don't download every JEV line for nothing.
-      if (!accounts.some((a) => a.cAccountType === "F")) return {};
+      if (!accounts.some((a) => Number(a.bAllowNegative ?? 1) === 0)) return {};
       const entries = asList(await JevEntriesAPI.getAll());
       return computeFundBalances(accounts, entries, key);
     } catch (err) {

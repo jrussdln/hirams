@@ -35,7 +35,6 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
     isManagement,
     isProcurement,
     isAOTL,
-    isAO,
     isProcurementTL,
     isFinanceOfficer,
     draftKey,
@@ -47,9 +46,7 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
     forCanvasKey,
     canvasFinalizeKey,
     canvasVerificationKey,
-    forPricingKey,
     priceVerificationKey,
-    priceApprovalKey,
     finalizeVerificationKey,
     priceSettingKey,
     priceFinalizeKey,
@@ -59,51 +56,7 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
     forPurchaseKey,
     forCollectionKey,
     transactionVerificationKey,
-    // Management's own stage keys (used for the Needs Attention set)
-    mgmtTransactionVerificationKey,
-    mgmtItemsVerificationKey,
-    mgmtCanvasVerificationKey,
-    mgmtPriceVerificationKey,
   } = useKeysLabels();
-
-  // ── Needs Attention stages (MANAGEMENT ONLY) ──────────────────────
-  // The six transaction stages waiting on a management decision. A row
-  // blinks while its count is above zero — never for other roles.
-  const attentionStageKeys = useMemo(
-    () =>
-      isManagement
-        ? [
-            mgmtTransactionVerificationKey,
-            forAssignmentKey,
-            mgmtItemsVerificationKey,
-            mgmtCanvasVerificationKey,
-            mgmtPriceVerificationKey,
-            priceApprovalKey,
-          ]
-        : isAOTL
-          ? [forAssignmentKey, itemsVerificationKey, canvasVerificationKey]
-          : isAO
-            ? [forAssignmentKey, itemsVerificationKey, canvasVerificationKey]
-            : isProcurement
-              ? [transactionVerificationKey, priceVerificationKey]
-              : [],
-    [
-      isManagement,
-      isAOTL,
-      isAO,
-      isProcurement,
-      transactionVerificationKey,
-      priceVerificationKey,
-      mgmtTransactionVerificationKey,
-      forAssignmentKey,
-      mgmtItemsVerificationKey,
-      mgmtCanvasVerificationKey,
-      mgmtPriceVerificationKey,
-      priceApprovalKey,
-      itemsVerificationKey,
-      canvasVerificationKey,
-    ],
-  );
 
   const statusMap = useMemo(
     () =>
@@ -532,22 +485,6 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
     priceVerificationKey,
   ]);
 
-  // ── Needs Attention rollup — does ANY decision stage wait? ──────────
-  // Announced via event so the Transactions parent row and the
-  // TRANSACTION section header (both outside this component) can show
-  // the warning icon while their own view of these stages is folded away.
-  const stagesPending = useMemo(() => {
-    return attentionStageKeys.some((k) => (statusCounts[k] || 0) > 0);
-  }, [attentionStageKeys, statusCounts]);
-
-  React.useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("txn_verification_pending", {
-        detail: { pending: stagesPending },
-      }),
-    );
-  }, [stagesPending]);
-
   if (mappingLoading) {
     return (
       <>
@@ -591,9 +528,6 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
           orange = 0;
         }
         const normal = Math.max(total - red - orange, 0);
-        // Decision & verification stages show the attention warning icon while work sits in them.
-        const stageAttention =
-          total > 0 && attentionStageKeys.includes(String(code));
         return (
           <SidebarSubmenu
             key={code}
@@ -603,7 +537,6 @@ const TransactionSubItems = ({ onItemClick, selectedCode, onSelect }) => {
             redCount={red}
             orangeCount={orange}
             countLoading={countLoading}
-            attention={stageAttention}
             onClick={() => onSelect(String(code))}
           />
         );

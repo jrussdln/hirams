@@ -15,9 +15,7 @@ import DeleteVerificationModal from "../../../transactions/modal/DeleteVerificat
 import Toast from "../../../../../components/ui/banner/Toast.jsx";
 import getThemeColors from "../../../../../utils/style/getThemeColors";
 import useSupplierContact from "./useSupplierContact";
-import {
-  NO_NAME,
-} from "../../../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../../../constants/tableDataFallbacks";
 
 export default function SupplierContactView() {
   const theme = useTheme();
@@ -43,7 +41,7 @@ export default function SupplierContactView() {
         key: "strName",
         label: "Name",
         xs: 2,
-        render: (val) => val || NO_NAME,
+        render: (val) => val || DEFAULT_FALLBACK,
       },
       {
         key: "strNumber",

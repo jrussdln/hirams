@@ -40,7 +40,9 @@ export default function JournalAccountsView({
   jevEntries,
   jevTypeOptions,
   jevActiveKey,
+  jevCollectionKey,
   jevReceivedPurchasesKey,
+  jevPendingClearanceKey,
   isManagement,
   isFinanceOfficer,
   // ── owned by JournalAccountPanel ──
@@ -294,7 +296,9 @@ export default function JournalAccountsView({
           jevEntries={jevEntries}
           jevTypeOptions={jevTypeOptions}
           jevActiveKey={jevActiveKey}
+          jevCollectionKey={jevCollectionKey}
           jevReceivedPurchasesKey={jevReceivedPurchasesKey}
+          jevPendingClearanceKey={jevPendingClearanceKey}
           dateRange={reportDateRange}
           onEditRange={editRange}
           onExport={(companyIdByJevId) => {

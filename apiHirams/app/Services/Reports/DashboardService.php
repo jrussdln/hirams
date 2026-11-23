@@ -12,7 +12,6 @@ use App\Models\Supplier;
 use App\Models\TransactionHistory;
 use App\Models\Transactions;
 use App\Models\User;
-use App\Models\Collection as CollectionLink; // tblcollections pivot — the Illuminate\Collection import above owns the short name
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
@@ -298,26 +297,27 @@ class DashboardService
         $jevTypes       = config('mappings.jev_types', []);
         $typeCollection = (string) (array_search('Collection', $jevTypes, true) ?: '');
 
-        // ── Collectibles: at For Collection, no journal raised yet ──
+        // ── Collectibles: the For Collection workspace itself ──────────
+        // Every transaction sitting at For Collection belongs here, even if a
+        // journal was already raised — the workspace is the source of truth.
         $collectibleTxns = collect();
         if ($forCollection !== '') {
-            $collectibleTxns = Transactions::with(['client', 'latestHistory'])
+            $collectibleTxns = Transactions::with(['client', 'company', 'latestHistory'])
                 ->whereHas('latestHistory', fn($q) => $q->where('nStatus', $forCollection))
-                ->whereDoesntHave('collection')
                 ->get();
         }
 
-        // ── Collection: transactions with a Collection (C) journal ──
-        $collectionLinks = collect();
+        // ── Collection: the Collected / Transaction Completed archive ──
+        // A Collection journal alone is not enough — the transaction must
+        // have actually been completed (the archive's rule).
+        $collectedTxns = collect();
         if ($typeCollection !== '') {
-            $collectionLinks = CollectionLink::with([
-                'transaction.client',
-                'transaction.latestCompletedHistory',
-                'jev.entries',
-            ])
-                ->whereHas('jev', fn($q) => $q->where('cJEVLinkType', $typeCollection))
-                ->get()
-                ->filter(fn($link) => $link->transaction);
+            $collectedTxns = Transactions::with(['client', 'company', 'latestCompletedHistory'])
+                ->whereHas('latestCompletedHistory')
+                ->whereHas('collection', fn($q) => $q->whereHas(
+                    'jev', fn($j) => $j->where('cJEVLinkType', $typeCollection)
+                ))
+                ->get();
         }
 
         // The chosen set of every collectible transaction — ONE query, no
@@ -336,9 +336,7 @@ class DashboardService
         // whose option name contains "retention", summed per transaction).
         $retentionMap = $this->retentionByTransaction(
             $collectibleTxns->pluck('nTransactionId')
-                ->merge($collectionLinks->map(
-                    fn($link) => $link->transaction->nTransactionId
-                ))
+                ->merge($collectedTxns->pluck('nTransactionId'))
                 ->filter()
                 ->unique()
                 ->values()
@@ -357,21 +355,18 @@ class DashboardService
             ->values()
             ->all();
 
-        $collections = $collectionLinks
-            ->map(function ($link) use ($retentionMap) {
-                // The credit ("to") side of the journal — the collected figure.
-                $amount = $link->jev?->entries
-                    ->filter(fn($e) => (float) $e->dAmount >= 0)
-                    ->sum(fn($e) => (float) $e->dAmount);
-
-                $txnId = $link->transaction->nTransactionId;
+        $collections = $collectedTxns
+            ->map(function ($txn) use ($retentionMap) {
+                $txnId = $txn->nTransactionId;
 
                 return $this->collectionCardRow(
-                    $link->transaction,
-                    $amount,
+                    $txn,
+                    // The archive's figure — the transaction's ABC, not the
+                    // journal's credit side.
+                    (float) ($txn->dTotalABC ?? 0),
                     $retentionMap[$txnId] ?? 0.0,
-                    // When the transaction itself was completed (103)
-                    $link->transaction->latestCompletedHistory?->dtOccur
+                    // When the transaction was marked Transaction Completed.
+                    $txn->latestCompletedHistory?->dtOccur
                 );
             })
             ->values()
@@ -436,6 +431,9 @@ class DashboardService
             'strTitle'       => $txn?->strTitle,
             'clientNickName' => $txn?->client?->strClientNickName
                 ?: $txn?->client?->strClientName,
+            'companyNickName' => $txn?->company?->strCompanyNickName
+                ?: $txn?->company?->strCompanyName,
+            'officeNickName' => $txn?->strOfficeNickName,
             'cItemType'      => $txn?->cItemType,
             'retention'      => round($retention ?? 0, 2),
             'amount'         => round($amount ?? 0, 2),

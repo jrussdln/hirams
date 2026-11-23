@@ -22,6 +22,9 @@ export default function JEVConfirmationModal({
   badge,
   loading = false,
   onConfirm,
+  // Optional third action — used by the Collection finalize dialog, whose
+  // style entry carries secondaryLabel / secondaryBg.
+  onSecondary,
   onClose,
 }) {
   const theme = useTheme();
@@ -35,7 +38,7 @@ export default function JEVConfirmationModal({
       handleClose={onClose}
       contentOnly
       disableBackdropClick
-      width={{ xs: "90%", sm: 420 }}
+      width={{ xs: "92%", sm: style?.secondaryLabel ? 520 : 420 }}
     >
       {style && (
         <Box
@@ -51,7 +54,12 @@ export default function JEVConfirmationModal({
             voucherNumber={badge}
             loading={loading}
             onConfirm={onConfirm}
+            onSecondary={onSecondary}
             onBack={onClose}
+            // Only the JEV Finalize choice (Cleared / Pending Clearance)
+            // stacks its buttons vertically. Every other JEV confirmation
+            // keeps the shared horizontal row.
+            buttonsDirection={style?.secondaryLabel ? "column" : "row"}
           />
         </Box>
       )}

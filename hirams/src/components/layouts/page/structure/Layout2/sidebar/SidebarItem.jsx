@@ -4,9 +4,7 @@ import { Collapse, Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import { WarningAmberRounded } from "@mui/icons-material";
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
-import { blinkAnimation } from "../../../../../../utils/style/attentionKeyframes";
 import SidebarSearchRow from "./SidebarSearchRow";
 import { preloadRoute } from "../../../../../../routes/pageLoaders";
 import * as localStorage from "../../../../../../utils/storage/localStorage";
@@ -24,13 +22,10 @@ const useColors = (c) => ({
   iconInactive: c.gray.textSecondary,
   chevronColor: c.gray.textDisabled,
   shine: c.slate.shine,
-  attentionIcon: c.amber.signalText,
 });
 
 // ── shine sweep keyframe, injected once globally (same pattern used
-// in SidebarSubmenu / HorizontalProgressTracker). The Needs Attention
-// pulse/blink live in utils/style/attentionKeyframes (shared, so every
-// amber surface runs in phase). ──
+// in SidebarSubmenu / HorizontalProgressTracker). ──
 const KEYFRAMES = `
   @keyframes sidebaritem-shine {
     0%   { left: -150%; }
@@ -80,15 +75,6 @@ const SidebarItem = ({
   // item hides behind the closed section"). It only OPENS — a route change
   // never collapses a section, and the manual open state stays persisted.
   autoOpen = false,
-  // Needs Attention — a blinking warning triangle pinned to the row's
-  // RIGHT corner (in the icon rail it perches on the icon instead).
-  attention = false,
-  // Needs Attention for COLLAPSIBLE rows (Clients): while the section's
-  // sub-items are folded away, the parent row itself takes the amber
-  // pulse and carries the blinking triangle before its chevron. Once the
-  // section is open the row calms down — the blinking sub-row inside
-  // takes over as the signal.
-  attentionWhenCollapsed = false,
 }) => {
   const theme = useTheme(),
     isDark = theme.palette.mode === "dark";
@@ -106,10 +92,6 @@ const SidebarItem = ({
     const saved = localStorage.getItem(storageKey, null);
     return saved === null ? defaultOpen : saved === true;
   });
-
-  // The parent row's alarm — only while its children are folded away.
-  // (Declared AFTER `open` above — it reads it.)
-  const attentionRow = attentionWhenCollapsed && hasChildren && !open;
 
   const setOpenPersisted = (valOrFn) => {
     setOpen((prev) => {
@@ -137,8 +119,6 @@ const SidebarItem = ({
   const coloredIcon = icon
     ? cloneElement(icon, {
         sx: {
-          // The item's icon keeps its NORMAL color in attention mode —
-          // the blinking warning triangle is the only signal.
           color: active ? colors.iconActive : colors.iconInactive,
           fontSize: 15,
         },
@@ -146,9 +126,6 @@ const SidebarItem = ({
     : null;
 
   const rowBase = `flex items-center gap-1 px-1 rounded-md transition-colors duration-150 cursor-pointer select-none w-full ${ITEM_HEIGHT} ${isCollapsed ? "justify-center" : ""}`;
-  // Attention keeps the row's normal background (the blinking triangle
-  // is the whole signal), so the active tint applies exactly like every
-  // other row — highlighted blue when navigated to.
   const rowStyle = active
     ? {
         backgroundColor: colors.activeBg,
@@ -156,37 +133,7 @@ const SidebarItem = ({
         position: "relative",
         overflow: "hidden",
       }
-    : attentionRow || attention
-      ? {
-          // Triangle-only mode — the corner marker still needs a
-          // relative anchor in the rail.
-          position: "relative",
-          color: colors.inactiveText,
-        }
-      : { color: colors.inactiveText, position: "relative" };
-
-  const blinkingTriangle = (sx) => (
-    <WarningAmberRounded
-      sx={{
-        color: colors.attentionIcon,
-        flexShrink: 0,
-        position: "relative",
-        zIndex: 1,
-        ...sx,
-      }}
-    />
-  );
-
-  // Leaf attention — right corner when the label shows, perched on the
-  // icon in the collapsed rail.
-  const attentionTriangle = showLabel
-    ? blinkingTriangle({ fontSize: 14 })
-    : blinkingTriangle({
-        position: "absolute",
-        top: 1,
-        right: 3,
-        fontSize: 10,
-      });
+    : { color: colors.inactiveText, position: "relative" };
 
   const handleMouseEnter = (e) => {
     // Prefetch the target page's chunk as soon as the cursor lands on it —
@@ -251,9 +198,6 @@ const SidebarItem = ({
               >
                 {label}
               </span>
-              {/* The folded-away alarm — sits BEFORE the toggle icon so
-                  the chevron stays the last thing on the row. */}
-              {attentionRow && blinkingTriangle({ fontSize: 13 })}
               {open ? (
                 <ExpandMoreIcon
                   sx={{
@@ -277,16 +221,6 @@ const SidebarItem = ({
               )}
             </>
           )}
-          {/* Icon-rail mode: no label, no chevron — perch the blinking
-              triangle on the row's corner instead so the alarm survives
-              the collapse. */}
-          {attentionRow && !showLabel &&
-            blinkingTriangle({
-              position: "absolute",
-              top: 1,
-              right: 3,
-              fontSize: 10,
-            })}
         </div>
         {showLabel && (
           <Collapse in={open} timeout="auto">
@@ -329,7 +263,6 @@ const SidebarItem = ({
           {label}
         </span>
       )}
-      {attention && attentionTriangle}
     </Link>
   );
 };

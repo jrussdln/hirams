@@ -32,19 +32,10 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
     isProcurement, // Procurement Officer and TL alike
     isAO,
     isAOTL,
-    isManagement,
-    isFinanceOfficer,
     inventoryStatus,
     inventoryPendingKey,
     loading: mappingLoading,
   } = useKeysLabels();
-
-  // Pending JEV needs a decision — MANAGEMENT, FINANCE, and the
-  // ACCOUNT OFFICERS (a plain AO counts only the groups of transactions
-  // assigned to them; the team lead sees all). Other roles never see
-  // the alarm on the row.
-  const canActOnPendingJev =
-    isManagement || isFinanceOfficer || isAO || isAOTL;
 
   // Account Officers use the full inventory status (including Pending JEV).
   // Procurement uses the procurement list (without Pending JEV).
@@ -182,11 +173,6 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}
-        // While the status list is folded away, the parent row itself
-        // carries the alarm — a blinking triangle before the chevron
-        // (management and finance only). Open the section and the row
-        // calms — the Pending JEV sub-row takes over.
-        attentionWhenCollapsed={canActOnPendingJev && pendingGroupCount > 0}
       >
         {entries.length > 0 ? (
           entries.map(([code, label]) => (
@@ -202,14 +188,6 @@ const InventoryNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
                     ).length
               }
               countLoading={countLoading}
-              // Inventory rows waiting for their JEV keep the blinking
-              // triangle on the row until one of the approvers acts —
-              // management and finance only.
-              attention={
-                canActOnPendingJev &&
-                String(code) === String(pendingEntryCode) &&
-                pendingGroupCount > 0
-              }
               onClick={() => handleSelect(String(code))}
             />
           ))

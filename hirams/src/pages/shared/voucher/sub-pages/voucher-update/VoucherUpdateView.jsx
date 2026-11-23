@@ -208,14 +208,11 @@ export default function VoucherUpdateView() {
     formErrors,
     confirmAction,
     setConfirmAction,
-    showJevConfirm,
-    setShowJevConfirm,
     showJevPanel,
     isJevBalanced,
     jevBalanceLoading,
     jevBalanceMessage,
     setShowJevPanel,
-    handleAddJev,
     handleViewJev,
     confirmCreateJev,
     handleRemovePO,
@@ -223,6 +220,7 @@ export default function VoucherUpdateView() {
     handleDeleteAssignee,
     handleSaveAssignee,
     handleConfirmAction,
+    runAction,
     handlePreviewVoucher, // ✅ add this
     handlePreviewCheque,
     fetchVoucher,
@@ -343,6 +341,8 @@ export default function VoucherUpdateView() {
       </Box>
     </Box>
   ) : null;
+  // Only Cancel still asks for confirmation — every other footer action runs
+  // straight through runAction / confirmCreateJev.
   const activeConfirm = confirmAction
     ? {
         action: confirmAction,
@@ -350,14 +350,7 @@ export default function VoucherUpdateView() {
         onConfirm: handleConfirmAction,
         onClose: () => setConfirmAction(null),
       }
-    : showJevConfirm
-      ? {
-          action: "add_jev",
-          loading: false,
-          onConfirm: confirmCreateJev,
-          onClose: () => setShowJevConfirm(false),
-        }
-      : null;
+    : null;
 
   const footerRActions = (
     <Box
@@ -385,7 +378,7 @@ export default function VoucherUpdateView() {
           <BaseButton
             label="Close"
             icon={icons.close}
-            onClick={() => setConfirmAction("close")}
+            onClick={() => runAction("close")}
             actionColor="approve"
             disabled={confirmLoading || saving}
           />
@@ -410,7 +403,7 @@ export default function VoucherUpdateView() {
               <BaseButton
                 label="Reopen"
                 icon={icons.open}
-                onClick={() => setConfirmAction("reopen")}
+                onClick={() => runAction("reopen")}
                 actionColor="default"
                 disabled={confirmLoading || saving}
               />
@@ -419,7 +412,7 @@ export default function VoucherUpdateView() {
             <BaseButton
               label="Create JEV"
               icon={icons.add}
-              onClick={handleAddJev}
+              onClick={confirmCreateJev}
               actionColor="approve"
               disabled={confirmLoading || saving}
             />
@@ -460,7 +453,7 @@ export default function VoucherUpdateView() {
                         : icons.revert
                     }
                     onClick={() =>
-                      setConfirmAction(
+                      runAction(
                         String(voucher.jev?.cStatus) === String(jevPendingKey)
                           ? "finalize_jev"
                           : "undo_finalize_jev",
@@ -529,7 +522,7 @@ export default function VoucherUpdateView() {
             <BaseButton
               label="Mark as Unpaid"
               icon={<RemoveCircleOutline sx={{ fontSize: "1rem" }} />}
-              onClick={() => setConfirmAction("unpaid")}
+              onClick={() => runAction("unpaid")}
               actionColor="cancel"
               disabled={confirmLoading || saving}
             />
@@ -538,7 +531,7 @@ export default function VoucherUpdateView() {
             <BaseButton
               label="Mark as Paid"
               icon={<CheckCircleOutline sx={{ fontSize: "1rem" }} />}
-              onClick={() => setConfirmAction("paid")}
+              onClick={() => runAction("paid")}
               actionColor="approve"
               disabled={confirmLoading || saving}
             />

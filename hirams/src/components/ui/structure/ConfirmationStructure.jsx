@@ -28,8 +28,13 @@ export default function ConfirmationStructure({
   voucherNumber,
   loading = false,
   onConfirm,
+  // Optional third action, rendered between "Go Back" and the confirm
+  // button. Its label / colour live on the style entry
+  // (secondaryLabel / secondaryBg) so callers only supply the handler.
+  onSecondary,
   onBack,
   buttonsMaxWidth = 320,
+  buttonsDirection = "row",
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -144,38 +149,57 @@ export default function ConfirmationStructure({
       <Box
         sx={{
           display: "flex",
+          flexDirection: buttonsDirection,
           gap: 1,
           width: "100%",
-          maxWidth: buttonsMaxWidth,
+          // A third action needs more room than the two-button dialog.
+          maxWidth:
+            conf.secondaryLabel && onSecondary
+              ? Math.max(buttonsMaxWidth, 460)
+              : buttonsMaxWidth,
         }}
       >
-        {/* Go Back */}
-        <Box
-          onClick={loading ? undefined : onBack}
-          sx={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            py: 0.875,
-            borderRadius: "8px",
-            background: loading ? colors.disabledBg : colors.btnBg,
-            border: `0.5px solid ${colors.btnBorder}`,
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.5 : 1,
-            transition: "all 0.15s",
-            "&:hover": !loading
-              ? { background: colors.btnHoverBg, borderColor: colors.border }
-              : {},
-            "&:active": !loading ? { opacity: 0.8 } : {},
-          }}
-        >
-          <Typography
-            sx={{ fontSize: "0.72rem", fontWeight: 600, color: colors.btnText }}
+        {/* Optional second action (e.g. "Pending Clearance") */}
+        {conf.secondaryLabel && onSecondary && (
+          <Box
+            onClick={loading ? undefined : onSecondary}
+            sx={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              py: 0.875,
+              borderRadius: "8px",
+              background: loading
+                ? colors.disabledBg
+                : (conf.secondaryBg ?? colors.btnBg),
+              border: conf.secondaryBg
+                ? "none"
+                : `0.5px solid ${colors.btnBorder}`,
+              cursor: loading ? "not-allowed" : "pointer",
+              opacity: loading ? 0.5 : 1,
+              transition: "all 0.15s",
+              "&:hover": !loading
+                ? { opacity: 0.9, transform: "translateY(-0.5px)" }
+                : {},
+              "&:active": !loading
+                ? { opacity: 0.85, transform: "translateY(0)" }
+                : {},
+            }}
           >
-            No, Go Back
-          </Typography>
-        </Box>
+            <Typography
+              sx={{
+                fontSize: "0.72rem",
+                fontWeight: 700,
+                color: conf.secondaryBg
+                  ? colors.gray.textOnFill
+                  : colors.btnText,
+              }}
+            >
+              {conf.secondaryLabel}
+            </Typography>
+          </Box>
+        )}
 
         {/* Confirm */}
         <Box
@@ -212,6 +236,34 @@ export default function ConfirmationStructure({
             }}
           >
             {loading ? "Updating…" : conf.confirmLabel}
+          </Typography>
+        </Box>
+
+        {/* Go Back */}
+        <Box
+          onClick={loading ? undefined : onBack}
+          sx={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            py: 0.875,
+            borderRadius: "8px",
+            background: loading ? colors.disabledBg : colors.btnBg,
+            border: `0.5px solid ${colors.btnBorder}`,
+            cursor: loading ? "not-allowed" : "pointer",
+            opacity: loading ? 0.5 : 1,
+            transition: "all 0.15s",
+            "&:hover": !loading
+              ? { background: colors.btnHoverBg, borderColor: colors.border }
+              : {},
+            "&:active": !loading ? { opacity: 0.8 } : {},
+          }}
+        >
+          <Typography
+            sx={{ fontSize: "0.72rem", fontWeight: 600, color: colors.btnText }}
+          >
+            No, Go Back
           </Typography>
         </Box>
       </Box>

@@ -65,7 +65,7 @@ export const warmAccountCache = () => {
 // when there is nothing to show; otherwise the raw value (for its colour) and
 // the already-formatted "• ₱1,234.00" text.
 const getFundBalance = (account, balances) => {
-  if (!balances || account?.cAccountType !== "F") return null;
+  if (!balances || account?.bAllowNegative !== false) return null;
   const value = balances[Number(account.nJournalAccountId)];
   if (value == null) return null;
   return { value, text: `• ${fmtPHP(value)}` };
@@ -100,17 +100,18 @@ const resolveFundMeta = async (accountId, jevActiveKey) => {
     const entries = Array.isArray(entRes) ? entRes : (entRes?.data ?? []);
     const byId = new Map(accounts.map((a) => [Number(a.nJournalAccountId), a]));
 
-    let fund = null;
-    let cur = byId.get(Number(accountId));
+    let guarded = null;
+    let targetAcc = byId.get(Number(accountId));
+    let cur = targetAcc;
     for (let d = 0; cur && d < MAX_DEPTH; d++) {
-      if (cur.cAccountType === "F") {
-        fund = cur;
+      if (Number(cur.bAllowNegative ?? 1) === 0) {
+        guarded = cur;
         break;
       }
       cur = byId.get(Number(cur.nParentAccountId));
     }
-    if (!fund) {
-      return { isFund: false, balance: null, bAllowNegative: false };
+    if (!guarded) {
+      return { isFund: false, balance: null, bAllowNegative: true };
     }
 
     const childrenOf = {};
@@ -138,9 +139,7 @@ const resolveFundMeta = async (accountId, jevActiveKey) => {
     return {
       isFund: true,
       balance: Math.round((balance + Number.EPSILON) * 100) / 100,
-      // The nearest Fund owns the "Allow Negative Balance" switch; a linked
-      // account under it inherits that fund's setting for the From gate.
-      bAllowNegative: Number(fund.bAllowNegative ?? 1) !== 0,
+      bAllowNegative: false,
     };
   } catch (err) {
     console.error("Fund balance lookup failed:", err);
@@ -200,6 +199,7 @@ function ChainLevelSelect({
   colors,
   fundBalances,
   onChange,
+  autoFocusMenu = false,
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -210,15 +210,25 @@ function ChainLevelSelect({
 
   const showSearch = options.length > SEARCH_THRESHOLD;
 
+  // Open the menu straight away when the caller asks for it (the JEV entry
+  // modal), so the user can type into the search box without clicking first.
+  const didAutoOpenRef = useRef(false);
+  useEffect(() => {
+    if (!autoFocusMenu || didAutoOpenRef.current) return;
+    didAutoOpenRef.current = true;
+    setOpen(true);
+  }, [autoFocusMenu]);
+
   useEffect(() => {
     if (!open) {
       setSearch("");
       return;
     }
-    if (showSearch) {
-      const id = requestAnimationFrame(() => searchInputRef.current?.focus());
-      return () => cancelAnimationFrame(id);
-    }
+    const id = requestAnimationFrame(() => {
+      if (showSearch) searchInputRef.current?.focus();
+      else anchorRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(id);
   }, [open, showSearch]);
 
   useEffect(() => {
@@ -268,6 +278,7 @@ function ChainLevelSelect({
     <Box ref={containerRef} sx={{ position: "relative" }}>
       <Box
         ref={anchorRef}
+        tabIndex={0}
         onClick={() => setOpen((o) => !o)}
         sx={{
           ...fieldSx,
@@ -488,6 +499,9 @@ export default function AccountChainSelect({
   // Set false when the caller ignores the { isFund, balance } payload: the
   // lookup costs extra requests, so skipping it keeps the form instant.
   resolveFundInfo = true,
+  // Opens the first level's menu and focuses it on mount — used by the JEV
+  // entry modal so the account list is ready to type into immediately.
+  autoFocusMenu = false,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -735,8 +749,14 @@ export default function AccountChainSelect({
             chainOptions[idx + 1]?.length > 0 &&
             !chainSelected[idx + 1];
 
+          // Keyed by the parent pick as well as the depth: changing a
+          // selection remounts the level below it, which lets that menu
+          // auto-open/focus again for the new set of accounts.
           return (
-            <Box key={idx} sx={{ mb: !isLastLevel ? 0.6 : 0 }}>
+            <Box
+              key={`${idx}-${idx === 0 ? "root" : chainSelected[idx - 1] ?? ""}`}
+              sx={{ mb: !isLastLevel ? 0.6 : 0 }}
+            >
               <ChainLevelSelect
                 options={options}
                 value={selectedId}
@@ -747,6 +767,12 @@ export default function AccountChainSelect({
                 colors={colors}
                 fundBalances={fundBalances}
                 onChange={(newValue) => handleSelectAt(idx, newValue)}
+                // Empty levels auto-open when they appear — the first when
+                // the modal opens, each linked one after its parent pick.
+                // A level that already carries a value (edit mode / edit
+                // entry) stays closed so the existing selection isn't
+                // disturbed.
+                autoFocusMenu={autoFocusMenu && !selectedId}
               />
 
               {hasChildren && (

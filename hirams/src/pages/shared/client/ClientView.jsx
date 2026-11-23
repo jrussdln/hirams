@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { useTheme } from "@mui/material";
 import {
   Add,
@@ -20,15 +20,7 @@ import InfoClientModal from "./modal/InfoClientModal";
 import RecordConnectionModal from "./modal/RecordConnectionModal";
 import DeleteVerificationModal from "../transactions/modal/DeleteVerificationModal";
 import getThemeColors from "../../../utils/style/getThemeColors";
-import {
-  NO_NAME,
-  NO_NICKNAME,
-  NO_ADDRESS,
-  NO_TIN,
-  NO_ADDRESS_TIN,
-  NO_CONTACT_PERSON,
-  NO_CONTACT_NUMBER,
-} from "../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // LOCAL COLOR MAP â€” pulls ONLY tokens THIS component actually uses
@@ -106,12 +98,12 @@ export default function ClientView({
                 </span>
               ) : (
                 <span className="block text-xs font-light italic leading-tight">
-                  {NO_NAME}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span className="flex items-center gap-1.5 min-w-0">
                 <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
-                  {hasNickname ? row.nickname : NO_NICKNAME}
+                  {hasNickname ? row.nickname : DEFAULT_FALLBACK}
                 </span>
                 {/* How many transactions still name this client â€” the same
                     count that decides whether Delete or Transfer is offered. */}
@@ -138,7 +130,7 @@ export default function ClientView({
           if (!hasAddress && !hasTin) {
             return (
               <span className="block text-xs font-light italic leading-tight">
-                {NO_ADDRESS_TIN}
+                {DEFAULT_FALLBACK}
               </span>
             );
           }
@@ -151,11 +143,11 @@ export default function ClientView({
                 </span>
               ) : (
                 <span className="block text-xs font-light italic leading-tight">
-                  {NO_ADDRESS}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span className="block text-xs font-light italic leading-tight -mt-0.5">
-                TIN: {hasTin ? row.tin : NO_TIN}
+                TIN: {hasTin ? row.tin : DEFAULT_FALLBACK}
               </span>
             </div>
           );
@@ -172,7 +164,7 @@ export default function ClientView({
           if (!hasContactPerson && !hasContactNumber) {
             return (
               <span className="block text-xs font-light italic leading-tight">
-                {NO_CONTACT_PERSON}
+                {DEFAULT_FALLBACK}
               </span>
             );
           }
@@ -185,11 +177,11 @@ export default function ClientView({
                 </span>
               ) : (
                 <span className="block text-xs font-light italic leading-tight">
-                  {NO_CONTACT_PERSON}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span className="block text-xs font-light italic leading-tight -mt-0.5">
-                {hasContactNumber ? row.contactNumber : NO_CONTACT_NUMBER}
+                {hasContactNumber ? row.contactNumber : DEFAULT_FALLBACK}
               </span>
             </div>
           );

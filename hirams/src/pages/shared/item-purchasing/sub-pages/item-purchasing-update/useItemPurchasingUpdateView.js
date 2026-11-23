@@ -104,8 +104,11 @@ const shrinkItemRows = async ({
   take,
   sign,
   keepFirst = [],
+  // The caller already loaded the rows for its diff — reuse them instead of
+  // spending another HTTP round trip on the same item.
+  rows: loadedRows = null,
 }) => {
-  const rows = (await loadItemRows(nPurchaseItemId)).filter(
+  const rows = (loadedRows ?? (await loadItemRows(nPurchaseItemId))).filter(
     (r) =>
       Math.sign(Number(r?.nQuantity) || 0) === sign &&
       COUNTED_STATUSES.includes(String(r?.cStatus || "").trim()),
@@ -160,17 +163,23 @@ const serialSetFor = (rows, sign) => {
   return set;
 };
 
-// The receipt number the newest counted row was written under.
-const lastRowReceipt = (rows, sign) =>
-  countedRowsFor(rows, sign)[0]?.strReceiptNumber || "";
+// The receipt number the counted rows were written under. Rows come newest
+// first — take the newest one that actually carries a number, so a blank
+// newer row cannot hide the recorded receipt.
+const lastRowReceipt = (rows, sign) => {
+  const row = countedRowsFor(rows, sign).find(
+    (r) => String(r?.strReceiptNumber ?? "").trim(),
+  );
+  return row ? String(row.strReceiptNumber).trim() : "";
+};
 
 // Take the listed S/N back off a line's rows — the user crossed them out of
 // the edit form.
-const dropSerials = async ({ nPurchaseItemId, codes, sign }) => {
+const dropSerials = async ({ nPurchaseItemId, codes, sign, rows: loadedRows = null }) => {
   const drop = new Set((codes || []).filter(Boolean).map(String));
   if (!drop.size) return;
 
-  const rows = countedRowsFor(await loadItemRows(nPurchaseItemId), sign);
+  const rows = countedRowsFor(loadedRows ?? (await loadItemRows(nPurchaseItemId)), sign);
   for (const r of rows) {
     const have = uniq(
       Array.isArray(r?.serialNumbers) ? r.serialNumbers : [],
@@ -859,8 +868,13 @@ export default function useItemPurchasingUpdateView() {
       // when the transaction lists the same product twice.
       const tiId =
         p?.transaction_item?.nTransactionItemId ?? p?.nTransactionItemId;
-      const key =
-        tiId != null
+      // Add-ons are their OWN line (they print with an ADD-ONS badge), so keep
+      // each purchase option as a separate row instead of folding it into the
+      // requested item's merged row the way Pending Receipt does.
+      const isAddOn = Number(p?.bAddOn) === 1 || p?.bAddOn === true;
+      const key = isAddOn
+        ? `addon-${p?.nPurchaseItemId ?? opt?.nPurchaseOrder_ItemId ?? tiId}`
+        : tiId != null
           ? `ti-${tiId}`
           : `oi-${opt?.nPurchaseOrder_ItemId ?? p?.nPurchaseItemId}`;
       let row = byKey.get(key);
@@ -1127,12 +1141,10 @@ export default function useItemPurchasingUpdateView() {
     );
   }, []);
 
-  const handleConfirm = async () => {
-    if (!confirmAction || !po) return;
-
-    // Close modal first
-    const action = confirmAction;
-    setConfirmAction(null);
+  // Runs a cart status change directly. Only the destructive Cancel flow
+  // still asks for confirmation first (the view keeps that one modal).
+  const runCartAction = async (action) => {
+    if (!action || !po) return;
 
     try {
       if (action === "print_po") {
@@ -1205,6 +1217,14 @@ export default function useItemPurchasingUpdateView() {
       );
     }
   };
+
+  const handleConfirm = async () => {
+    if (!confirmAction || !po) return;
+    const action = confirmAction;
+    setConfirmAction(null);
+    await runCartAction(action);
+  };
+
   const handleConfirmReceived = async () => {
     const items = Object.entries(receiveForms)
       .map(([id, f]) => ({
@@ -1268,7 +1288,9 @@ export default function useItemPurchasingUpdateView() {
         0,
       );
 
-      await showSwal("SUCCESS", {}, { entity: "Receipt", action: "recorded" });
+      // The spinner closed when the write resolved — don't hold the UI on the
+      // success popup before clearing the forms / refreshing the order.
+      showSwal("SUCCESS", {}, { entity: "Receipt", action: "recorded" });
       setReceiveForms({});
       if (leftToReceive <= 0) {
         leavePO();
@@ -1361,11 +1383,10 @@ export default function useItemPurchasingUpdateView() {
       });
       bustPOCache();
       notifyUpdated({ purchaseOrderId: po?.nPurchaseOrderId });
-      await showSwal("SUCCESS", {}, { entity: "Delivery", action: "recorded" });
+      showSwal("SUCCESS", {}, { entity: "Delivery", action: "recorded" });
       setDeliverForms({});
-      await fetchPO();
-      // The batch just took a number — hand out the next one for the rest.
-      fetchSuggestedReceipt();
+      // Both reads are independent — run them together instead of back-to-back.
+      await Promise.all([fetchPO(), fetchSuggestedReceipt()]);
     } catch (err) {
       console.error("Failed to confirm delivered:", err);
       await showSwal("ERROR", {}, { entity: "Delivery" });
@@ -1395,7 +1416,10 @@ export default function useItemPurchasingUpdateView() {
   }, []);
 
   const saveReceiveRow = useCallback(
-    async (line) => {
+    async (line, opts = {}) => {
+      // `quiet` is used by the bulk footer save: one spinner, one popup and
+      // one refetch for the whole batch, not one per line.
+      const quiet = opts.quiet === true;
       const nPurchaseItemId = Number(line?.nPurchaseItemId);
       const target = Number(line?.target);
       const receiptNo = (line?.strReceiptNumber || "").trim();
@@ -1497,9 +1521,9 @@ export default function useItemPurchasingUpdateView() {
         }
       }
 
-      setReceiveSaving(true);
+      if (!quiet) setReceiveSaving(true);
       try {
-        await withSpinner("Receipt", async () => {
+        const write = async () => {
           // RECEIPT-ONLY save: same quantity, same S/N — rewrite the record's
           // receipt number onto the received rows instead of writing a new
           // history row.
@@ -1543,6 +1567,7 @@ export default function useItemPurchasingUpdateView() {
               take: -delta,
               sign: 1,
               keepFirst: [...(opt?.deliveredSerialNumbers || []), ...want],
+              rows: rowsBefore,
             });
             await PurchaseOrderAPI.syncStatus({
               nPurchaseOrderId: ownerPo?.nPurchaseOrderId,
@@ -1554,27 +1579,38 @@ export default function useItemPurchasingUpdateView() {
             });
           }
           // S/N crossed off the list come back off whatever rows hold them.
-          await dropSerials({ nPurchaseItemId, codes: toRemove, sign: 1 });
-        });
-        bustPOCache();
-        notifyUpdated({ purchaseOrderId: ownerPo?.nPurchaseOrderId });
-        window.dispatchEvent(new CustomEvent("inventory_data_updated"));
-        await showSwal(
-          "SUCCESS",
-          {},
-          { entity: "Receipt", action: delta > 0 ? "recorded" : "updated" },
-        );
-        await fetchPO();
+          await dropSerials({
+            nPurchaseItemId,
+            codes: toRemove,
+            sign: 1,
+            rows: rowsBefore,
+          });
+        };
+
+        if (quiet) await write();
+        else await withSpinner("Receipt", write);
+
+        if (!quiet) {
+          bustPOCache();
+          notifyUpdated({ purchaseOrderId: ownerPo?.nPurchaseOrderId });
+          window.dispatchEvent(new CustomEvent("inventory_data_updated"));
+          showSwal(
+            "SUCCESS",
+            {},
+            { entity: "Receipt", action: delta > 0 ? "recorded" : "updated" },
+          );
+          await fetchPO();
+        }
         return true;
       } catch (err) {
         console.error("Failed to save receipt line:", err);
         const msg = err?.response?.data?.message || err?.message;
         await showSwal("ERROR", msg ? { text: msg } : {}, { entity: "Receipt" });
         // A correction may have gone through halfway — show the real totals.
-        await fetchPO();
+        if (!quiet) await fetchPO();
         return false;
       } finally {
-        setReceiveSaving(false);
+        if (!quiet) setReceiveSaving(false);
       }
     },
     [
@@ -1590,7 +1626,9 @@ export default function useItemPurchasingUpdateView() {
   );
 
   const saveDeliverRow = useCallback(
-    async (line) => {
+    async (line, opts = {}) => {
+      // `quiet` is used by the bulk footer save — see saveReceiveRow.
+      const quiet = opts.quiet === true;
       const nPurchaseItemId = Number(line?.nPurchaseItemId);
       const target = Number(line?.target);
       const receiptNo = (line?.strReceiptNumber || "").trim();
@@ -1704,9 +1742,9 @@ export default function useItemPurchasingUpdateView() {
         return false;
       }
 
-      setDeliverSaving(true);
+      if (!quiet) setDeliverSaving(true);
       try {
-        await withSpinner("Delivery", async () => {
+        const write = async () => {
           // RECEIPT-ONLY save: same quantity, same S/N — rewrite the record's
           // receipt number onto the delivered rows instead of writing a new
           // history row.
@@ -1750,6 +1788,7 @@ export default function useItemPurchasingUpdateView() {
               take: -delta,
               sign: -1,
               keepFirst: want,
+              rows: rowsBefore,
             });
             await PurchaseOrderAPI.syncStatus({
               nPurchaseOrderId: ownerPo?.nPurchaseOrderId,
@@ -1761,19 +1800,28 @@ export default function useItemPurchasingUpdateView() {
             });
           }
           // S/N crossed off the list come back off whatever rows hold them.
-          await dropSerials({ nPurchaseItemId, codes: toRemove, sign: -1 });
-        });
-        bustPOCache();
-        notifyUpdated({ purchaseOrderId: ownerPo?.nPurchaseOrderId });
-        window.dispatchEvent(new CustomEvent("inventory_data_updated"));
-        await showSwal(
-          "SUCCESS",
-          {},
-          { entity: "Delivery", action: delta > 0 ? "recorded" : "updated" },
-        );
-        await fetchPO();
-        // The batch's number may have changed — hand out the next one.
-        fetchSuggestedReceipt();
+          await dropSerials({
+            nPurchaseItemId,
+            codes: toRemove,
+            sign: -1,
+            rows: rowsBefore,
+          });
+        };
+
+        if (quiet) await write();
+        else await withSpinner("Delivery", write);
+
+        if (!quiet) {
+          bustPOCache();
+          notifyUpdated({ purchaseOrderId: ownerPo?.nPurchaseOrderId });
+          window.dispatchEvent(new CustomEvent("inventory_data_updated"));
+          showSwal(
+            "SUCCESS",
+            {},
+            { entity: "Delivery", action: delta > 0 ? "recorded" : "updated" },
+          );
+          await Promise.all([fetchPO(), fetchSuggestedReceipt()]);
+        }
         return true;
       } catch (err) {
         console.error("Failed to save delivery line:", err);
@@ -1784,11 +1832,13 @@ export default function useItemPurchasingUpdateView() {
           { entity: "Delivery" },
         );
         // A correction may have gone through halfway — show the real totals.
-        await fetchPO();
-        fetchSuggestedReceipt();
+        if (!quiet) {
+          await fetchPO();
+          fetchSuggestedReceipt();
+        }
         return false;
       } finally {
-        setDeliverSaving(false);
+        if (!quiet) setDeliverSaving(false);
       }
     },
     [
@@ -1802,6 +1852,79 @@ export default function useItemPurchasingUpdateView() {
       fetchPO,
       fetchSuggestedReceipt,
     ],
+  );
+
+  // ── Bulk Save Changes for the footer ──────────────────────────────────
+  // The panel hands over EVERY edited line at once. The per-line writers run
+  // in quiet mode (no spinner / popup / refetch), so the whole batch shows
+  // ONE spinner, ONE result popup and ONE refresh — not a load→success cycle
+  // per item.
+  const saveReceiveLines = useCallback(
+    async (lines = []) => {
+      if (!lines.length) return true;
+      let failed = false;
+      setReceiveSaving(true);
+      try {
+        await withSpinner("Receipt", async () => {
+          for (const line of lines) {
+            const ok = await saveReceiveRow(line, { quiet: true });
+            if (!ok) failed = true;
+          }
+        });
+        bustPOCache();
+        notifyUpdated({ purchaseOrderId: po?.nPurchaseOrderId });
+        window.dispatchEvent(new CustomEvent("inventory_data_updated"));
+        showSwal(
+          "SUCCESS",
+          {},
+          { entity: "Receipt", action: failed ? "updated" : "recorded" },
+        );
+        await fetchPO();
+        return !failed;
+      } catch (err) {
+        console.error("Failed to save receipt batch:", err);
+        await showSwal("ERROR", {}, { entity: "Receipt" });
+        await fetchPO();
+        return false;
+      } finally {
+        setReceiveSaving(false);
+      }
+    },
+    [saveReceiveRow, notifyUpdated, po, fetchPO],
+  );
+
+  const saveDeliverLines = useCallback(
+    async (lines = []) => {
+      if (!lines.length) return true;
+      let failed = false;
+      setDeliverSaving(true);
+      try {
+        await withSpinner("Delivery", async () => {
+          for (const line of lines) {
+            const ok = await saveDeliverRow(line, { quiet: true });
+            if (!ok) failed = true;
+          }
+        });
+        bustPOCache();
+        notifyUpdated({ purchaseOrderId: po?.nPurchaseOrderId });
+        window.dispatchEvent(new CustomEvent("inventory_data_updated"));
+        showSwal(
+          "SUCCESS",
+          {},
+          { entity: "Delivery", action: failed ? "updated" : "recorded" },
+        );
+        await Promise.all([fetchPO(), fetchSuggestedReceipt()]);
+        return !failed;
+      } catch (err) {
+        console.error("Failed to save delivery batch:", err);
+        await showSwal("ERROR", {}, { entity: "Delivery" });
+        await fetchPO();
+        return false;
+      } finally {
+        setDeliverSaving(false);
+      }
+    },
+    [saveDeliverRow, notifyUpdated, po, fetchPO, fetchSuggestedReceipt],
   );
 
   const handlePreviewPO = () => {
@@ -1988,9 +2111,12 @@ export default function useItemPurchasingUpdateView() {
     // row-level Save Changes (Edit button on the For Delivery / Delivered rows)
     saveReceiveRow,
     saveDeliverRow,
+    saveReceiveLines,
+    saveDeliverLines,
     getLineReceiptNo,
     handleBack,
     handleConfirm,
+    runCartAction,
     handleProceedToPODetails,
     openPaymentForm,
     onPatchOption,

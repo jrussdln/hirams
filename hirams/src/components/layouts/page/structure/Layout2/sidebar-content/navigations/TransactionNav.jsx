@@ -24,7 +24,6 @@ const TransactionNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
     isManagement,
     isProcurement,
     isAOTL,
-    isProcurementTL,
     isFinanceOfficer,
   } = useKeysLabels();
 
@@ -63,18 +62,6 @@ const TransactionNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
   const [selectedCode, setSelectedCode] = useState(
     () => getItem(sessionKey, null) || Object.keys(statusMap)[0] || "",
   );
-
-  // Needs Attention (management) — any of the six decision stages
-  // (Transaction/Items/Canvas/Price Verification, For Assignment, Price
-  // Approval) holding work. Announced by TransactionSubItems, which
-  // owns the counts.
-  const [stagesPending, setStagesPending] = useState(false);
-  useEffect(() => {
-    const handler = (e) => setStagesPending(Boolean(e.detail?.pending));
-    window.addEventListener("txn_verification_pending", handler);
-    return () =>
-      window.removeEventListener("txn_verification_pending", handler);
-  }, []);
 
   useEffect(() => {
     if (!mappingLoading && Object.keys(statusMap).length > 0 && !selectedCode)
@@ -189,9 +176,6 @@ const TransactionNavSection = ({ collapsed, forceExpanded, onItemClick }) => {
         autoOpen={autoOpen}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
-        // While the stage list is folded away, the parent row carries
-        // the alarm — a blinking triangle before the chevron.
-        attentionWhenCollapsed={stagesPending}
         onParentClick={
           Object.keys(statusMap).length ? handleParentClick : undefined
         }

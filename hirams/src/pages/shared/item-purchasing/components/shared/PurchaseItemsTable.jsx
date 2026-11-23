@@ -76,6 +76,7 @@ export function ItemInfoColumn({
     onBrandClick && (p?.strBrand || p?.strModel),
   );
   const nameClickable = Boolean(onBrandClick && !brandClickable);
+  const isAddOn = Number(p?.bAddOn) === 1 || p?.bAddOn === true;
 
   // The code line — the PO the row belongs to. The company's own code is
   // not printed beside it: the order already says which row this is.
@@ -106,23 +107,56 @@ export function ItemInfoColumn({
       </Box>
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
-        {/* CODE — above the brand · model, plain text, like the card header. */}
-        {showCode && (
-          <Typography
+        {/* CODE — above the brand · model. The ADD-ONS badge rides on this
+            line (next to the PO number) so it sits above Brand · Model. */}
+        {(showCode || isAddOn) && (
+          <Box
             sx={{
-              fontSize: "0.55rem",
-              fontWeight: 600,
-              color: c.gray.textSecondary,
-              textTransform: "uppercase",
-              lineHeight: 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 0.5,
+              minWidth: 0,
               mb: 0.05,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
             }}
           >
-            {codeLine}
-          </Typography>
+            {showCode && (
+              <Typography
+                sx={{
+                  fontSize: "0.55rem",
+                  fontWeight: 600,
+                  color: c.gray.textSecondary,
+                  textTransform: "uppercase",
+                  lineHeight: 1,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  minWidth: 0,
+                }}
+              >
+                {codeLine}
+              </Typography>
+            )}
+            {isAddOn && (
+              <Box
+                component="span"
+                sx={{
+                  flexShrink: 0,
+                  px: 0.45,
+                  py: 0.05,
+                  borderRadius: "4px",
+                  fontSize: "0.5rem",
+                  fontWeight: 700,
+                  lineHeight: 1.2,
+                  whiteSpace: "nowrap",
+                  color: c.green.text,
+                  background: c.green.bg,
+                  border: `0.5px solid ${c.green.border ?? c.green.text}`,
+                }}
+              >
+                ADD-ONS
+              </Box>
+            )}
+          </Box>
         )}
 
         <Box

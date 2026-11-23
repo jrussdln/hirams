@@ -126,7 +126,7 @@ export const VOUCHER_CONFIRM_STYLES = {
     variant: "red",
     Icon: CloseOutlined,
     title: "Undo Finalize JEV?",
-    desc: "This action will mark this JEV as Pending for this Voucher.",
+    desc: "This action will mark this JEV as Draft for this Voucher.",
     confirmLabel: "Yes, Undo Finalize",
   },
   add_jev: {
@@ -300,7 +300,7 @@ export const ITEM_PURCHASING_CONFIRM_STYLES = {
     variant: "red",
     Icon: CloseOutlined,
     title: "Undo Finalize JEV?",
-    desc: "This will mark the JEV back to pending status and unlock its entries.",
+    desc: "This will mark the JEV back to Draft status and unlock its entries.",
     confirmLabel: "Yes, Undo Finalize",
   },
   confirm_receive: {
@@ -361,7 +361,7 @@ export const INVENTORY_CONFIRM_STYLES = {
     variant: "green",
     Icon: BadgeOutlined,
     title: "Create JEV?",
-    desc: "A JEV will be created for every pending batch in this group that does not have one yet. Each JEV stays Pending until it is finalized.",
+    desc: "A JEV will be created for every pending batch in this group that does not have one yet. Each JEV stays Draft until it is finalized.",
     confirmLabel: "Yes, Create JEV",
   },
   finalize_jev: {
@@ -381,7 +381,7 @@ export const JEV_CONFIRM_STYLES = {
     variant: "green",
     Icon: BadgeOutlined,
     title: "Create JEV?",
-    desc: "A new No Type JEV will be created and opened so you can add its entries. It stays Pending until it is finalized.",
+    desc: "A new No Type JEV will be created and opened so you can add its entries. It stays Draft until it is finalized.",
     confirmLabel: "Yes, Create JEV",
   },
   // The For Collection workspace's create — the journal is raised against
@@ -390,10 +390,21 @@ export const JEV_CONFIRM_STYLES = {
     variant: "green",
     Icon: BadgeOutlined,
     title: "Create JEV for this Transaction?",
-    desc: "A new Collection (C) JEV will be created for this transaction and linked to it. It stays Pending until it is finalized.",
+    desc: "A new Collection (C) JEV will be created for this transaction and linked to it. It stays Draft until it is finalized.",
     confirmLabel: "Yes, Create JEV",
   },
-  // Finalize / undo-finalize of the transaction's Collection JEV.
+  // Finalize of a Collection JEV — the two-step choice. The confirm button
+  // is CLEARED (A, the state the ledger reads); the amber secondary action
+  // is PENDING CLEARANCE (R, finalized but not yet cleared).
+  finalize_collection_choice: {
+    variant: "blue",
+    Icon: BadgeOutlined,
+    title: "Finalize this Collection JEV?",
+    desc: "Choose Cleared if the collection has already been received and cleared. Choose Pending Clearance if it is finalized but still waiting to clear.",
+    confirmLabel: "Cleared",
+    secondaryLabel: "Pending Clearance",
+    secondaryBg: "linear-gradient(135deg, #b45309 0%, #92400e 100%)",
+  },
   finalize_collection_jev: {
     variant: "blue",
     Icon: BadgeOutlined,
@@ -405,7 +416,7 @@ export const JEV_CONFIRM_STYLES = {
     variant: "red",
     Icon: CloseOutlined,
     title: "Undo Finalize JEV?",
-    desc: "This action will mark this JEV as Pending for this transaction.",
+    desc: "This action will mark this JEV as Draft for this transaction.",
     confirmLabel: "Yes, Undo Finalize",
   },
   // The /jev-update page's own toggle — generic wording, the journal could
@@ -421,7 +432,7 @@ export const JEV_CONFIRM_STYLES = {
     variant: "red",
     Icon: CloseOutlined,
     title: "Undo Finalize JEV?",
-    desc: "This will mark this JEV as Pending again and make its entries editable.",
+    desc: "This will mark this JEV as Draft again and make its entries editable.",
     confirmLabel: "Yes, Undo Finalize",
   },
 };

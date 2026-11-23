@@ -391,6 +391,7 @@ export default function JEVEntryAEModal({
             onChange={handleAccountChange}
             error={accountError}
             resolveFundInfo={side === "from"}
+            autoFocusMenu
           />
         ),
       },
@@ -463,7 +464,7 @@ export default function JEVEntryAEModal({
       open={open}
       handleClose={onClose}
       title={editingEntry ? "Edit Entry" : "Add Entry"}
-      subTitle={side === "from" ? "From" : "To"}
+      subTitle={side === "from" ? "Debit" : "Credit"}
       saveLabel={editingEntry ? "Update Entry" : "Save Entry"}
       onSave={onSave}
       cancelLabel="Back"
@@ -532,7 +533,9 @@ export default function JEVEntryAEModal({
               formData={formData}
               errors={errors}
               handleChange={handleChange}
-              autoFocus={true}
+              // The Account Title menu focuses itself on open — don't let
+              // FormGrid pull focus to the Amount field 300ms later.
+              autoFocus={false}
             />
           </Box>
         </Box>

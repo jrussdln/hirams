@@ -93,9 +93,9 @@ const buildAccountPath = (account) => {
 
 // Fund account = the "From" (credit) account that holds the money.
 // TODO: verify this matches how your accounts identify a Fund account.
-// If you have a flag (e.g. account.bIsFund), use that instead.
+// If you have a flag (e.g. account.bAllowNegative), use that instead.
 const isFundAccount = (account) =>
-  buildAccountPath(account).trim().toLowerCase().startsWith("fund");
+  account?.bAllowNegative === false;
 
 export default function JevViewPanel({
   jev,
@@ -185,6 +185,7 @@ export default function JevViewPanel({
   const typeMap = jev_types ?? cached.jev_types ?? keys.jev_types;
   const statusMap = jev_status ?? cached.jev_status ?? keys.jev_status;
   const pendingStatusKey = jevPendingKey ?? keys.jevPendingKey;
+  const pendingClearanceStatusKey = keys.jevPendingClearanceKey;
   const cancelledStatusKey = jevCancelledKey || keys.jevCancelledKey;
 
   // ── The journal's type and status, in words ──────────────────────────
@@ -400,6 +401,8 @@ export default function JevViewPanel({
 
   // ── Header tint — the journal's status drives its colour ───────────────
   const isPendingJev = String(jev?.cStatus ?? "") === String(pendingStatusKey ?? "");
+  const isPendingClearanceJev =
+    String(jev?.cStatus ?? "") === String(pendingClearanceStatusKey ?? "");
   const isCancelledJev =
     String(jev?.cStatus ?? "") === String(cancelledStatusKey ?? "");
   const statusTint = isPendingJev
@@ -414,11 +417,17 @@ export default function JevViewPanel({
           border: colors.red.border,
           text: colors.red.text,
         }
-      : {
-          bg: colors.green.bg,
-          border: colors.green.border,
-          text: colors.green.text,
-        };
+      : isPendingClearanceJev
+        ? {
+            bg: colors.blue.bg,
+            border: colors.blue.border,
+            text: colors.blue.text,
+          }
+        : {
+            bg: colors.green.bg,
+            border: colors.green.border,
+            text: colors.green.text,
+          };
 
   // The status chip sits in the header's action row, left of the Edit
   // Title button.
@@ -1031,7 +1040,7 @@ export default function JevViewPanel({
                   textOverflow: "ellipsis",
                 }}
               >
-                {(savedTitle ?? jev?.strTitle) || "Title is not yet added."}
+                {(savedTitle ?? jev?.strTitle) || "—"}
               </Typography>
             </Box>
 
@@ -1166,7 +1175,7 @@ export default function JevViewPanel({
               }}
             >
               {renderColumn(
-                "From",
+                "Debit",
                 <ArrowUpwardOutlined
                   sx={{ fontSize: "0.85rem", color: colors.red.text }}
                 />,
@@ -1176,7 +1185,7 @@ export default function JevViewPanel({
                 { column: "1", row: "1" },
               )}
               {renderColumn(
-                "To",
+                "Credit",
                 <ArrowDownwardOutlined
                   sx={{ fontSize: "0.85rem", color: colors.green.paid }}
                 />,

@@ -18,7 +18,6 @@ import PendingReceiptPanel from "../../components/PendingReceiptPanel.jsx";
 import ForDeliveryPanel from "../../components/ForDeliveryPanel.jsx";
 import DeliveredPanel from "../../components/DeliveredPanel.jsx";
 import PurchaseCartUpdateModal from "../../modal/PurchaseCartUpdateModal.jsx";
-import { ITEM_PURCHASING_CONFIRM_STYLES } from "../../../../../utils/style/sharedConfirmStyles.jsx";
 import PODetailsUpdateModal from "../../modal/PODetailsUpdateModal.jsx";
 import FreightEWTUpdateModal from "../../modal/FreightEWTUpdateModal.jsx";
 import ManagePOVoucherModal from "../../modal/ManagePOVoucherModal.jsx";
@@ -227,6 +226,8 @@ export default function ItemPurchasingUpdateView({
   handleConfirmDelivered,
   saveReceiveRow,
   saveDeliverRow,
+  saveReceiveLines,
+  saveDeliverLines,
   getLineReceiptNo,
   confirmAction,
   setConfirmAction,
@@ -246,6 +247,7 @@ export default function ItemPurchasingUpdateView({
   setLineItemSaving,
   handleBack,
   handleConfirm,
+  runCartAction,
   handleProceedToPODetails,
   openPaymentForm,
   onPatchOption,
@@ -389,12 +391,6 @@ export default function ItemPurchasingUpdateView({
   const [historyView, setHistoryView] = React.useState(null); // { tone, onBack } | null
   // The Freight / EWT editor — opened from the For Approval stage.
   const [showFreightEwtModal, setShowFreightEwtModal] = React.useState(false);
-  // Manage JEV confirmation — the footer button asks before jumping to
-  // Inventory's Pending JEV (the jump itself lives in handleManageJev).
-  const [showManageJevConfirm, setShowManageJevConfirm] = React.useState(false);
-  // Manage Voucher on a Closed voucher — asks before jumping straight to it,
-  // since the manage modal would have nothing left to do with it.
-  const [showGoToVoucherConfirm, setShowGoToVoucherConfirm] = React.useState(false);
 
   // Manage Voucher — open the editor INSTANTLY. The old flow awaited a
   // full getVouchers() round-trip before showing anything, which read as
@@ -406,18 +402,8 @@ export default function ItemPurchasingUpdateView({
     setShowManageVoucher(true);
   };
 
-  // View Voucher — the linked voucher is already fetched on load, so the
-  // status here is current. A voucher that is already CLOSED can no longer
-  // be changed or unlinked — confirm before jumping straight to it;
-  // anything else opens directly.
+  // View Voucher — jump straight to the linked voucher (no confirmation).
   const handleViewVoucherClick = () => {
-    if (
-      poVoucher &&
-      String(poVoucher.cStatus) === String(voucherClosedKey)
-    ) {
-      setShowGoToVoucherConfirm(true);
-      return;
-    }
     if (poVoucher?.nVoucherId != null) {
       // voucherStatusCode → the Vouchers sidebar highlights this voucher's
       // real status filter instead of the last-clicked one.
@@ -619,7 +605,7 @@ export default function ItemPurchasingUpdateView({
         <BaseButton
           label="Reopen"
           icon={icons.open}
-          onClick={() => setConfirmAction(cartKey)}
+          onClick={() => runCartAction(cartKey)}
           actionColor="default"
           disabled={isLoadingPage || actionLoading}
         />
@@ -631,7 +617,7 @@ export default function ItemPurchasingUpdateView({
         <BaseButton
           label="Undo Approval"
           icon={icons.open}
-          onClick={() => setConfirmAction("undo_approval")}
+          onClick={() => runCartAction("undo_approval")}
           actionColor="cancel"
           disabled={isLoadingPage || actionLoading}
         />
@@ -684,7 +670,7 @@ export default function ItemPurchasingUpdateView({
               <BaseButton
                 label="Close"
                 icon={icons.close}
-                onClick={() => setConfirmAction(forApprovalKey)}
+                onClick={() => runCartAction(forApprovalKey)}
                 actionColor="approve"
                 disabled={isLoadingPage || actionLoading}
               />
@@ -778,7 +764,7 @@ export default function ItemPurchasingUpdateView({
           label="Manage JEV"
           icon={icons.manage}
           tooltip="Open this transaction's Pending JEV in Inventory"
-          onClick={() => setShowManageJevConfirm(true)}
+          onClick={handleManageJev}
           actionColor="default"
           disabled={isLoadingPage || actionLoading}
         />
@@ -827,7 +813,7 @@ export default function ItemPurchasingUpdateView({
           <BaseButton
             label="Approve"
             icon={icons.approve}
-            onClick={() => setConfirmAction(forPaymentKey)}
+            onClick={() => runCartAction(forPaymentKey)}
             actionColor="approve"
             disabled={isLoadingPage || actionLoading}
           />
@@ -1249,6 +1235,7 @@ export default function ItemPurchasingUpdateView({
               poNumber={po?.strPurchaseOrderNo}
               suggestedReceiptNo={suggestedReceiptNo}
               onSaveDeliver={saveDeliverRow}
+              onSaveDeliverAll={saveDeliverLines}
               savingDeliver={deliverSaving}
               onLoadReceiptNo={getLineReceiptNo}
               txnItemOptions={txnItemOptions}
@@ -1264,6 +1251,7 @@ export default function ItemPurchasingUpdateView({
               poNumber={po?.strPurchaseOrderNo}
               suggestedReceiptNo={suggestedReceiptNo}
               onSaveReceive={saveReceiveRow}
+              onSaveReceiveAll={saveReceiveLines}
               savingReceive={receiveSaving}
               onLoadReceiptNo={getLineReceiptNo}
               txnItemOptions={txnItemOptions}
@@ -1328,42 +1316,6 @@ export default function ItemPurchasingUpdateView({
         loading={actionLoading}
         onConfirm={handleConfirm}
         onClose={() => setConfirmAction(null)}
-      />
-      {/* VIEW VOUCHER — jump-to-voucher confirmation. Fires when the linked
-          voucher is already CLOSED: it can no longer be changed or
-          unlinked, so View asks once and then goes straight to it. */}
-      <PurchaseCartUpdateModal
-        open={showGoToVoucherConfirm}
-        action="open_voucher"
-        styles={ITEM_PURCHASING_CONFIRM_STYLES}
-        purchaseOrderNumber={po?.strPurchaseOrderNo}
-        loading={false}
-        onConfirm={() => {
-          setShowGoToVoucherConfirm(false);
-          if (poVoucher?.nVoucherId) {
-            // voucherStatusCode → the Vouchers sidebar highlights this
-            // voucher's real status filter.
-            navigate(`/voucher-update?id=${poVoucher.nVoucherId}`, {
-              state: { voucherStatusCode: poVoucher.cStatus },
-            });
-          }
-        }}
-        onClose={() => setShowGoToVoucherConfirm(false)}
-      />
-      {/* MANAGE JEV — asks before handing the transaction over to
-          Inventory's Pending JEV tab. Its own slot so confirmAction,
-          which the status-change API answers to, stays untouched. */}
-      <PurchaseCartUpdateModal
-        open={showManageJevConfirm}
-        action="manage_jev"
-        styles={ITEM_PURCHASING_CONFIRM_STYLES}
-        purchaseOrderNumber={po?.strPurchaseOrderNo}
-        loading={false}
-        onConfirm={() => {
-          setShowManageJevConfirm(false);
-          handleManageJev();
-        }}
-        onClose={() => setShowManageJevConfirm(false)}
       />
       <PODetailsUpdateModal
         open={showPaymentForm}

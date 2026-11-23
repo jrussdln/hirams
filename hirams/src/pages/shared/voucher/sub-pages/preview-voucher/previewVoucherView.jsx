@@ -560,10 +560,10 @@ function VoucherFooterTable({
             Account Title
           </td>
           <td colSpan={2} style={sectionHeaderSx}>
-            FROM
+            DEBIT
           </td>
           <td colSpan={2} style={sectionHeaderSx}>
-            TO
+            CREDIT
           </td>
         </tr>
         {rows.map((row) => (
@@ -727,7 +727,7 @@ function VoucherFooterTable({
             align="center"
             verticalAlign="bottom"
             placeholder="Name / Signature"
-            
+            initialValue={"HMA"}
           />
           <td
             colSpan={1}
@@ -805,6 +805,7 @@ function VoucherFooterTable({
             align="center"
             verticalAlign="bottom"
             placeholder="Name / Signature"
+             initialValue={"HMA"}
           />
           <EditableCell
             id="signatureProcessedBy"

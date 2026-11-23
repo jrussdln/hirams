@@ -336,7 +336,7 @@ function TransferEntryModal({ open, onClose, entry = null, onTransferred }) {
                 lineHeight: 1.2,
               }}
             >
-              {isFrom ? "From" : "To"}
+              {isFrom ? "Debit" : "Credit"}
             </Typography>
             <Typography
               sx={{

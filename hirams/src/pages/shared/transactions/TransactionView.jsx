@@ -18,11 +18,7 @@ import OfficerCell from "./components/OfficerCell";
 import PriceChangeRequestModal from "./modal/PriceChangeRequestModal";
 import PurchaseOptionAPI from "../../../api/endpoints/purchase-option.api";
 import { getDueDateColor } from "../../../utils/helpers/dueDateColor";
-import {
-  NO_TRANSACTION_ABC,
-  NOT_YET_ASSIGNED,
-  OPEN_DATE,
-} from "../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
 import { Box, Typography, useTheme, Tooltip, IconButton, Badge } from "@mui/material";
 import getThemeColors from "../../../utils/style/getThemeColors";
 import {
@@ -1084,7 +1080,7 @@ function TransactionView(props) {
               className="text-xs font-light italic"
               style={{ color: colors.textMuted }}
             >
-              {NOT_YET_ASSIGNED}
+              {DEFAULT_FALLBACK}
             </span>
           );
         }
@@ -1133,7 +1129,7 @@ function TransactionView(props) {
                   ? isForPurchaseStage
                     ? row.deliveryDate
                     : row.aoDueDate
-                  : OPEN_DATE}
+                  : DEFAULT_FALLBACK}
               </span>
             </div>
           </div>
@@ -1227,7 +1223,7 @@ function TransactionView(props) {
                           className="text-xs font-light italic"
                           style={{ color: colors.textMuted }}
                         >
-                          {NO_TRANSACTION_ABC}
+                          {DEFAULT_FALLBACK}
                         </span>
                       ) : (
                         `₱ ${Number(val).toLocaleString(undefined, {
@@ -1341,7 +1337,7 @@ function TransactionView(props) {
                       className="text-xs font-light italic"
                       style={{ color: colors.textMuted }}
                     >
-                      {NOT_YET_ASSIGNED}
+                      {DEFAULT_FALLBACK}
                     </span>
                   );
                 }
@@ -1373,7 +1369,7 @@ function TransactionView(props) {
                               : 500,
                         }}
                       >
-                        {hasDate ? row.date : OPEN_DATE}
+                        {hasDate ? row.date : DEFAULT_FALLBACK}
                       </span>
                     </div>
                   </div>

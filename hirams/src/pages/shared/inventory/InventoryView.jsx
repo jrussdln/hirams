@@ -9,9 +9,7 @@ import BaseButton from "../../../components/ui/form/BaseButton";
 import FormControlFilter from "../../../components/ui/form/FormControlFilter";
 import InventoryDetailsPanel from "./component/InventoryDetailsPanel";
 import PendingInventory from "./component/PendingInventory";
-import InventoryConfirmModal from "./modal/InventoryConfirmModal";
 import { mapInventoryItems } from "./itemRows.js";
-import { INVENTORY_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 import { fmtQty } from "../../../utils/formatters/formatter.js";
 
@@ -53,9 +51,8 @@ export default function InventoryView({
   jevBalanceMessage,
   jevBalanceLoading,
   jevBalances,
-  confirmAction,
-  setConfirmAction,
-  handleConfirmAction,
+  handleCreateJev,
+  handleFinalizeJevs,
   jev_types,
   jev_status,
   jevPendingKey,
@@ -344,8 +341,7 @@ export default function InventoryView({
               flexWrap: "wrap",
             }}
           >
-            {/* Confirms first — same dialog flow as the voucher page.
-                Hidden altogether once the group already carries a JEV:
+            {/* Hidden altogether once the group already carries a JEV:
                 there is nothing left to create. */}
             {!groupHasJev && (
               <BaseButton
@@ -354,7 +350,7 @@ export default function InventoryView({
                 actionColor="add"
                 disabled={creatingJev || jevPendingCount === 0}
                 tooltip="Create JEV for the pending batches of this group"
-                onClick={() => setConfirmAction("create_jev")}
+                onClick={handleCreateJev}
               />
             )}
 
@@ -370,7 +366,7 @@ export default function InventoryView({
                     finalizingJev || jevBalanceLoading || !canFinalizeJevs
                   }
                   tooltip={jevBalanceMessage || "Finalize this JEV"}
-                  onClick={() => setConfirmAction("finalize_jev")}
+                  onClick={handleFinalizeJevs}
                 />
               )}
           </Box>
@@ -464,15 +460,6 @@ export default function InventoryView({
         </>
       )}
 
-      {/* Create JEV / Finalize JEV confirmations (Pending JEV screen) */}
-      <InventoryConfirmModal
-        open={!!confirmAction}
-        style={confirmAction ? INVENTORY_CONFIRM_STYLES[confirmAction] : null}
-        badge={groupView?.name}
-        loading={creatingJev || finalizingJev}
-        onConfirm={handleConfirmAction}
-        onClose={() => setConfirmAction(null)}
-      />
     </PageLayout>
   );
 }

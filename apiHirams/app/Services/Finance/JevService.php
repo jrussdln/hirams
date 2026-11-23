@@ -71,7 +71,20 @@ class JevService
      */
     public function counts()
     {
-        return Jev::select('cJEVLinkType', DB::raw('COUNT(*) as total'))
+        $pendingClearance = $this->statusCode('Pending Clearance', 'R');
+
+        $query = Jev::query();
+        if ($pendingClearance !== '') {
+            // Pending Clearance is its own Collection view (reached from the
+            // Collection footer), not part of the Collection sidebar badge.
+            // Count every other lifecycle state, including rows with no status.
+            $query->where(function ($q) use ($pendingClearance) {
+                $q->whereNull('cStatus')
+                    ->orWhere('cStatus', '!=', $pendingClearance);
+            });
+        }
+
+        return $query->select('cJEVLinkType', DB::raw('COUNT(*) as total'))
             ->groupBy('cJEVLinkType')
             ->pluck('total', 'cJEVLinkType');
     }
@@ -102,7 +115,7 @@ class JevService
                 'cJEVLinkType' => $request->cJEVLinkType,
                 'strTitle'     => $this->resolveTitle($request),
                 'dtOccur'      => $request->dtOccur ?? now(),
-                'cStatus'      => 'P',
+                'cStatus'      => $this->statusCode('Draft', 'P'),
                 'nUserId'      => auth()->id(),
             ]);
 
@@ -124,9 +137,52 @@ class JevService
             'strTitle'     => $this->resolveTitle($request, $jev),
         ];
 
-        $payload['cStatus'] = $request->cStatus === 'toggle'
-            ? ($jev->cStatus === 'P' ? 'A' : 'P')
-            : ($request->cStatus ?? $jev->cStatus);
+        $requestedStatus = $request->cStatus;
+
+        if ($requestedStatus === 'toggle') {
+            // The two-state toggle the voucher / inventory flows still use:
+            // Draft -> Active, anything else back to Draft. Collection JEVs
+            // send an explicit code instead so they can land on Pending
+            // Clearance (R) before being marked Cleared (A).
+            $draftStatus  = $this->statusCode('Draft', 'P');
+            $activeStatus = $this->statusCode('Active', 'A');
+            $payload['cStatus'] = (string) $jev->cStatus === $draftStatus
+                ? $activeStatus
+                : $draftStatus;
+        } elseif ($requestedStatus !== null && $requestedStatus !== '') {
+            // Only codes the mapping declares may be written — the frontend
+            // offers exactly those, so an unknown one is a bad caller. Pending
+            // Clearance is Collection-only: non-collection JEVs must never take it.
+            $statuses = config('mappings.jev_status', []);
+            $pendingClearanceStatuses = config('mappings.jev_status_pending_clearance', []);
+            $allowedStatuses = $statuses + $pendingClearanceStatuses;
+            $statusKey = (string) $requestedStatus;
+
+            if ($allowedStatuses && !array_key_exists($statusKey, $allowedStatuses)) {
+                throw ValidationException::withMessages([
+                    'cStatus' => 'Unknown JEV status.',
+                ]);
+            }
+
+            $collectionType = (string) (array_search(
+                'Collection',
+                config('mappings.jev_types', []),
+                true
+            ) ?: 'C');
+            $resultLinkType = (string) ($request->cJEVLinkType ?? $jev->cJEVLinkType);
+            if (
+                array_key_exists($statusKey, $pendingClearanceStatuses)
+                && $resultLinkType !== $collectionType
+            ) {
+                throw ValidationException::withMessages([
+                    'cStatus' => 'Pending Clearance is only allowed for Collection JEVs.',
+                ]);
+            }
+
+            $payload['cStatus'] = $statusKey;
+        } else {
+            $payload['cStatus'] = $jev->cStatus;
+        }
 
         $jev->update($payload);
 
@@ -188,19 +244,44 @@ class JevService
     }
 
     /**
+     * The jev_status code config/mappings.php names $label, or $fallback
+     * when the mapping has no such entry. Pending Clearance lives in its own
+     * Collection-only mapping, so both maps are consulted. Keeps every
+     * lifecycle write (Draft / Pending Clearance / Active / Cancelled) in step
+     * with the mappings the frontend receives.
+     */
+    private function statusCode(string $label, string $fallback = ''): string
+    {
+        $maps = [
+            config('mappings.jev_status', []),
+            config('mappings.jev_status_pending_clearance', []),
+        ];
+
+        foreach ($maps as $map) {
+            $code = array_search($label, $map, true);
+            if ($code !== false) {
+                return (string) $code;
+            }
+        }
+
+        return (string) $fallback;
+    }
+
+    /**
      * The status codes this flow reacts to, pulled straight from
      * config/mappings.php — the file /mappings serves to the frontend, so the
      * API and the UI can never disagree about what a code means.
      */
     private function deletabilityCodes(): array
     {
-        $jevStatus    = config('mappings.jev_status', []);
         $voucherStatus = config('mappings.voucher_status', []);
         $jevTypes     = config('mappings.jev_types', []);
         $archiveStatus = config('mappings.archive_status', []);
 
         return [
-            'jevActive'    => (string) (array_search('Active', $jevStatus, true) ?: ''),
+            'jevDraft'     => $this->statusCode('Draft', 'P'),
+            'jevPendingClearance' => $this->statusCode('Pending Clearance', 'R'),
+            'jevActive'    => $this->statusCode('Active', 'A'),
             'voucherPaid'  => (string) (array_search('Paid', $voucherStatus, true) ?: ''),
             'txnCompleted' => (string) (array_search('Transaction Completed', $archiveStatus, true) ?: ''),
             'typeReceived' => (string) (array_search('Received Purchases', $jevTypes, true) ?: ''),
@@ -215,8 +296,8 @@ class JevService
      * A journal is only a draft until the things it was raised for are
      * settled, so the delete is blocked while any of them is still open:
      *
-     *   • an ACTIVE (finalized) journal is on the books — it can only be
-     *     cancelled, never deleted;
+     *   • a FINALIZED journal (Active or Pending Clearance) is on the
+     *     books — it can only be cancelled, never deleted;
      *   • a voucher that has been PAID cannot be undone by throwing its
      *     journal away;
      *   • a Received / Delivered journal belongs to a Purchase Order — it
@@ -232,8 +313,13 @@ class JevService
         $codes = $this->deletabilityCodes();
         $linkType = (string) $jev->cJEVLinkType;
 
-        // ── An Active journal is finalized: it is on the books. ──
-        if ($codes['jevActive'] !== '' && (string) $jev->cStatus === $codes['jevActive']) {
+        // ── A finalized journal (Active or Pending Clearance) is on the
+        //    books: it is never deleted. ──
+        $finalizedStatuses = array_filter([
+            $codes['jevPendingClearance'],
+            $codes['jevActive'],
+        ]);
+        if (in_array((string) $jev->cStatus, $finalizedStatuses, true)) {
             return [false, 'This JEV is already finalized. Cancel it instead.'];
         }
 

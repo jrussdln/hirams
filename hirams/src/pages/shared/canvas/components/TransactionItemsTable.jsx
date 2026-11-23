@@ -54,10 +54,7 @@ import {
 } from "../../../../utils/formatters/formatter";
 import getThemeColors from "../../../../utils/style/getThemeColors";
 import ProgressBar from "../../../../components/ui/form/ProgressBar";
-import {
-  NO_TRANSACTION_ABC,
-  OPEN_DATE,
-} from "../../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../../constants/tableDataFallbacks";
 // ─────────────────────────────────────────────────────────────────
 // INLINE COLOR MAP — per-file useColors pattern (PROMPT 1)
 // ─────────────────────────────────────────────────────────────────
@@ -1830,7 +1827,7 @@ function TransactionItemsTable({
                         ? "Total ABC (per item)"
                         : "Transaction ABC"
                     }
-                    value={abcValue || NO_TRANSACTION_ABC}
+                    value={abcValue || DEFAULT_FALLBACK}
                     sub={abcSub}
                     variant={abcValidation ? "danger" : "default"}
                     dense
@@ -1856,7 +1853,7 @@ function TransactionItemsTable({
                     value={
                       transaction.dtAODueDate
                         ? fmtDate(transaction.dtAODueDate)
-                        : OPEN_DATE
+                        : DEFAULT_FALLBACK
                     }
                     variant={getDueDateVariant(transaction.dtAODueDate)}
                     dense
@@ -1867,7 +1864,7 @@ function TransactionItemsTable({
                     value={
                       transaction.dtDocSubmission
                         ? fmtDate(transaction.dtDocSubmission)
-                        : OPEN_DATE
+                        : DEFAULT_FALLBACK
                     }
                     variant={getDueDateVariant(transaction.dtDocSubmission)}
                     dense

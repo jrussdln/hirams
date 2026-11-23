@@ -32,6 +32,8 @@ export default function DeliveredPanel({
   suggestedReceiptNo = "",
   // Edit button → delivered form. Saves ONE line (returns true when recorded).
   onSaveDeliver,
+  // Footer bulk save — every edited line in one call (one spinner/popup).
+  onSaveDeliverAll,
   savingDeliver = false,
   // The receipt number the line was recorded under (its inventory rows carry
   // it) — the form opens with it instead of only the card's suggestion.
@@ -53,6 +55,27 @@ export default function DeliveredPanel({
   const getKey = (opt, idx) => opt.purchase_option?.nPurchaseItemId ?? idx;
 
   const delivered = (opt) => getDelivered(opt?.purchase_option);
+
+  // The transaction-total figure pools add-ons into the requested item, so
+  // every separated row would print the same 5,715. Cap each row at its own
+  // ordered qty (add-ons) / own non-add-on qty (the requested item), the same
+  // rule ForDeliveryPanel uses.
+  const rowDelivered = (opt) => {
+    const p = opt?.purchase_option;
+    const parts = opt?.__parts?.length ? opt.__parts : [p];
+    const isAddOn = Number(p?.bAddOn) === 1 || p?.bAddOn === true;
+    const pooled =
+      txnTotals?.[p?.transaction_item?.nTransactionItemId]?.dlvd ??
+      num(p?.nDeliveredQty);
+    if (isAddOn) {
+      const ordered = num(parts[0]?.nQuantity);
+      return ordered > 0 ? Math.min(pooled, ordered) : pooled;
+    }
+    const ownOrdered = parts
+      .filter((q) => Number(q?.bAddOn) !== 1 && q?.bAddOn !== true)
+      .reduce((s, q) => s + num(q?.nQuantity), 0);
+    return ownOrdered > 0 ? Math.min(pooled, ownOrdered) : pooled;
+  };
 
   // Serial numbers written when the goods were received, minus the ones
   // already delivered — what a line can still hand over.
@@ -84,6 +107,10 @@ export default function DeliveredPanel({
   // The receipt number each row was recorded under, keyed like editForms —
   // looked up once per row so reopening a form doesn't refetch it.
   const [receiptByRow, setReceiptByRow] = React.useState({});
+  // Which rows the USER actually typed a receipt into — distinguishes a real
+  // edit from the suggested number auto-filled while the DB lookup was in
+  // flight (the latter must not block the recorded receipt from landing).
+  const receiptTouchedRef = React.useRef(new Set());
   const getEditForm = (k) =>
     editForms[k] ?? {
       qty: "",
@@ -93,8 +120,11 @@ export default function DeliveredPanel({
       showSN: false,
       serials: [],
     };
-  const setEditForm = (k, patch) =>
+  const setEditForm = (k, patch) => {
+    if (Object.prototype.hasOwnProperty.call(patch, "receiptNo"))
+      receiptTouchedRef.current.add(String(k));
     setEditForms((prev) => ({ ...prev, [k]: { ...getEditForm(k), ...patch } }));
+  };
 
   // ── Suppliers behind this row's quantity ──────────────────────────────
   // The row adds every PO of the item together (5 + 7 = 12), but each
@@ -138,6 +168,7 @@ export default function DeliveredPanel({
   // the line actually holds serial numbers; otherwise it stays behind + SN.
   const seedEditForm = (q) => {
     const id = String(q?.nPurchaseItemId);
+    receiptTouchedRef.current.delete(id);
     const recorded = (q?.deliveredSerialNumbers || [])
       .filter(Boolean)
       .map(String);
@@ -165,8 +196,10 @@ export default function DeliveredPanel({
         setReceiptByRow((prev) => ({ ...prev, [id]: recordedNo }));
         setEditForms((prev) => {
           const cur = prev[id];
-          // Keep whatever the user has already typed in the field.
-          if (!cur || (cur.receiptNo || "").trim()) return prev;
+          if (!cur) return prev;
+          // Only a real user edit wins. An auto-filled suggested number is not
+          // an edit — overwrite it with the receipt on record (e.g. 3457).
+          if (receiptTouchedRef.current.has(id)) return prev;
           return {
             ...prev,
             [id]: {
@@ -270,6 +303,8 @@ export default function DeliveredPanel({
   };
 
   const saveAllOpenForms = async () => {
+    const lines = [];
+    const openRows = [];
     let anyFailed = false;
     for (const k of [...editIds]) {
       const entry = visible.find(
@@ -280,17 +315,29 @@ export default function DeliveredPanel({
         anyFailed = true;
         continue;
       }
-      let rowFailed = false;
+      openRows.push({ k, opt: entry.opt });
       for (const q of list) {
-        // Nothing typed on this line — nothing to record; the row's form
-        // just closes with its neighbours.
+        // Nothing typed on this line — nothing to record.
         if (lineUnchanged(q)) continue;
-        const ok = await saveLine(String(q?.nPurchaseItemId));
-        if (!ok) rowFailed = true;
+        const id = String(q?.nPurchaseItemId);
+        const qForm = getEditForm(id);
+        lines.push({
+          nPurchaseItemId: Number(id),
+          target: Number(qForm.qty),
+          strReceiptNumber: (qForm.receiptNo || "").trim() || null,
+          serials: qForm.serials || [],
+        });
       }
-      if (rowFailed) anyFailed = true;
-      else closeEdit(k, entry.opt);
     }
+
+    if (lines.length) {
+      // ONE call for the whole batch — no load → success cycle per item.
+      const ok = onSaveDeliverAll
+        ? await onSaveDeliverAll(lines)
+        : (await Promise.all(lines.map(saveLine))).every(Boolean);
+      if (!ok) anyFailed = true;
+    }
+    if (!anyFailed) openRows.forEach(({ k, opt }) => closeEdit(k, opt));
     return !anyFailed;
   };
 
@@ -341,6 +388,12 @@ export default function DeliveredPanel({
       let changed = false;
       const next = {};
       for (const [key, f] of Object.entries(prevForms)) {
+        // A line with a receipt on record keeps it — never swap 3457 for the
+        // next suggested number.
+        if (receiptByRow[key] != null) {
+          next[key] = f;
+          continue;
+        }
         const current = String(f?.receiptNo ?? "").trim();
         const follows = current === prev || (!prev && !current);
         if (follows) {
@@ -352,7 +405,7 @@ export default function DeliveredPanel({
       }
       return changed ? next : prevForms;
     });
-  }, [suggestedReceiptNo]);
+  }, [suggestedReceiptNo, receiptByRow]);
 
   return (
     <>
@@ -404,10 +457,8 @@ export default function DeliveredPanel({
         {visible.map(({ opt, origIdx }, idx) => {
           const p = opt.purchase_option;
           const tx = p?.transaction_item?.transaction;
-          // Combined across every PO of the transaction so the row matches
-          // the card (5 + 7 = 12).
-          const total = txnTotals?.[p?.transaction_item?.nTransactionItemId];
-          const cDlvd = total ? total.dlvd : num(p?.nDeliveredQty);
+          // Capped per line so add-ons do not repeat the pooled total.
+          const cDlvd = rowDelivered(opt);
           const k = getKey(opt, origIdx);
           // Edit → DELIVERED form. The row's quantity can be shared by several
           // suppliers (one PO each) — each of them gets its own form, so one

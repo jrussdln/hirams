@@ -82,7 +82,7 @@ export default function JEVUpdatePanel({
   showBalanceBanner,
   dismissBalanceMsg,
   willDemoteOnLeave,
-  // Finalize state — entry controls are withheld once the JEV left Pending.
+  // Finalize state — entry controls are withheld once the JEV left Draft.
   isPendingJev,
   // Navigations.
   openVoucher,
@@ -232,7 +232,7 @@ export default function JEVUpdatePanel({
                   >
                     Leaving this page while its entries stay unbalanced will
                     automatically set its status to{" "}
-                    <strong>Pending</strong>.
+                    <strong>Draft</strong>.
                   </Box>
                 )}
               </Box>

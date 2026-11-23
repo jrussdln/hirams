@@ -22,11 +22,11 @@ import useKeysLabels from "../../../../../hooks/useKeysLabels.js";
 import { openForPurchase } from "../../../../../utils/helpers/openForPurchase.js";
 import { getItem, setItem } from "../../../../../utils/storage/localStorage.js";
 
-// jev_status codes straight from config/mappings.php. Only these two
-// matter here: an ACTIVE JEV left unbalanced by its own entries is put
-// back to PENDING when the page is left through its Back button.
-const STATUS_ACTIVE = "A";
-const STATUS_PENDING = "P";
+// The lifecycle codes are resolved from config/mappings.php through
+// useKeysLabels (P Draft · R Pending Clearance · A Active · C Cancelled).
+// Only two automatic moves live here: an Active JEV left unbalanced by its
+// own entries goes back to Draft on Back, and the finalize button writes an
+// explicit code — Collection JEVs may land on Pending Clearance or Active.
 
 // Full-page viewer for ONE JEV — the list page's View opens it as
 // /jev-update?id=… instead of a modal (the viewer body is the very one
@@ -69,6 +69,10 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
   const {
     jev_types,
     jev_status,
+    jevCollectionKey,
+    jevDraftKey,
+    jevPendingClearanceKey,
+    jevActiveKey,
     jevPendingKey,
     // The transaction status keys — the brand · model opens the transaction
     // in the For Purchase workspace, and that workspace is driven by them.
@@ -106,6 +110,12 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
     cancelledPOKey,
     removedFromCartKey,
   } = useKeysLabels();
+
+  // Mapping-resolved lifecycle codes, with the mapping's own letters as
+  // fallbacks while the mapping is still loading.
+  const draftStatus = jevDraftKey || jevPendingKey || "P";
+  const pendingClearanceStatus = jevPendingClearanceKey || "R";
+  const activeStatus = jevActiveKey || "A";
 
   // ── The JEV itself ───────────────────────────────────────────────────
   // Rebuilt WITHOUT `entries` → JevViewPanel fetches them fresh with
@@ -205,8 +215,9 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
   // The viewer's entry CRUD gate — Management / Finance Officer, PLUS the
   // Account Officers (plain AO and the AOTL alike), who build the journal:
   // title, date and entries. The status rule further narrows Account
-  // Officers to PENDING journals (see JEVUpdatePanel / JevViewPanel);
-  // finalized (Active) or cancelled journals stay read-only for them.
+  // Officers to DRAFT journals (see JEVUpdatePanel / JevViewPanel);
+  // finalized (Pending Clearance / Active) or cancelled journals stay
+  // read-only for them.
   const canManage = Boolean(
     isManagement || isFinanceOfficer || isAccountOfficer,
   );
@@ -264,6 +275,9 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
   // inventory-backed and shows nothing here.
   const linkType = String(jev?.cJEVLinkType ?? "").toUpperCase();
   const isInventoryBacked = linkType === "R" || linkType === "D";
+  // Link type alone — the finalize choice is a Collection rule, whether or
+  // not the receipt / transaction payload has finished loading.
+  const isCollectionLinkType = linkType === "C";
 
   const [inventory, setInventory] = useState(null);
   const [loadingInventory, setLoadingInventory] = useState(false);
@@ -550,13 +564,14 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
   const showBalanceBanner =
     !balance.loading && !!balance.message && dismissedBalanceMsg !== balance.message;
 
-  // ── Active → Pending on leaving an unbalanced JEV ────────────────────
+  // ── Active → Draft on leaving an unbalanced JEV ──────────────────────
   // The one automatic status move this page makes — the same rule the
   // viewer modal ran on close (demoteIfUnbalanced): a JEV that was ACTIVE
   // when it was opened and whose From / To sides no longer square is put
-  // back to PENDING when it is left through this page's Back button, so a
+  // back to DRAFT when it is left through this page's Back button, so a
   // half-edited JEV can never sit in the list wearing an Active badge.
-  // Any other status the JEV was opened with is left exactly as it is.
+  // Any other status the JEV was opened with is left exactly as it is —
+  // including Pending Clearance, which is already finalized.
   //
   // Other JEV (N) is EXEMPT: it finalizes from this very page now, and
   // the user asked for the automatic demote gone for it — whatever status
@@ -578,7 +593,7 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
 
   const demoteIfUnbalanced = useCallback(async () => {
     if (demotedRef.current) return; // one leaving, one check
-    if (!jevId || String(jev?.cStatus ?? "") !== STATUS_ACTIVE) return;
+    if (!jevId || String(jev?.cStatus ?? "") !== activeStatus) return;
     if (linkType === "N") return; // Other JEV: no automatic demote on leave
     demotedRef.current = true;
     try {
@@ -588,67 +603,113 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
         requireTotalMatch: false,
       });
       if (verdict.balanced) return;
-      await JevAPI.update(jevId, { cStatus: STATUS_PENDING });
+      await JevAPI.update(jevId, { cStatus: draftStatus });
       window.dispatchEvent(new CustomEvent("jev_data_updated"));
     } catch (err) {
-      console.error("Failed to set the unbalanced JEV back to Pending:", err);
+      console.error("Failed to set the unbalanced JEV back to Draft:", err);
     }
-  }, [jevId, jev?.cStatus, itemsTotal, linkType]);
+  }, [jevId, jev?.cStatus, itemsTotal, linkType, activeStatus, draftStatus]);
 
   // Whether leaving now would demote the JEV — the banner prints its
-  // Pending note from the very same condition, so the promise shown to
+  // Draft note from the very same condition, so the promise shown to
   // the reader can never drift from what goBack actually does. Other JEV
   // (N) never demotes, so it never shows the note either.
   const willDemoteOnLeave =
     !!jevId &&
     linkType !== "N" &&
-    String(jev?.cStatus ?? "") === STATUS_ACTIVE;
+    String(jev?.cStatus ?? "") === activeStatus;
 
   // The Back button: the unbalanced Active → Pending check runs first,
   // then the page returns to the list (the same funnel every close path
   // of the old modal used — Cancel / X / backdrop / Escape).
+  // Where Back returns to. Only a journal OPENED from the Pending Clearance
+  // view goes back there — the list passes `from=pending` in the deep link.
+  // A Collection JEV opened from the plain list (or from a ledger) returns to
+  // the plain list; its type alone must not decide the destination.
   const goBack = useCallback(async () => {
     await demoteIfUnbalanced();
-    navigate("/journal-entry-voucher");
-  }, [demoteIfUnbalanced, navigate]);
+    if (searchParams.get("from") === "pending") {
+      navigate("/journal-entry-voucher?pending=1");
+    } else {
+      navigate("/journal-entry-voucher");
+    }
+  }, [demoteIfUnbalanced, navigate, searchParams]);
 
   // ── Finalize / Undo Finalize — every JEV type ───────────────────────
-  // This page carries the finalize / unfinalize pair itself — the same
-  // "toggle" write the voucher's page uses for the journals IT created
-  // (the backend flips P ↔ A). A Cancelled journal is excluded from the
-  // buttons: toggling it would resurrect it back to Pending.
+  // The write is an EXPLICIT status, never the old "toggle": a Collection
+  // (C) JEV finalizes to Pending Clearance (R) or Cleared (A), depending on
+  // the choice dialog, while every other type goes straight to Active (A).
+  // Undo (from R or A) returns the journal to Draft (P). A Cancelled journal
+  // is excluded from the buttons: changing it would resurrect it.
   const [finalizingJev, setFinalizingJev] = useState(false);
+  const [finalizeChoiceOpen, setFinalizeChoiceOpen] = useState(false);
   // Same title rule every finalize path follows (voucher, Inventory):
-  // an unnamed journal cannot leave Pending.
+  // an unnamed journal cannot leave Draft.
   const jevHasTitle = Boolean(String(jev?.strTitle ?? "").trim());
   const isNoTypeJev = linkType === "N";
-  const isPendingJev = String(jev?.cStatus ?? "") === STATUS_PENDING;
-  const isFinalizableStatus = isPendingJev || String(jev?.cStatus ?? "") === STATUS_ACTIVE;
+  const currentJevStatus = String(jev?.cStatus ?? "");
+  const isDraftJev = currentJevStatus === draftStatus;
+  // Legacy name kept for the panel / view: "pending" now means Draft.
+  const isPendingJev = isDraftJev;
+  const isPendingClearanceJev = currentJevStatus === pendingClearanceStatus;
+  const isActiveJev = currentJevStatus === activeStatus;
+  const isFinalizableStatus =
+    isDraftJev || isPendingClearanceJev || isActiveJev;
 
-  const toggleJevFinalize = useCallback(async () => {
-    if (!jevId || finalizingJev) return;
-    setFinalizingJev(true);
-    try {
-      await withSpinner("JEV", async () => {
-        await JevAPI.update(jevId, { cStatus: "toggle" });
-        await fetchJev();
-        window.dispatchEvent(new CustomEvent("jev_data_updated"));
-      });
-      await showSwal(
-        "SUCCESS",
-        {},
-        {
-          entity: "JEV",
-          action: isPendingJev ? "finalized" : "status updated",
-        },
-      );
-    } catch (err) {
-      console.error("JEV finalize toggle failed:", err);
-      await showSwal("ERROR", {}, { entity: "JEV" });
-    } finally {
-      setFinalizingJev(false);
-    }
-  }, [jevId, finalizingJev, fetchJev, isPendingJev]);
+  const toggleJevFinalize = useCallback(
+    async (targetStatus) => {
+      if (!jevId || finalizingJev) return false;
+
+      // No explicit target: Draft -> Active, every finalized state -> Draft.
+      // That keeps the old two-state callers working while the Collection
+      // dialog passes R or A itself.
+      const nextStatus =
+        targetStatus ||
+        (String(jev?.cStatus ?? "") === draftStatus
+          ? activeStatus
+          : draftStatus);
+      if (!nextStatus || nextStatus === String(jev?.cStatus ?? "")) {
+        return false;
+      }
+
+      setFinalizingJev(true);
+      try {
+        await withSpinner("JEV", async () => {
+          await JevAPI.update(jevId, { cStatus: nextStatus });
+          await fetchJev();
+          window.dispatchEvent(new CustomEvent("jev_data_updated"));
+        });
+        await showSwal(
+          "SUCCESS",
+          {},
+          {
+            entity: "JEV",
+            action:
+              nextStatus === activeStatus ||
+              nextStatus === pendingClearanceStatus
+                ? "finalized"
+                : "status updated",
+          },
+        );
+        return true;
+      } catch (err) {
+        console.error("JEV finalize update failed:", err);
+        await showSwal("ERROR", {}, { entity: "JEV" });
+        return false;
+      } finally {
+        setFinalizingJev(false);
+      }
+    },
+    [
+      jevId,
+      finalizingJev,
+      jev?.cStatus,
+      draftStatus,
+      pendingClearanceStatus,
+      activeStatus,
+      fetchJev,
+    ],
+  );
 
   // ── The clickable navigations ───────────────────────────────────────
   // The DV code opens the voucher itself — the same /voucher-update?id=
@@ -742,6 +803,16 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
     ],
   );
 
+  // The journal's type in words, plus "/ Pending Clearance" if this is a
+  // Collection JEV in Pending Clearance status.
+  const jevTypeLabel = useMemo(() => {
+    const base = jev_types?.[jev?.cJEVLinkType] ?? linkType;
+    if (String(linkType ?? "") === String(jevCollectionKey) && currentJevStatus === pendingClearanceStatus) {
+      return `${base} / Pending Clearance`;
+    }
+    return base;
+  }, [jev_types, jev?.cJEVLinkType, linkType, linkType, jevCollectionKey, currentJevStatus, pendingClearanceStatus]);
+
   // An inventory row carries only the transaction's ID — the workspace
   // fetches the rest itself.
   const openInventoryRowTransaction = useCallback(
@@ -755,9 +826,7 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
     jev,
     jevId,
     linkType,
-    // The journal's type, in words ("Disbursement Voucher") — the header
-    // must never print the raw "V" code.
-    jevTypeLabel: jev_types?.[jev?.cJEVLinkType] ?? linkType,
+    jevTypeLabel,
     // Roles
     isManagement,
     isFinanceOfficer,
@@ -785,6 +854,7 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
     // Collection (C) JEV — the transaction behind it and the receipt
     // figures the page prints above the journal.
     isCollectionJev,
+    isCollectionLinkType,
     collectionTransaction,
     collectibleAmount,
     retentionAmount,
@@ -793,17 +863,27 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
     showBalanceBanner,
     dismissBalanceMsg,
     willDemoteOnLeave,
-    // Leaving an unbalanced Active JEV puts it back to Pending — exported
+    // Leaving an unbalanced Active JEV puts it back to Draft — exported
     // for embedded hosts: their Back button runs it BEFORE dropping this
     // panel, exactly what goBack does before its own navigate.
     demoteIfUnbalanced,
-    // Finalize / Undo Finalize (Other JEV only)
+    // Finalize / Undo Finalize — every JEV type
     isNoTypeJev,
+    isDraftJev,
+    // Legacy alias kept for the panel/view: "pending" now means Draft.
     isPendingJev,
+    isPendingClearanceJev,
+    isActiveJev,
     isFinalizableStatus,
     jevHasTitle,
     finalizingJev,
+    finalizeChoiceOpen,
+    setFinalizeChoiceOpen,
     toggleJevFinalize,
+    // Lifecycle codes resolved from the mapping.
+    draftStatus,
+    pendingClearanceStatus,
+    activeStatus,
     // Actions
     goBack,
     openVoucher,

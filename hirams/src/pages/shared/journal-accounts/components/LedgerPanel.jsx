@@ -143,6 +143,19 @@ const NUM_FONT = {
   fontFeatureSettings: '"tnum"',
 };
 
+// Fixed-width Debit / Credit lanes. `minWidth` let a longer figure grow its
+// box and push the next column sideways, so the same column sat at a
+// different x on the overall header vs. the account rows. A fixed width
+// keeps every Debit and Credit in the same vertical lane.
+const MONEY_COL = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-end",
+  width: "6rem",
+  flexShrink: 0,
+};
+const MONEY_GAP = { mr: 3 };
+
 // Entries of one account, shown with the shared CustomTable (+ pagination).
 // `onOpenJev({ nJEVId, jev })` makes the JEV No. cell clickable for EVERY
 // type — the viewer renders whichever block that type actually has: the
@@ -237,9 +250,9 @@ const EntryBranch = ({
         payee,
         receivedSupplier,
         // The JEV's strTitle IS the Particulars cell. When the journal was
-        // saved without one, the cell says so instead of falling back to
-        // the payee / supplier / counterpart chain.
-        particulars: jevTitle ?? "Title is not yet added.",
+        // saved without one, fall back to a plain dash instead of falling
+        // back to the payee / supplier / counterpart chain.
+        particulars: jevTitle ?? "—",
         counterparts,
         from: isOut ? amt : 0, // money out
         to: !isOut ? amt : 0, // money in
@@ -268,7 +281,7 @@ const EntryBranch = ({
       {
         key: "date",
         label: "Date",
-        xs: 1.1,
+        xs: 1.3,
         align: "center",
         render: (v) => (
           <Box
@@ -288,7 +301,7 @@ const EntryBranch = ({
       {
         key: "jevNo",
         label: "JEV No.",
-        xs: 1.4,
+        xs: 1.7,
         align: "center",
         render: (v, row) => (
           <Box
@@ -356,7 +369,7 @@ const EntryBranch = ({
       {
         key: "particulars",
         label: "Title",
-        xs: 3.4,
+        xs: 4.2,
         render: (_, row) => (
           <Box
             component="span"
@@ -381,16 +394,16 @@ const EntryBranch = ({
       },
       {
         key: "from",
-        label: "From",
-        xs: 1.2,
+        label: "Debit",
+        xs: 1.4,
         align: "right",
         render: (_, row) =>
           row.from !== 0 ? (
             <Box
               component="span"
-              sx={{ ...num, fontStyle: "italic", color: colors.red.text }}
+              sx={{ ...num, color: colors.red.text }}
             >
-              {`-${fmtAmt(row.from)}`}
+              {fmtAmt(row.from)}
             </Box>
           ) : (
             dash
@@ -398,43 +411,20 @@ const EntryBranch = ({
       },
       {
         key: "to",
-        label: "To",
-        xs: 1.2,
+        label: "Credit",
+        xs: 1.4,
         align: "right",
         render: (_, row) =>
           row.to !== 0 ? (
             <Box
               component="span"
-              sx={{ ...num, fontStyle: "italic", color: colors.green.text }}
+              sx={{ ...num, color: colors.green.text }}
             >
               {fmtAmt(row.to)}
             </Box>
           ) : (
             dash
           ),
-      },
-      {
-        key: "balance",
-        label: "Balance",
-        xs: 1.2,
-        align: "right",
-        render: (v) => (
-          <Box
-            component="span"
-            sx={{
-              ...num,
-              color:
-                v === 0
-                  ? colors.gray.pri
-                  : v < 0
-                    ? colors.red.text
-                    : colors.green.text,
-            }}
-          >
-            {v < 0 ? "-" : ""}
-            {fmtAmt(v)}
-          </Box>
-        ),
       },
       // Action column — Transfer re-homes the entry's journal account.
       // Only exists while the caller hands the handler in; finance reads
@@ -530,6 +520,10 @@ function LedgerPanel({
   // Raw key of the "Received Purchases" JEV type — its Particulars cell is
   // built from the inventory behind it ("Received Purchases from {supplier}").
   jevReceivedPurchasesKey = "",
+  // Collection (C) JEV type and its Pending Clearance (R) status — used for
+  // the "Pending: ₱…" figure under the overall Total.
+  jevCollectionKey = "",
+  jevPendingClearanceKey = "",
   // Inclusive { from, to } window chosen in LedgerFilterModal
   // before the panel opened (nulls = entire history).
   dateRange = EMPTY_RANGE,
@@ -838,6 +832,36 @@ function LedgerPanel({
     return cache;
   }, [account, children, flat, jevEntries, jevActiveKey]);
 
+  // Pending Clearance collections on LINKED fund accounts — printed under
+  // the overall Total. Fund = bAllowNegative off; a Collection JEV still in
+  // Pending Clearance is money that hasn't cleared into the active books.
+  // Only the reported account + its linked descendants contribute, and the
+  // line is omitted entirely when the tree has no fund account.
+  const pendingClearanceTotal = useMemo(() => {
+    if (!jevCollectionKey) return null;
+    // "Pending Clearance" lives in its own mapping; "R" is its raw code.
+    const pendingKey = String(jevPendingClearanceKey || "R");
+    const fundIds = new Set(
+      [account, ...flat.map((x) => x.node)]
+        .filter((a) => a != null && Number(a.bAllowNegative ?? 1) === 0)
+        .map((a) => Number(a.id ?? a.nJournalAccountId))
+        .filter(Boolean),
+    );
+    if (fundIds.size === 0) return null;
+
+    let cents = 0;
+    (jevEntries || []).forEach((e) => {
+      if (String(e?.jev?.cJEVLinkType ?? "") !== String(jevCollectionKey)) return;
+      if (
+        String(e?.jev?.cStatus ?? "").trim() !== pendingKey
+      )
+        return;
+      if (!fundIds.has(Number(e.nJournalAccountId))) return;
+      cents += toCents(e.dAmount);
+    });
+    return cents / 100;
+  }, [account, flat, jevEntries, jevCollectionKey, jevPendingClearanceKey]);
+
   // From / To / net per account = its own filtered entries + all descendants':
   // the same three numbers the entry table adds up (its From column, its To
   // column and its running Balance). Stored in whole cents — 0.1 + 0.2 !== 0.3
@@ -969,8 +993,12 @@ function LedgerPanel({
   const headerBtnSx = {
     display: "inline-flex",
     alignItems: "center",
+    justifyContent: "center",
     gap: 0.2,
     px: 0.9,
+    // Fixed width so toggling Collapse all ↔ Expand all never resizes the
+    // pill. Below sm the label is hidden, so it shrinks to an icon-only chip.
+    width: { xs: 32, sm: 94 },
     height: 32,
     borderRadius: "7px",
     border: `1px solid ${colors.border}`,
@@ -1056,186 +1084,8 @@ function LedgerPanel({
       {/* ── Report body ──────────────────────────────────────────── */}
       <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
         {/* ── Account being reported ──────────────────────────────── */}
-        <Box
-          sx={{
-            position: "relative", // anchor of the totals overlay
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 1,
-            px: 1.25,
-            py: 0.9,
-            borderRadius: "8px",
-            border: `1px solid ${colors.violet.border}`,
-            background: colors.violet.bg,
-          }}
-        >
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1,
-              minWidth: 0,
-              // The totals overlay owns the right side of the banner — the
-              // name ellipsizes before it can ever run under the columns.
-              maxWidth: showHeaderTotals ? "45%" : "100%",
-            }}
-          >
-            <Box
-              sx={{
-                width: 26,
-                height: 26,
-                borderRadius: "6px",
-                background: colors.plateBg,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-              }}
-            >
-              <AccountBalanceOutlined
-                sx={{ fontSize: "0.85rem", color: colors.violet.text }}
-              />
-            </Box>
-            <Box sx={{ minWidth: 0 }}>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 0.6,
-                  minWidth: 0,
-                }}
-              >
-                <Typography
-                  title={accountPath}
-                  noWrap
-                  sx={{
-                    fontSize: "0.6rem",
-                    fontWeight: 600,
-                    color: colors.violet.text,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  {accountPath}
-                </Typography>
-                <Box
-                  component="span"
-                  title={`${total} linked account${total === 1 ? "" : "s"}`}
-                  sx={{
-                    px: 0.6,
-                    py: 0.1,
-                    borderRadius: "50px",
-                    background: colors.chipBg,
-                    border: `0.5px solid ${colors.chipBorder}`,
-                    color: colors.violet.text,
-                    fontSize: "0.55rem",
-                    fontWeight: 700,
-                    lineHeight: 1.4,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {`${total} Linked Account${total === 1 ? "" : "s"}`}
-                </Box>
-              </Box>
-            </Box>
-          </Box>
-          {/* All-time totals — the date window filters the entry rows
-              below, never these numbers. A zero total is not worth
-              showing — "Total: 0.00" only adds noise. */}
-              {showHeaderTotals &&
-                (() => {
-                  const { from, to, net } = grandTotalsById[account?.id] ?? {
-                    from: 0,
-                    to: 0,
-                    net: 0,
-                  };
-                  // Same rule the row balances follow: the net keeps its
-                  // real sign — negative prints red, positive green.
-                  const cols = [
-                    { label: "From", value: from / 100, color: colors.red.text },
-                    { label: "To", value: to / 100, color: colors.green.text },
-                    {
-                      label: "Total",
-                      value: net,
-                      color:
-                        net < 0
-                          ? colors.red.text
-                          : colors.green.text,
-                    },
-                  ];
-                  return (
-                    <Box
-                      title={`From ₱${fmtAmt(from / 100)} · To ₱${fmtAmt(to / 100)}`}
-                      sx={{
-                        position: "absolute",
-                        top: 0,
-                        bottom: 0,
-                        // The overlay ends at the banner's own inset — the
-                        // date chip below is the last element, flush right.
-                        left: "0px",
-                        right: "10px",
-                        display: "flex",
-                        alignItems: "stretch",
-                        gap: 0.25,
-                        pointerEvents: "none",
-                      }}
-                    >
-                      {/* Mirror of the entries table's row geometry — the
-                          same 40px row-number column, the same 8px gaps and
-                          the same column flex ratios as EntryBranch's
-                          columns, so each figure lands exactly on the column
-                          its label names: From over From, To over To and
-                          Total over Balance. Insets: the top branch sits
-                          ml 24px / mr 1.25 and the table wraps rows in a
-                          1px border + px 1.5 — hence left 37px, right 23px. */}
-                      <Box sx={{ width: 40, flexShrink: 0 }} />
-                      <Box sx={{ flex: "1.1 1 0", minWidth: 0 }} />
-                      <Box sx={{ flex: "1.4 1 0", minWidth: 0 }} />
-                      <Box sx={{ flex: "3.4 1 0", minWidth: 0 }} />
-                      {cols.map((c) => (
-                        <Box
-                          key={c.label}
-                          sx={{
-                            flex: "1.2 1 0",
-                            minWidth: 0,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "flex-end",
-                            justifyContent: "center",
-                            gap: 0.1,
-                          }}
-                        >
-                          <Typography
-                            sx={{
-                              fontSize: "0.55rem",
-                              fontWeight: 700,
-                              textTransform: "uppercase",
-                              letterSpacing: "0.4px",
-                              color: colors.violet.text,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {c.label}
-                          </Typography>
-                          <Typography
-                            sx={{
-                              fontSize: "0.68rem",
-                              fontWeight: 700,
-                              fontVariantNumeric: "tabular-nums",
-                              color: c.color,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {c.value < 0 ? "-" : ""}
-                            {fmtAmt(Math.abs(c.value))}
-                          </Typography>
-                        </Box>
-                      ))}
-                    </Box>
-                  );
-                })()}
-          </Box>
+        {/* Account Totals moved into the linked-accounts card above the search row. */}
+
 
         {/* The reported account's own entries now live on its row inside
             the linked-accounts list — it IS the first row of that list, so
@@ -1251,6 +1101,125 @@ function LedgerPanel({
               overflow: "hidden",
             }}
           >
+            {/* ── Reported account total (moved from banner to card top) ── */}
+            <Box
+              sx={{
+                px: 1.25,
+                py: 0.9,
+                bgcolor: colors.violet.bg,
+                borderBottom: `1px solid ${colors.violet.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 1,
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.6,
+                }}
+              >
+                <AccountBalanceOutlined
+                  sx={{ fontSize: "0.85rem", color: colors.violet.text }}
+                />
+                <Box>
+                  <Typography
+                    sx={{
+                      fontSize: "0.6rem",
+                      fontWeight: 700,
+                      color: colors.violet.text,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.5px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    {account?.accountName ?? "Account"} Overall
+                  </Typography>
+                  <Typography
+                    sx={{
+                      fontSize: "0.55rem",
+                      fontWeight: 600,
+                      color: colors.violet.text,
+                      opacity: 0.8,
+                      mt: 0.2,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {total} Linked Account{total === 1 ? "" : "s"}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {(() => {
+                const { from, to, net } = grandTotalsById[account?.id] ?? {
+                  from: 0,
+                  to: 0,
+                  net: 0,
+                };
+                return (
+                <Box sx={{ display: "flex", alignItems: "center", ml: "auto" }}>
+                  <Box sx={{ ...MONEY_COL, ...MONEY_GAP }}>
+                    <Typography sx={{ fontSize: "0.5rem", fontWeight: 700, color: colors.violet.text, textTransform: "uppercase" }}>Debit</Typography>
+                    <Typography sx={{ fontSize: "0.68rem", fontWeight: 700, ...NUM_FONT, color: colors.red.text, textAlign: "right" }}>{fmtAmt(from / 100)}</Typography>
+                  </Box>
+                  <Box sx={{ ...MONEY_COL, ...MONEY_GAP }}>
+                    <Typography sx={{ fontSize: "0.5rem", fontWeight: 700, color: colors.violet.text, textTransform: "uppercase" }}>Credit</Typography>
+                    <Typography sx={{ fontSize: "0.68rem", fontWeight: 700, ...NUM_FONT, color: colors.green.text, textAlign: "right" }}>{fmtAmt(to / 100)}</Typography>
+                  </Box>
+                  <Box sx={MONEY_COL}>
+                    <Typography sx={{ fontSize: "0.5rem", fontWeight: 700, color: colors.violet.text, textTransform: "uppercase" }}>Total</Typography>
+                    <Typography sx={{ fontSize: "0.8rem", fontWeight: 700, lineHeight: 1.1, ...NUM_FONT, color: net < 0 ? colors.red.text : colors.green.text, textAlign: "right" }}>
+                      {`${net < 0 ? "-" : ""}${fmtAmt(Math.abs(net))}`}
+                    </Typography>
+                    {pendingClearanceTotal != null && (
+                      <Typography
+                        sx={{
+                          fontSize: "0.45rem",
+                          fontWeight: 700,
+                          lineHeight: 1.1,
+                          ...NUM_FONT,
+                          color: colors.violet.text,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {`Pending: ₱${pendingClearanceTotal < 0 ? "-" : ""}${fmtAmt(Math.abs(pendingClearanceTotal))}`}
+                      </Typography>
+                    )}
+                  </Box>
+                  {/* Overall Export */}
+                  {onExport && (
+                    <Box
+                      component="button"
+                      type="button"
+                      onClick={() => onExport?.(companyIdByJevId)}
+                      aria-label="Export overall ledger"
+                      title="Export overall ledger"
+                      sx={{
+                        width: 24,
+                        height: 24,
+                        p: 0,
+                        ml: 1,
+                        borderRadius: "6px",
+                        border: `1px solid ${colors.violet.border}`,
+                        background: colors.plateBg,
+                        color: colors.violet.text,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        "&:hover": { background: "rgba(255,255,255,0.2)" },
+                      }}
+                    >
+                      <FileDownloadOutlined sx={{ fontSize: "0.85rem" }} />
+                    </Box>
+                  )}
+                </Box>
+                );
+              })()}
+            </Box>
+
             {/* ── Search + date filter ─────────────────────────── */}
             <Box
               sx={{
@@ -1365,7 +1334,12 @@ function LedgerPanel({
                 ) : (
                   <ExpandLess sx={{ fontSize: "0.75rem" }} />
                 )}
-                {allCollapsed ? "Expand all" : "Collapse all"}
+                <Box
+                  component="span"
+                  sx={{ display: { xs: "none", sm: "inline" } }}
+                >
+                  {allCollapsed ? "Expand all" : "Collapse all"}
+                </Box>
               </Box>
             </Box>
 
@@ -1437,7 +1411,7 @@ function LedgerPanel({
                           gap: 1,
                           px: 1.25,
                           py: 0.75,
-                          pl: 1.25 + depth * 2,
+                          pl: 1.25,
                           // Selected-account treatment on the root row: a
                           // blue tint plus an inset accent edge on the left
                           // (no layout shift) so it never reads as just
@@ -1478,6 +1452,7 @@ function LedgerPanel({
                             alignItems: "center",
                             justifyContent: "center",
                             flexShrink: 0,
+                            ml: depth * 2,
                           }}
                         >
                           <AccountBalanceOutlined
@@ -1547,68 +1522,115 @@ function LedgerPanel({
                             </Typography>
                           )}
                         </Box>
-                        {(() => {
-                          const { from, to, net } = totalsById[node.id] ?? {
-                            from: 0,
-                            to: 0,
-                            net: 0,
-                          };
-                          // The row balance sits to the left of the fold
-                          // toggle — it always keeps its real sign, so a
-                          // negative total prints red with a minus.
-                          // Zero prints explicitly: a balance of 0.00 is a
-                          // fact about the account, not noise.
-                          const { text } = formatBalance(net);
-                          return (
-                            <Box
-                              sx={{
-                                display: "flex",
-                                flexDirection: "column",
-                                alignItems: "flex-end",
-                                minWidth: "4.5rem",
-                                flexShrink: 0,
-                                mr: 0.5,
-                              }}
-                            >
-                              {/* The selected account's figure is the whole
-                                  ledger's total — say so over the number. */}
-                              {isRootRow && (
-                                <Typography
-                                  sx={{
-                                    fontSize: "0.5rem",
-                                    fontWeight: 700,
-                                    textTransform: "uppercase",
-                                    letterSpacing: "0.4px",
-                                    color: colors.gray.sec,
-                                    lineHeight: 1.2,
-                                    whiteSpace: "nowrap",
-                                  }}
-                                >
-                                  Total
-                                </Typography>
-                              )}
-                              <Typography
-                                title={`From ₱${fmtAmt(from / 100)} · To ₱${fmtAmt(to / 100)}`}
-                                sx={{
-                                  fontSize: "0.68rem",
-                                  fontWeight: 700,
-                                  ...NUM_FONT,
-                                  color:
-                                    net > 0
-                                      ? colors.green.text
-                                      : net < 0
-                                        ? colors.red.text
-                                        : colors.gray.muted,
-                                  whiteSpace: "nowrap",
-                                  textAlign: "right",
-                                  mt: isRootRow ? 0.1 : 0,
-                                }}
-                              >
-                                {text}
-                              </Typography>
-                            </Box>
-                          );
-                        })()}
+                            {(() => {
+                            const { from, to, net } = totalsById[node.id] ?? {
+                              from: 0,
+                              to: 0,
+                              net: 0,
+                            };
+                            const { text } = formatBalance(net);
+                            return (
+                              <Box sx={{ display: "flex", alignItems: "center", ml: "auto" }}>
+                                {/* Debit, Credit and Total */}
+                                <Box sx={{ ...MONEY_COL, ...MONEY_GAP }}>
+                                  {isRootRow && (
+                                    <Typography
+                                      sx={{
+                                        fontSize: "0.5rem",
+                                        fontWeight: 700,
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.4px",
+                                        color: colors.gray.sec,
+                                        lineHeight: 1.2,
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      Debit
+                                    </Typography>
+                                  )}
+                                  <Typography
+                                    sx={{
+                                      fontSize: "0.68rem",
+                                      fontWeight: 700,
+                                      ...NUM_FONT,
+                                      color: colors.red.text,
+                                      whiteSpace: "nowrap",
+                                      textAlign: "right",
+                                      mt: isRootRow ? 0.1 : 0,
+                                    }}
+                                  >
+                                    {fmtAmt(from / 100)}
+                                  </Typography>
+                                </Box>
+                                <Box sx={{ ...MONEY_COL, ...MONEY_GAP }}>
+                                  {isRootRow && (
+                                    <Typography
+                                      sx={{
+                                        fontSize: "0.5rem",
+                                        fontWeight: 700,
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.4px",
+                                        color: colors.gray.sec,
+                                        lineHeight: 1.2,
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      Credit
+                                    </Typography>
+                                  )}
+                                  <Typography
+                                    sx={{
+                                      fontSize: "0.68rem",
+                                      fontWeight: 700,
+                                      ...NUM_FONT,
+                                      color: colors.green.text,
+                                      whiteSpace: "nowrap",
+                                      textAlign: "right",
+                                      mt: isRootRow ? 0.1 : 0,
+                                    }}
+                                  >
+                                    {fmtAmt(to / 100)}
+                                  </Typography>
+                                </Box>
+                                <Box sx={MONEY_COL}>
+                                  {isRootRow && (
+                                    <Typography
+                                      sx={{
+                                        fontSize: "0.5rem",
+                                        fontWeight: 700,
+                                        textTransform: "uppercase",
+                                        letterSpacing: "0.4px",
+                                        color: colors.gray.sec,
+                                        lineHeight: 1.2,
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      Total
+                                    </Typography>
+                                  )}
+                                  <Typography
+                                    title={`Debit ₱${fmtAmt(from / 100)} · Credit ₱${fmtAmt(to / 100)}`}
+                                    sx={{
+                                      fontSize: "0.68rem",
+                                      fontWeight: 700,
+                                      ...NUM_FONT,
+                                      color:
+                                        net > 0
+                                          ? colors.green.text
+                                          : net < 0
+                                            ? colors.red.text
+                                            : colors.gray.muted,
+                                      whiteSpace: "nowrap",
+                                      textAlign: "right",
+                                      mt: isRootRow ? 0.1 : 0,
+                                    }}
+                                  >
+                                    {text}
+                                  </Typography>
+                                </Box>
+                              </Box>
+                            );
+                          })()}
 
                         {/* Selected account only — icon-only Export sitting
                             where the other rows' fold toggle is. Its click
@@ -1635,7 +1657,6 @@ function LedgerPanel({
                               width: 24,
                               height: 24,
                               p: 0,
-                              ml: 0.25,
                               lineHeight: 1,
                               borderRadius: "6px",
                               border: `1px solid ${colors.blue.border}`,
@@ -1681,6 +1702,10 @@ function LedgerPanel({
                             }
                             sx={{
                               flexShrink: 0,
+                              // +4px (mr: 0.5) matches the export button's
+                              // footprint on the header / selected-account
+                              // row, so every totals block ends at the same x.
+                              mr: 0.5,
                               width: 20,
                               height: 20,
                               p: 0,
@@ -1712,15 +1737,12 @@ function LedgerPanel({
                             )}
                           </Box>
                         ) : (
-                          // No toggle on this row. The selected account's
-                          // Export button already occupies this end slot, so
-                          // only OTHER toggle-less rows get the invisible
-                          // spacer that keeps every balance on the same
-                          // right edge.
+                          // No toggle on this row. Only toggle-less rows get
+                          // the invisible spacer that keeps every balance on the same right edge.
                           !isRootRow && (
                             <Box
                               aria-hidden
-                              sx={{ flexShrink: 0, width: 20, height: 20 }}
+                              sx={{ flexShrink: 0, mr: 0.5, width: 20, height: 20 }}
                             />
                           )
                         )}
@@ -1746,11 +1768,12 @@ function LedgerPanel({
                           onOpenJev={openJevModal}
                           onTransferEntry={handleTransferEntry}
                           sx={{
-                            // left edge stays lined up with the account icon centre
-                            ml: `${10 + depth * 16 + (depth === 0 ? 13 : 11)}px`,
-                            pt: 1,
-                            pb: 1.5,
-                            pr: 1.5,
+                            // Left edge aligns flush with the container without indentation
+                            ml: 1.5,
+                            mr: 1.5,
+                            mt: 1,
+                            mb: 1.5,
+                            width: "calc(100% - 24px)",
                           }}
                         />
                       )}

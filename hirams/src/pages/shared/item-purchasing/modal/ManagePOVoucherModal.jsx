@@ -12,8 +12,6 @@ import { useNavigate } from "react-router-dom";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer";
 import VoucherAPI from "../../../../api/endpoints/voucher.api.js";
 import VoucherSupplierAPI from "../../../../api/endpoints/voucher-supplier.api.js";
-import { VOUCHER_CONFIRM_STYLES } from "../../../../utils/style/sharedConfirmStyles.jsx";
-import ConfirmationStructure from "../../../../components/ui/structure/ConfirmationStructure.jsx";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 
 const VIEW = {
@@ -73,9 +71,6 @@ export default function ManagePOVoucherModal({
   const [actionLoading, setActionLoading] = useState(false);
   const [linkedVoucher, setLinkedVoucher] = useState(null);
   const [checking, setChecking] = useState(true);
-  const [previousView, setPreviousView] = useState(null);
-  const [confirmType, setConfirmType] = useState(null);
-  const [pendingVoucher, setPendingVoucher] = useState(null);
 
   useEffect(() => {
     if (!open || !po) return;
@@ -83,8 +78,6 @@ export default function ManagePOVoucherModal({
     setActionLoading(false);
     setListLoading(false);
     setVouchers([]);
-    setConfirmType(null);
-    setPendingVoucher(null);
     (async () => {
       try {
         const res = await VoucherAPI.getVouchers();
@@ -151,33 +144,20 @@ export default function ManagePOVoucherModal({
     }
   }, [po]);
 
-  const openConfirm = (type, voucher = null) => {
-    setPreviousView(view);
-    setConfirmType(type);
-    setPendingVoucher(voucher);
-    setView(VIEW.CONFIRM);
-  };
-  const closeConfirm = () => {
-    setConfirmType(null);
-    setPendingVoucher(null);
-    if (previousView) setView(previousView);
-    setPreviousView(null);
-  };
   const handleCreateVoucher = () => {
     if (!isEditable) return;
-    openConfirm(CONFIRM_TYPE.CREATE);
+    runConfirm(CONFIRM_TYPE.CREATE);
   };
   const handleLinkVoucher = (voucher) => {
     if (!isEditable) return;
     if (String(voucher.cStatus) !== "C")
-      openConfirm(CONFIRM_TYPE.LINK, voucher);
+      runConfirm(CONFIRM_TYPE.LINK, voucher);
   };
   const handleUnlinkVoucher = () => {
     if (!isEditable) return;
     if (linkedVoucher && String(linkedVoucher.cStatus) !== "C")
-      openConfirm(CONFIRM_TYPE.UNLINK);
+      runConfirm(CONFIRM_TYPE.UNLINK);
   };
-  const handleConfirmBack = () => closeConfirm();
   const handleNavigateToVoucher = () => {
     if (linkedVoucher) {
       // voucherStatusCode → the Vouchers sidebar highlights the linked
@@ -198,7 +178,6 @@ export default function ManagePOVoucherModal({
     [VIEW.MAIN]: "Manage Voucher",
     [VIEW.LINK_LIST]: "Link to Voucher",
     [VIEW.LINKED]: "Linked Voucher",
-    [VIEW.CONFIRM]: "Confirm Action",
   };
   const subTitleMap = {
     [VIEW.MAIN]: po?.strPurchaseOrderNo || "",
@@ -206,24 +185,19 @@ export default function ManagePOVoucherModal({
       ? `${po.strPurchaseOrderNo} · Select voucher`
       : "",
     [VIEW.LINKED]: po?.strPurchaseOrderNo || "",
-    [VIEW.CONFIRM]: po?.strPurchaseOrderNo || "",
   };
   const handleCancel = () => {
-    if (confirmType) closeConfirm();
-    else if (view === VIEW.LINK_LIST) setView(VIEW.MAIN);
+    if (view === VIEW.LINK_LIST) setView(VIEW.MAIN);
     else onClose();
   };
-  const cancelLabel = confirmType
-    ? "Close"
-    : view === VIEW.LINK_LIST
-      ? "Back"
-      : "Close";
+  const cancelLabel = view === VIEW.LINK_LIST ? "Back" : "Close";
   const showSave = false;
 
-  const handleConfirmProceed = async () => {
+  // Create / link / unlink run straight through — no confirmation step.
+  const runConfirm = async (type, voucher = null) => {
     setActionLoading(true);
     try {
-      if (confirmType === CONFIRM_TYPE.CREATE) {
+      if (type === CONFIRM_TYPE.CREATE) {
         await VoucherAPI.createVoucher({
           cType: voucherSupplierTypeKey,
           nTypeId: supplierId,
@@ -237,9 +211,9 @@ export default function ManagePOVoucherModal({
         }
         if (onSuccess) await onSuccess();
         window.dispatchEvent(new CustomEvent("voucher_data_updated"));
-      } else if (confirmType === CONFIRM_TYPE.LINK && pendingVoucher) {
+      } else if (type === CONFIRM_TYPE.LINK && voucher) {
         await VoucherSupplierAPI.create({
-          nVoucherId: pendingVoucher.nVoucherId,
+          nVoucherId: voucher.nVoucherId,
           nPurchaseOrderId: po.nPurchaseOrderId,
         });
         const fresh = await refreshLinked();
@@ -249,7 +223,7 @@ export default function ManagePOVoucherModal({
         }
         if (onSuccess) await onSuccess();
         window.dispatchEvent(new CustomEvent("voucher_data_updated"));
-      } else if (confirmType === CONFIRM_TYPE.UNLINK && linkedVoucher) {
+      } else if (type === CONFIRM_TYPE.UNLINK && linkedVoucher) {
         const linkedPOs = linkedVoucher.voucher_suppliers || [];
         const isLastPO = linkedPOs.length <= 1;
         const vs = linkedPOs.find(
@@ -272,15 +246,10 @@ export default function ManagePOVoucherModal({
       console.error(e);
     } finally {
       setActionLoading(false);
-      setConfirmType(null);
-      setPendingVoucher(null);
-      setPreviousView(null);
     }
   };
 
   if (!open) return null;
-  const confirmStyle = confirmType ? VOUCHER_CONFIRM_STYLES[confirmType] : null;
-  const ConfirmIcon = confirmStyle?.Icon;
 
   return (
     <ModalContainer
@@ -294,23 +263,8 @@ export default function ManagePOVoucherModal({
       width={{ xs: "92%", sm: 520, md: 600 }}
       contentPadding={{ xs: 1.5, sm: 2 }}
     >
-      {confirmType ? (
-        <ConfirmationStructure
-          style={VOUCHER_CONFIRM_STYLES[confirmType]}
-          voucherNumber={
-            confirmType === CONFIRM_TYPE.LINK
-              ? pendingVoucher?.strNumber
-              : confirmType === CONFIRM_TYPE.UNLINK
-                ? linkedVoucher?.strNumber
-                : null
-          }
-          loading={actionLoading}
-          onConfirm={handleConfirmProceed}
-          onBack={handleConfirmBack}
-        />
-      ) : (
-        <>
-          {checking && (
+      <>
+        {checking && (
             <Box
               sx={{
                 display: "flex",
@@ -723,8 +677,7 @@ export default function ManagePOVoucherModal({
               </Box>
             </Box>
           )}
-        </>
-      )}
+      </>
     </ModalContainer>
   );
 }

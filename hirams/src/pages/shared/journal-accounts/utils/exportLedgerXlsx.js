@@ -188,7 +188,7 @@ export const exportLedgerXlsx = ({
       : (f ? `From ${f}` : `To ${t}`);
 
   // ── Sheet body ──────────────────────────────────────────────────────
-  const COLUMNS = ["Date", "JEV No.", "Particulars", "From", "To", "Balance"];
+  const COLUMNS = ["Date", "JEV No.", "Particulars", "Debit", "Credit"];
   const aoa = [[accountPath], [rangeText], [], COLUMNS];
 
   const sections = [
@@ -227,9 +227,8 @@ export const exportLedgerXlsx = ({
           (counterparts.length
             ? counterparts.join(", ")
             : "Title is not yet added."),
-        isOut ? amt : 0, // From — money out, carried negative
-        !isOut ? amt : 0, // To — money in
-        running,
+        isOut ? Math.abs(amt) : 0, // Debit — money out, printed positive
+        !isOut ? amt : 0, // Credit — money in
       ]);
     });
 
@@ -245,18 +244,29 @@ export const exportLedgerXlsx = ({
     );
     grand.from += blockFrom;
     grand.to += blockTo;
-    grand.net += running;
-    aoa.push(["TOTAL", "", "", blockFrom, blockTo, running]);
+    aoa.push(["TOTAL", "", "", Math.abs(blockFrom), blockTo]);
     aoa.push([]); // blank spacer between blocks
   });
 
   // GRAND TOTAL over every block the report holds — the real signed net,
-  // same rule the violet banner's Total on screen follows.
-  if (grand.from || grand.to || grand.net) {
-    aoa.push(["GRAND TOTAL", "", "", grand.from, grand.to, grand.net]);
+  // same rule the violet banner's Total on screen follows. Amounts print
+  // without a minus sign, like the ledger table.
+  let balanceRow = -1;
+  if (grand.from || grand.to) {
+    aoa.push(["GRAND TOTAL", "", "", Math.abs(grand.from), grand.to]);
+    // The row under it carries the net balance. The Debit and Credit cells
+    // of THIS row are merged into one and hold that balance value.
+    balanceRow = aoa.length;
+    aoa.push(["TOTAL BALANCE", "", "", Math.abs(grand.to + grand.from)]);
   }
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  if (balanceRow >= 0) {
+    ws["!merges"] = [
+      { s: { r: balanceRow, c: 3 }, e: { r: balanceRow, c: 4 } },
+    ];
+  }
 
   // Column widths — Particulars is the wide one, money columns fixed.
   ws["!cols"] = [
@@ -265,16 +275,15 @@ export const exportLedgerXlsx = ({
     { wch: 38 },
     { wch: 14 },
     { wch: 14 },
-    { wch: 14 },
   ];
 
-  // Money format on every numeric cell of the three amount columns.
+  // Money format on every numeric cell of the two amount columns.
   // (The free SheetJS build writes number formats — cell.z — but not
   // font styles, so section / total rows are distinguished by their
   // labels, not by weight.)
   const range = XLSX.utils.decode_range(ws["!ref"]);
   for (let r = range.s.r; r <= range.e.r; r++) {
-    for (let c = 3; c <= 5; c++) {
+    for (let c = 3; c <= 4; c++) {
       const cell = ws[XLSX.utils.encode_cell({ r, c })];
       if (cell && typeof cell.v === "number") cell.z = "#,##0.00";
     }

@@ -10,12 +10,13 @@ import DeleteVerificationModal from "../transactions/modal/DeleteVerificationMod
 import JEVConfirmationModal from "./modal/JEVConfirmationModal";
 import JEVAEModal from "./modal/JEVAEModal";
 import JevStatusUpdateTooltip from "./tooltip/JevStatusUpdateTooltip";
+import PendingClearancePanel from "./components/PendingClearancePanel";
 import { NO_TYPE_CODE } from "./useJournalEntryVoucher";
 import getThemeColors from "../../../utils/style/getThemeColors.js";
 import { JEV_CONFIRM_STYLES } from "../../../utils/style/sharedConfirmStyles.jsx";
 import icons from "../../../utils/style/iconFormatStyles";
-import { NO_CREATOR, NO_JEV_NO, OPEN_DATE } from "../../../constants/tableDataFallbacks";
-import { Tooltip } from "@mui/material";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
+import { Box, Tooltip } from "@mui/material";
 import PersonIcon from "@mui/icons-material/PersonOutline";
 import EventIcon from "@mui/icons-material/Event";
 
@@ -46,7 +47,8 @@ const makeColors = (c) => ({
   blue: { bg: c.blue.bg, text: c.blue.text },
   green: { bg: c.green.bg, text: c.green.text },
   amber: { bg: c.amber.bg, text: c.amber.text },
-  red: { bg: c.red.bg, text: c.red.text },
+  red: { bg: c.red.bg, text: c.red.text, solid: c.red.danger },
+  onFill: c.gray.textOnFill,
 });
 
 // Inline status pill — sits beside the JEV number, so it is scaled down to
@@ -66,7 +68,8 @@ const inlineBadgeStyle = (c, colors) => ({
 // JEV listing — the type comes from the sidebar (see useJournalEntryVoucher).
 //   • Row click / View → shared JEV viewer (entries managed there).
 //   • Add JEV          → creates a No Type JEV and opens it in the viewer.
-//   • Delete           → enabled for Pending / Cancelled, disabled for Active.
+//   • Delete           → enabled for Draft / Cancelled, disabled once the
+//                        JEV is finalized (Pending Clearance / Active).
 export default function JournalEntryVoucherView({
   // Listing
   itemsLoading,
@@ -77,17 +80,23 @@ export default function JournalEntryVoucherView({
   selectedTypeCode,
   jev_types,
   jev_status,
+  jev_status_common,
   statusFilter,
   handleStatusFilterChange,
   jevActiveKey,
+  jevPendingClearanceKey,
   jevPendingKey,
   jevCancelledKey,
+  jevPendingClearanceLabel,
+  isCollectionType,
+  isPendingClearanceView,
+  pendingClearanceCount,
+  toggleCollectionPendingClearance,
   tableRows,
   fetchJevs,
   handlePageChange,
   handleRowsPerPageChange,
   handleRowClick,
-  openJevModal,
   // Roles
   isManagement,
   isFinanceOfficer,
@@ -107,6 +116,7 @@ export default function JournalEntryVoucherView({
   setConfirmAction,
   handleConfirmAction,
   // Add JEV — the naming modal opened by the confirmation dialog
+  openAddJev,
   createJevOpen,
   createTitle,
   createDate,
@@ -114,6 +124,8 @@ export default function JournalEntryVoucherView({
   setCreateDate,
   createTitleError,
   createDateError,
+  setCreateTitleError,
+  setCreateDateError,
   createTitleRef,
   handleCreateJev,
   handleCloseCreateJev,
@@ -125,24 +137,40 @@ export default function JournalEntryVoucherView({
 
   const statusColors = useMemo(
     () => ({
-      [jevActiveKey]: colors.green,
       [jevPendingKey]: colors.amber,
+      [jevPendingClearanceKey]: colors.blue,
+      [jevActiveKey]: colors.green,
       [jevCancelledKey]: colors.red,
     }),
-    [colors, jevActiveKey, jevPendingKey, jevCancelledKey],
+    [
+      colors,
+      jevPendingKey,
+      jevPendingClearanceKey,
+      jevActiveKey,
+      jevCancelledKey,
+    ],
   );
 
-  // Pending → Active → Cancelled — straight from the jev_status mapping.
+  // Draft → Active → Cancelled. Pending Clearance is accessed via the
+  // Collection footer button, not the status filter.
   const statusOptions = useMemo(() => {
     const order = {
       [jevPendingKey]: 0,
-      [jevActiveKey]: 1,
-      [jevCancelledKey]: 2,
+      [jevActiveKey]: 2,
+      [jevCancelledKey]: 3,
     };
-    return Object.entries(jev_status || {})
+    return Object.entries(jev_status_common || jev_status || {})
+      .filter(([value]) => String(value) !== String(jevPendingClearanceKey))
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => (order[a.value] ?? 9) - (order[b.value] ?? 9));
-  }, [jev_status, jevPendingKey, jevActiveKey, jevCancelledKey]);
+  }, [
+    jev_status_common,
+    jev_status,
+    jevPendingKey,
+    jevActiveKey,
+    jevCancelledKey,
+    jevPendingClearanceKey,
+  ]);
 
   // Add belongs to the No Type list alone — every other type is written by
   // the voucher, purchase or inventory flow that owns it — and only for the
@@ -150,7 +178,14 @@ export default function JournalEntryVoucherView({
   const canManage = Boolean(isManagement || isFinanceOfficer);
   const isNoTypeList = String(selectedTypeCode) === NO_TYPE_CODE;
   const showAddJev = canManage && isNoTypeList;
-  const isAllStatus = statusFilter === "all";
+  const isAllStatus = !isPendingClearanceView && statusFilter === "all";
+  const selectedTypeLabel =
+    selectedTypeCode && jev_types?.[selectedTypeCode]
+      ? jev_types[selectedTypeCode]
+      : "";
+  const pageSubtitle = isPendingClearanceView
+    ? `${selectedTypeLabel} / ${jevPendingClearanceLabel || "Pending Clearance"}`
+    : selectedTypeLabel;
 
   const columns = useMemo(
     () => [
@@ -177,7 +212,7 @@ export default function JournalEntryVoucherView({
             <div className="min-w-0 text-left">
               <div className="flex items-center gap-1.5">
                 <span className="truncate text-[0.625rem] font-medium uppercase tracking-wide leading-tight text-gray-500 dark:text-gray-400">
-                  {hasNumber ? row.strJEVNumber : NO_JEV_NO}
+                  {hasNumber ? row.strJEVNumber : DEFAULT_FALLBACK}
                 </span>
                 {/* Every row shares one status once a status filter is
                     active, so the badge only shows unfiltered. */}
@@ -190,10 +225,8 @@ export default function JournalEntryVoucherView({
                   </span>
                 )}
               </div>
-              {/* No stored title yet — say so explicitly instead of
-                  collapsing the line entirely. */}
-              <span className="block truncate italic tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
-                {title || "Title is not yet added."}
+              <span className="block truncate tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
+                {title || "—"}
               </span>
               {hasCounterparty && (
                 <span className="block truncate uppercase text-[0.625rem] font-medium tracking-wide leading-tight text-gray-500 dark:text-gray-400">
@@ -228,10 +261,10 @@ export default function JournalEntryVoucherView({
           if (!hasName && !hasDate) {
             return (
               <span
-                className="text-xs font-light italic"
+                className="text-xs font-light"
                 style={{ color: colors.textMuted }}
               >
-                {NO_CREATOR}
+                {DEFAULT_FALLBACK}
               </span>
             );
           }
@@ -241,11 +274,11 @@ export default function JournalEntryVoucherView({
               <div className={`${OFFICER_GRID_CLASS} ${lineClass}`}>
                 <LabelIcon icon={PersonIcon} title="Created by" />
                 <span className={valueClass}>
-                  {hasName ? row.strCreatedByName : NO_CREATOR}
+                  {hasName ? row.strCreatedByName : DEFAULT_FALLBACK}
                 </span>
                 <LabelIcon icon={EventIcon} title="Created at" className="-mt-0.5" />
                 <span className={`${valueClass} -mt-0.5`}>
-                  {hasDate ? row.dtOccur : OPEN_DATE}
+                  {hasDate ? row.dtOccur : DEFAULT_FALLBACK}
                 </span>
               </div>
             </div>
@@ -274,19 +307,23 @@ export default function JournalEntryVoucherView({
                   handleRowClick(row);
                 }}
               />
-              <BaseButton
-                icon={icons.statusChange}
-                tooltip="Change Status"
-                size="small"
-                actionColor="reassign"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setStatusTarget(row);
-                  // Anchors the status panel to this exact button — a
-                  // tooltip opens where you clicked, not mid-screen.
-                  setStatusAnchorEl(e.currentTarget);
-                }}
-              />
+              {/* Pending Clearance is managed from the Collection footer
+                  button, so the status switcher is not offered here. */}
+              {!isPendingClearanceView && (
+                <BaseButton
+                  icon={icons.statusChange}
+                  tooltip="Change Status"
+                  size="small"
+                  actionColor="reassign"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setStatusTarget(row);
+                    // Anchors the status panel to this exact button — a
+                    // tooltip opens where you clicked, not mid-screen.
+                    setStatusAnchorEl(e.currentTarget);
+                  }}
+                />
+              )}
               <BaseButton
                 icon={icons.delete}
                 // A disabled Delete says WHY it is disabled: the API
@@ -309,6 +346,7 @@ export default function JournalEntryVoucherView({
       colors,
       statusColors,
       isAllStatus,
+      isPendingClearanceView,
       handleRowClick,
       setStatusTarget,
       setStatusAnchorEl,
@@ -318,48 +356,78 @@ export default function JournalEntryVoucherView({
     ],
   );
 
+  const collectionFooter = !isCollectionType ? null : isPendingClearanceView ? (
+    <div
+      style={{
+        width: "100%",
+        display: "flex",
+        justifyContent: "flex-start",
+      }}
+    >
+      <BaseButton
+        label="Back"
+        icon={icons.back}
+        actionColor="back"
+        tooltip="Back to all Collection statuses"
+        onClick={toggleCollectionPendingClearance}
+      />
+    </div>
+  ) : (
+    <div
+      style={{
+        width: "100%",
+        display: "flex",
+        justifyContent: "flex-end",
+      }}
+    >
+      <Box sx={{ position: "relative", display: "inline-flex" }}>
+        <BaseButton
+          label="Pending Clearance"
+          icon={icons.filter}
+          actionColor="view"
+          tooltip="Show Pending Clearance Collection JEVs only"
+          onClick={toggleCollectionPendingClearance}
+        />
+        {pendingClearanceCount > 0 && (
+          <Box
+            sx={{
+              position: "absolute",
+              top: -6,
+              right: -6,
+              minWidth: 18,
+              height: 18,
+              px: 0.4,
+              borderRadius: "9px",
+              background: colors.red.solid,
+              color: colors.onFill,
+              border: `1px solid ${colors.border}`,
+              fontSize: "0.6rem",
+              fontWeight: 700,
+              lineHeight: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              pointerEvents: "none",
+            }}
+          >
+            {pendingClearanceCount}
+          </Box>
+        )}
+      </Box>
+    </div>
+  );
+
   return (
     <PageLayout
       title="Journal Entry Voucher"
-      subtitle={
-        selectedTypeCode && jev_types?.[selectedTypeCode]
-          ? jev_types[selectedTypeCode]
-          : ""
-      }
-      footer={false}
+      subtitle={pageSubtitle}
+      footer={collectionFooter ?? false}
     >
-      <section className="flex items-center gap-2 mb-3">
-        <div className="flex-grow">
-          <CustomSearchField
-            label={
-              isNoTypeList
-                ? "Search JEV No. / Title / Payee / Company"
-                : "Search JEV No. / Payee / Company"
-            }
-            value={search}
-            onChange={setSearch}
-          />
-        </div>
-        <SyncMenu onSync={() => fetchJevs()} />
-        <FormControlFilter
-          value={statusFilter}
-          onChange={handleStatusFilterChange}
-          options={statusOptions}
-          allLabel="All Status"
-        />
-        {showAddJev && (
-          <BaseButton
-            label="Add JEV"
-            icon={icons.add}
-            actionColor="add"
-            tooltip="Add a No Type JEV"
-            onClick={() => setConfirmAction("create_jev")}
-          />
-        )}
-      </section>
-
-      <section>
-        <CustomTable
+      {isPendingClearanceView ? (
+        <PendingClearancePanel
+          search={search}
+          onSearchChange={setSearch}
+          onSync={() => fetchJevs()}
           columns={columns}
           rows={tableRows}
           page={page}
@@ -369,7 +437,52 @@ export default function JournalEntryVoucherView({
           onRowsPerPageChange={handleRowsPerPageChange}
           onRowClick={handleRowClick}
         />
-      </section>
+      ) : (
+        <>
+          <section className="flex items-center gap-2 mb-3">
+            <div className="flex-grow">
+              <CustomSearchField
+                label={
+                  isNoTypeList
+                    ? "Search JEV No. / Title / Payee / Company"
+                    : "Search JEV No. / Payee / Company"
+                }
+                value={search}
+                onChange={setSearch}
+              />
+            </div>
+            <SyncMenu onSync={() => fetchJevs()} />
+            <FormControlFilter
+              value={statusFilter}
+              onChange={handleStatusFilterChange}
+              options={statusOptions}
+              allLabel="All Status"
+            />
+            {showAddJev && (
+              <BaseButton
+                label="Add JEV"
+                icon={icons.add}
+                actionColor="add"
+                tooltip="Add a No Type JEV"
+                onClick={openAddJev}
+              />
+            )}
+          </section>
+
+          <section>
+            <CustomTable
+              columns={columns}
+              rows={tableRows}
+              page={page}
+              loading={itemsLoading}
+              rowsPerPage={rowsPerPage}
+              onPageChange={handlePageChange}
+              onRowsPerPageChange={handleRowsPerPageChange}
+              onRowClick={handleRowClick}
+            />
+          </section>
+        </>
+      )}
 
       {/* Viewers open the full-page /jev-update now — no modal here. */}
 
@@ -409,15 +522,17 @@ export default function JournalEntryVoucherView({
         onClose={handleCloseCreateJev}
       />
 
-      {/* Status — any of A / P / C. Self-sufficient: it dispatches
-          jev_data_updated on save, which the hook's listener turns into
-          a refetch, and closes itself through onClose. Anchored to the
-          button that opened it (statusAnchorEl), not centered. */}
+      {/* Status — common statuses for all JEVs; Pending Clearance is
+          Collection-only. Self-sufficient: it dispatches jev_data_updated on
+          save, which the hook's listener turns into a refetch, and closes
+          itself through onClose. Anchored to the button that opened it. */}
       <JevStatusUpdateTooltip
         open={!!statusTarget}
         anchorEl={statusAnchorEl}
         jev={statusTarget?._raw ?? statusTarget}
-        jevStatus={jev_status}
+        // Common statuses only — Pending Clearance is Collection-only and is
+        // managed from the footer button, so it never appears here.
+        jevStatus={jev_status_common}
         onClose={() => {
           setStatusTarget(null);
           setStatusAnchorEl(null);

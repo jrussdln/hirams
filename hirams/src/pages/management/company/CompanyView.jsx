@@ -10,17 +10,7 @@ import DeleteVerificationModal from "../../shared/transactions/modal/DeleteVerif
 import { Add, Edit, Delete, Phone, Email, DriveFileMoveOutlined, Link as LinkIcon } from "@mui/icons-material";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../utils/style/getThemeColors";
-import {
-  NO_NAME,
-  NO_NICKNAME,
-  NO_ADDRESS,
-  NO_TIN,
-  NO_ADDRESS_TIN,
-  NO_TAX_VAT,
-  NO_TAX_EWT,
-  NO_PHONE,
-  NO_EMAIL,
-} from "../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — only tokens THIS component actually uses
@@ -95,12 +85,12 @@ export default function CompanyView({
                 </span>
               ) : (
                 <span className="block text-xs font-light italic leading-tight">
-                  {NO_NAME}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span className="flex items-center gap-1.5 min-w-0">
                 <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
-                  {hasNickname ? row.nickname : NO_NICKNAME}
+                  {hasNickname ? row.nickname : DEFAULT_FALLBACK}
                 </span>
                 {/* What still names this company — the same counts that
                     decide whether Delete or Transfer is offered. */}
@@ -126,7 +116,7 @@ export default function CompanyView({
           if (!hasAddress && !hasTin) {
             return (
               <span className="block text-xs font-light italic leading-tight">
-                {NO_ADDRESS_TIN}
+                {DEFAULT_FALLBACK}
               </span>
             );
           }
@@ -139,11 +129,11 @@ export default function CompanyView({
                 </span>
               ) : (
                 <span className="block text-xs font-light italic leading-tight">
-                  {NO_ADDRESS}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span className="block text-xs font-light italic leading-tight -mt-0.5">
-                TIN: {hasTin ? row.tin : NO_TIN}
+                TIN: {hasTin ? row.tin : DEFAULT_FALLBACK}
               </span>
             </div>
           );
@@ -161,7 +151,7 @@ export default function CompanyView({
                 className="text-xs font-light italic leading-tight"
                 style={{ color: colors.textPrimary }}
               >
-                {row.phone?.trim() ? row.phone : NO_PHONE}
+                {row.phone?.trim() ? row.phone : DEFAULT_FALLBACK}
               </span>
             </div>
             <div className="flex items-center gap-1.5 -mt-0.5">
@@ -170,7 +160,7 @@ export default function CompanyView({
                 className="text-xs font-light italic leading-tight"
                 style={{ color: colors.textSecondary }}
               >
-                {row.email?.trim() ? row.email : NO_EMAIL}
+                {row.email?.trim() ? row.email : DEFAULT_FALLBACK}
               </span>
             </div>
           </div>
@@ -194,7 +184,7 @@ export default function CompanyView({
                 color: row.vatActive ? colors.activeText : colors.inactiveText,
               }}
             >
-              {row.vat?.trim() ? row.vat : NO_TAX_VAT}
+              {row.vat?.trim() ? row.vat : DEFAULT_FALLBACK}
             </span>
             <span>-</span>
             <span
@@ -208,7 +198,7 @@ export default function CompanyView({
                 color: row.ewtActive ? colors.activeText : colors.inactiveText,
               }}
             >
-              {row.ewt?.trim() ? row.ewt : NO_TAX_EWT}
+              {row.ewt?.trim() ? row.ewt : DEFAULT_FALLBACK}
             </span>
           </div>
         ),

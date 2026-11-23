@@ -11,16 +11,7 @@ import { Add, Edit, Delete, HowToReg, PersonOff, PersonAdd, Phone, Email } from 
 import MediaRoute from "../../../routes/MediaRoute";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../utils/style/getThemeColors"; // ✅ FIXED PATH
-import {
-  NO_NAME,
-  NO_NICKNAME,
-  NO_USERNAME,
-  NO_SEX,
-  NO_USER_TYPE,
-  NO_USER_STATUS,
-  NO_PHONE,
-  NO_EMAIL,
-} from "../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
 
 // ─────────────────────────────────────────────────────────────────────
 // LOCAL COLOR MAP — only tokens this component actually uses
@@ -53,7 +44,7 @@ export default function UserView({ search, setSearch, page, rowsPerPage, openUse
             secondary = `${row.nickname} (@${row.username})`;
           else if (hasNickname) secondary = row.nickname;
           else if (hasUsername) secondary = `(@${row.username})`;
-          else secondary = `${NO_NICKNAME} · ${NO_USERNAME}`;
+          else secondary = `${DEFAULT_FALLBACK} · ${DEFAULT_FALLBACK}`;
 
           return (
             <div className="flex items-center gap-2">
@@ -77,7 +68,7 @@ export default function UserView({ search, setSearch, page, rowsPerPage, openUse
                     className="block text-xs font-light italic leading-tight"
                     style={{ color: colors.textSecondary }}
                   >
-                    {NO_NAME}
+                    {DEFAULT_FALLBACK}
                   </span>
                 )}
                 <span
@@ -100,7 +91,7 @@ export default function UserView({ search, setSearch, page, rowsPerPage, openUse
           row.sex?.trim() ? (
             row.sex
           ) : (
-            <span className="text-xs font-light italic">{NO_SEX}</span>
+            <span className="text-xs font-light italic">{DEFAULT_FALLBACK}</span>
           ),
       },
       {
@@ -124,14 +115,14 @@ export default function UserView({ search, setSearch, page, rowsPerPage, openUse
                   className="block text-xs font-light italic leading-tight"
                   style={{ color: colors.textSecondary }}
                 >
-                  {NO_USER_TYPE}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span
                 className="block text-xs font-light italic leading-tight -mt-0.5"
                 style={{ color: colors.textSecondary }}
               >
-                {text || NO_USER_STATUS}
+                {text || DEFAULT_FALLBACK}
               </span>
             </div>
           );
@@ -149,7 +140,7 @@ export default function UserView({ search, setSearch, page, rowsPerPage, openUse
                 className="text-xs font-light italic leading-tight"
                 style={{ color: colors.textPrimary }}
               >
-                {row.phoneNumber?.trim() ? row.phoneNumber : NO_PHONE}
+                {row.phoneNumber?.trim() ? row.phoneNumber : DEFAULT_FALLBACK}
               </span>
             </div>
             <div className="flex items-center gap-1.5 -mt-0.5">
@@ -158,7 +149,7 @@ export default function UserView({ search, setSearch, page, rowsPerPage, openUse
                 className="text-xs font-light italic leading-tight"
                 style={{ color: colors.textSecondary }}
               >
-                {row.email?.trim() ? row.email : NO_EMAIL}
+                {row.email?.trim() ? row.email : DEFAULT_FALLBACK}
               </span>
             </div>
           </div>

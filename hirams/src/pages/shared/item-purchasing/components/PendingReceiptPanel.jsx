@@ -50,20 +50,54 @@ export default function PendingReceiptPanel({
   const allExpanded =
     allKeys.length > 0 && allKeys.every((k) => expandedIds.has(k));
 
-  const toggleOne = (k) =>
+  // Seed the draft as soon as a form OPENS — the parent's Confirm Received
+  // button reads `forms` directly, so a pre-filled qty that only lived in
+  // getForm's fallback left it disabled until the user typed something.
+  const seedForm = (k, opt) =>
+    setForms((prev) =>
+      prev[k]
+        ? prev
+        : {
+            ...prev,
+            [k]: {
+              qty: String(getToReceive(opt)),
+              receiptNo: "",
+              showSN: false,
+              serials: [],
+            },
+          },
+    );
+
+  const toggleOne = (k, opt) => {
+    const willOpen = !expandedIds.has(k);
     setExpandedIds((prev) => {
       const next = new Set(prev);
       next.has(k) ? next.delete(k) : next.add(k);
       return next;
     });
+    if (willOpen) seedForm(k, opt);
+  };
 
-  const toggleAll = () =>
-    setExpandedIds(allExpanded ? new Set() : new Set(allKeys));
+  const toggleAll = () => {
+    if (allExpanded) {
+      setExpandedIds(new Set());
+      return;
+    }
+    setExpandedIds(new Set(allKeys));
+    visible.forEach(({ opt, origIdx }) => seedForm(getKey(opt, origIdx), opt));
+  };
 
-  const getForm = (k) =>
-    forms[k] ?? { qty: "", receiptNo: "", showSN: false, serials: [] };
-  const setForm = (k, patch) =>
-    setForms((prev) => ({ ...prev, [k]: { ...getForm(k), ...patch } }));
+  // An untouched form starts at the row's current To Receive figure; once the
+  // user edits it, forms[k] keeps whatever they typed.
+  const getForm = (k, defaultQty) =>
+    forms[k] ?? {
+      qty: defaultQty != null ? String(defaultQty) : "",
+      receiptNo: "",
+      showSN: false,
+      serials: [],
+    };
+  const setForm = (k, patch, defaultQty) =>
+    setForms((prev) => ({ ...prev, [k]: { ...getForm(k, defaultQty), ...patch } }));
 
   const labelSx = {
     fontSize: "0.55rem",
@@ -90,7 +124,10 @@ export default function PendingReceiptPanel({
     scanKey != null
       ? visible.find(({ opt, origIdx }) => getKey(opt, origIdx) === scanKey)
       : null;
-  const scanForm = scanKey != null ? getForm(scanKey) : { serials: [] };
+  const scanForm =
+    scanKey != null
+      ? getForm(scanKey, scanEntry ? getToReceive(scanEntry.opt) : undefined)
+      : { serials: [] };
   const scanOption = scanEntry?.opt?.purchase_option;
   const scanCap = scanEntry
     ? Math.max(
@@ -191,7 +228,7 @@ export default function PendingReceiptPanel({
           const toReceive = getToReceive(opt);
           const k = getKey(opt, origIdx);
           const expanded = expandedIds.has(k);
-          const form = getForm(k);
+          const form = getForm(k, toReceive);
           const isSingle = toReceive === 1;
 
           // ── Serial numbers ────────────────────────────────────────────
@@ -203,10 +240,14 @@ export default function PendingReceiptPanel({
           // Moving the qty trims the list to it, so the S/N can never
           // outnumber the units being received.
           const applyQty = (nextQty) =>
-            setForm(k, {
-              qty: nextQty,
-              serials: (form.serials || []).slice(0, capSerials(nextQty)),
-            });
+            setForm(
+              k,
+              {
+                qty: nextQty,
+                serials: (form.serials || []).slice(0, capSerials(nextQty)),
+              },
+              toReceive,
+            );
 
           return (
             <Box
@@ -308,7 +349,7 @@ export default function PendingReceiptPanel({
 
                   <Box
                     component="button"
-                    onClick={() => toggleOne(k)}
+                    onClick={() => toggleOne(k, opt)}
                     disabled={toReceive <= 0}
                     title={expanded ? "Hide receive form" : "Show receive form"}
                     sx={{
@@ -429,7 +470,9 @@ export default function PendingReceiptPanel({
 
                       <Box
                         component="button"
-                        onClick={() => setForm(k, { showSN: !form.showSN })}
+                        onClick={() =>
+                          setForm(k, { showSN: !form.showSN }, toReceive)
+                        }
                         disabled={!form.qty || Number(form.qty) <= 0}
                         sx={{
                           width: 78,
@@ -454,7 +497,7 @@ export default function PendingReceiptPanel({
                         value={form.receiptNo}
                         placeholder="e.g. RR-2025-0001"
                         onChange={(e) =>
-                          setForm(k, { receiptNo: e.target.value })
+                          setForm(k, { receiptNo: e.target.value }, toReceive)
                         }
                         sx={inputSx}
                       />
@@ -495,7 +538,7 @@ export default function PendingReceiptPanel({
                       errors={{}}
                       handleChange={(e) => {
                         if (e.target.name === "serials")
-                          setForm(k, { serials: e.target.value });
+                          setForm(k, { serials: e.target.value }, toReceive);
                       }}
                       autoFocus={false}
                     />
@@ -519,7 +562,11 @@ export default function PendingReceiptPanel({
         subTitle={scanLabel}
         onChange={(next) => {
           if (scanKey != null)
-            setForm(scanKey, { serials: next, showSN: true });
+            setForm(
+              scanKey,
+              { serials: next, showSN: true },
+              scanEntry ? getToReceive(scanEntry.opt) : undefined,
+            );
         }}
       />
     </>

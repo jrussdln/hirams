@@ -143,8 +143,14 @@ export default function CartCardForDelivery({
     entries.forEach(({ opt, po }, i) => {
       const p = opt?.purchase_option;
       const tiId = p?.transaction_item?.nTransactionItemId;
-      const key =
-        tiId != null ? `ti-${tiId}` : `oi-${opt?.nPurchaseOrder_ItemId ?? i}`;
+      // Add-ons keep their own line in the detail view — mirror that here so
+      // the card does not fold them into the requested item's merged row.
+      const isAddOn = Number(p?.bAddOn) === 1 || p?.bAddOn === true;
+      const key = isAddOn
+        ? `addon-${p?.nPurchaseItemId ?? opt?.nPurchaseOrder_ItemId ?? i}`
+        : tiId != null
+          ? `ti-${tiId}`
+          : `oi-${opt?.nPurchaseOrder_ItemId ?? i}`;
       // The order(s) this row belongs to — a row is one item, but the item
       // can be bought on more than one PO, so the numbers are collected.
       // The PO ID travels too: two different transactions can carry the

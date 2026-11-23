@@ -27,20 +27,11 @@ const useColors = (c) => ({
   onFill: c.gray.textOnFill,
 });
 
-// A / C / P are the jev_status codes (config/mappings.php). A code the
-// mapping never names falls through to the neutral blue tone.
-
-// The one status an unbalanced JEV may never reach (balance gate below).
-const ACTIVE_CODE = "A";
-
-const toneFor = (code, colors) =>
-  code === ACTIVE_CODE
-    ? colors.green
-    : code === "C"
-      ? colors.red
-      : code === "P"
-        ? colors.amber
-        : colors.blue;
+// The status codes come from the jev_status mapping (config/mappings.php):
+// P Draft · R Pending Clearance · A Active · C Cancelled. They are looked up
+// BY LABEL so the mapping can gain or reorder codes without this tooltip
+// mis-colouring or mis-gating one. A code the mapping never names falls
+// through to the neutral blue tone.
 
 // The tag slot at a row's right edge. CURRENT leads the list; UNBALANCED
 // flags the Active option while the JEV's two sides do not square — same
@@ -59,20 +50,19 @@ const TAG_SX = {
  * the list, disabled and tagged "CURRENT", so you see where the JEV stands
  * before you see where it could go.
  *
- * Picking only STAGES a change: a plain "Set" button then appears BELOW the
- * rows — outside the list block, never inside a row — and is what commits
- * it (see handleSave).
+ * Picking a status COMMITS it immediately — there is no separate "Set"
+ * button; the current row is disabled, so only a real change can fire
+ * (see handleSave).
  *
- * Writes through PUT /jev/{id} with a DIRECT cStatus ('A' / 'P' / 'C'), not
- * the endpoint's 'toggle' branch — a toggle can only round-trip P <-> A and
- * could never reach Cancelled.
+ * Writes through PUT /jev/{id} with a DIRECT cStatus, not the endpoint's
+ * 'toggle' branch. Pending Clearance (R) is managed from the Collection
+ * footer button, so it is never offered here.
  *
- * Active is gated on balance: the JEV's entries are judged exactly as
- * JevEntriesViewModal judges them (sides alone — a voucher JEV carries no
- * Items total to reconcile against). While the sides do not square — or
- * the verdict is not in yet — the Active row is disabled and flagged
- * UNBALANCED in the tag slot CURRENT uses. Same strictness as that modal's
- * demote-on-close: no verdict may pass for "balanced".
+ * The finalized state (Active) is gated on balance: the JEV's entries are
+ * judged exactly as JevEntriesViewModal judges them (sides alone — a voucher
+ * JEV carries no Items total to reconcile against). While the sides do not
+ * square — or the verdict is not in yet — that row is disabled and flagged
+ * UNBALANCED in the tag slot CURRENT uses.
  */
 export default function JevStatusUpdateTooltip({
   open,
@@ -96,14 +86,41 @@ export default function JevStatusUpdateTooltip({
   // no fetch, no verdict — the gate stays shut until one arrives).
   const balance = useJEVBalance(open && jev?.nJEVId ? jev.nJEVId : "", 0, false);
 
+  const statusLabelMap = { ...(jevStatus || {}) };
+
+  const statusCodeByLabel = (label) =>
+    Object.entries(statusLabelMap).find(
+      ([, value]) =>
+        String(value ?? "").trim().toLowerCase() === label.toLowerCase(),
+    )?.[0] ?? "";
+  const draftCode =
+    statusCodeByLabel("Draft") || statusCodeByLabel("Pending");
+  const activeCode = statusCodeByLabel("Active");
+  const cancelledCode = statusCodeByLabel("Cancelled");
+  const finalizedCodes = [activeCode].filter(Boolean);
+
+  const toneFor = (code) =>
+    code === activeCode
+      ? colors.green
+      : code === cancelledCode
+        ? colors.red
+        : code === draftCode
+          ? colors.amber
+          : colors.blue;
+
   // Unknown counts as blocked: a still-loading or failed check may never
   // pass for "balanced" — the rule demoteIfUnbalanced runs on close.
-  const activeAllowed = !balance.loading && balance.balanced;
+  const finalizedAllowed = !balance.loading && balance.balanced;
 
-  // The row's own status always leads the list, whatever order the mapping
-  // declares — you should see where it stands before where it could go.
+  // Pending Clearance is managed from the Collection footer button, so it
+  // never appears here — not even as a read-only Current row. Filter it out
+  // defensively by label too, in case a stale prop still carries it.
+  const isPendingClearance = (label) =>
+    String(label ?? "").trim().toLowerCase() === "pending clearance";
   const options = useMemo(() => {
-    const entries = Object.entries(jevStatus ?? {});
+    const entries = Object.entries({ ...(jevStatus || {}) }).filter(
+      ([, label]) => !isPendingClearance(label),
+    );
     const at = entries.findIndex(([code]) => code === current);
     if (at > 0) entries.unshift(...entries.splice(at, 1));
     return entries;
@@ -125,9 +142,9 @@ export default function JevStatusUpdateTooltip({
   // Committing happens straight from the radio change — no separate Set step.
   const handleSave = async (next) => {
     if (!jev?.nJEVId || !next || next === current || saving) return;
-    if (next === ACTIVE_CODE && !activeAllowed) return;
+    if (finalizedCodes.includes(next) && !finalizedAllowed) return;
     const targetId = jev.nJEVId,
-      label = jevStatus?.[next] ?? next;
+      label = statusLabelMap[next] ?? next;
 
     handleClose();
     setSaving(true);
@@ -146,10 +163,6 @@ export default function JevStatusUpdateTooltip({
     }
   };
 
-  // The action only exists while a DIFFERENT status is staged — the current
-  // row is disabled, so there is nothing to commit until something changes.
-  const showSetAction = false;
-
   return (
     <TooltipContainer
       open={open}
@@ -164,22 +177,25 @@ export default function JevStatusUpdateTooltip({
         onChange={(e) => {
           const code = e.target.value;
           if (code === current) return;
-          if (code === ACTIVE_CODE && !activeAllowed) return;
+          if (finalizedCodes.includes(code) && !finalizedAllowed) return;
           handleSave(code);
         }}
       >
         {options.map(([code, label], idx) => {
-          const tone = toneFor(code, colors);
+          const tone = toneFor(code);
           const isCurrent = code === current;
-          // Active is off-limits while the JEV does not balance (or the
-          // verdict is still in): not selectable, flagged on the right.
-          const blockActive = code === ACTIVE_CODE && !activeAllowed;
-          const isDimmed = isCurrent || blockActive;
+          // The finalized state (Active) is off-limits while the JEV does not
+          // balance (or the verdict is still in): not selectable, flagged on
+          // the right.
+          const blockFinalized =
+            finalizedCodes.includes(code) && !finalizedAllowed;
+          const isDimmed = isCurrent || blockFinalized;
           // Flag only once the verdict is IN — "checking" must not paint
           // UNBALANCED over a JEV that may yet square up.
           const showUnbalanced =
-            code === ACTIVE_CODE && !balance.loading && !balance.balanced;
-          const isPicked = false;
+            finalizedCodes.includes(code) &&
+            !balance.loading &&
+            !balance.balanced;
           const isFirst = idx === 0;
           const isLast = idx === options.length - 1;
           const r = "6px";
@@ -205,7 +221,7 @@ export default function JevStatusUpdateTooltip({
             >
               <FormControlLabel
                 value={code}
-                disabled={isCurrent || blockActive || saving}
+                disabled={isCurrent || blockFinalized || saving}
                 sx={{
                   m: 0,
                   flex: 1,

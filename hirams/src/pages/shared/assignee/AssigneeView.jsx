@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import PageLayout from "../../../components/layouts/page/content-page";
 import CustomTable from "../../../components/ui/form/Table";
 import CustomSearchField from "../../../components/ui/form/SearchField";
@@ -18,13 +18,7 @@ import {
   DriveFileMoveOutlined,
   Link as LinkIcon,
 } from "@mui/icons-material";
-import {
-  NO_NAME,
-  NO_NICKNAME,
-  NO_ADDRESS,
-  NO_TIN,
-  NO_ADDRESS_TIN,
-} from "../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../constants/tableDataFallbacks";
 
 export default function AssigneeView({
   search,
@@ -84,12 +78,12 @@ export default function AssigneeView({
                 </span>
               ) : (
                 <span className="block text-xs font-light italic leading-tight">
-                  {NO_NAME}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span className="flex items-center gap-1.5 min-w-0">
                 <span className="block text-xs font-light italic leading-tight -mt-0.5 truncate">
-                  {hasNickname ? row.nickname : NO_NICKNAME}
+                  {hasNickname ? row.nickname : DEFAULT_FALLBACK}
                 </span>
                 {/* How many vouchers still name this assignee — the same
                     count that decides whether Delete or Transfer is offered. */}
@@ -116,7 +110,7 @@ export default function AssigneeView({
           if (!hasAddress && !hasTin) {
             return (
               <span className="block text-xs font-light italic leading-tight">
-                {NO_ADDRESS_TIN}
+                {DEFAULT_FALLBACK}
               </span>
             );
           }
@@ -129,11 +123,11 @@ export default function AssigneeView({
                 </span>
               ) : (
                 <span className="block text-xs font-light italic leading-tight">
-                  {NO_ADDRESS}
+                  {DEFAULT_FALLBACK}
                 </span>
               )}
               <span className="block text-xs font-light italic leading-tight -mt-0.5">
-                TIN: {hasTin ? row.tin : NO_TIN}
+                TIN: {hasTin ? row.tin : DEFAULT_FALLBACK}
               </span>
             </div>
           );

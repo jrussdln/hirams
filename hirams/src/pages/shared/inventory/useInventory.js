@@ -62,7 +62,6 @@ export default function useInventory() {
   // Finalize button (Pending JEV screen) — in-flight flag
   const [finalizingJev, setFinalizingJev] = useState(false);
   // "create_jev" | "finalize_jev" while its confirmation dialog is open
-  const [confirmAction, setConfirmAction] = useState(null);
 
   const user = useMemo(() => getItem("user", {}), []);
   const currentUserId = user?.nUserId;
@@ -81,7 +80,6 @@ export default function useInventory() {
       setSelectedItemId(null);
       setDirectionFilter("all");
       setGroupView(null);
-      setConfirmAction(null);
     };
     window.addEventListener("inventory_status_changed", handler);
     return () =>
@@ -570,16 +568,6 @@ export default function useInventory() {
     fetchItems,
   ]);
 
-  // ── Confirmations ───────────────────────────────────────────────────
-  // The footer buttons only open the dialog; this runs the action it was
-  // opened for (same contract as the voucher page's handleConfirmAction).
-  const handleConfirmAction = useCallback(async () => {
-    const action = confirmAction;
-    setConfirmAction(null);
-    if (action === "create_jev") await handleCreateJev();
-    else if (action === "finalize_jev") await handleFinalizeJevs();
-  }, [confirmAction, handleCreateJev, handleFinalizeJevs]);
-
   const handlePageChange = useCallback((_, p) => setPage(p), []);
   const handleRowsPerPageChange = useCallback((e) => {
     setRowsPerPage(parseInt(e.target.value, 10));
@@ -599,7 +587,6 @@ export default function useInventory() {
   const handleDirectionFilterChange = useCallback((e) => {
     setDirectionFilter(e.target.value);
     setGroupView(null);
-    setConfirmAction(null);
     setPage(0);
   }, []);
 
@@ -612,7 +599,6 @@ export default function useInventory() {
   }, []);
   const closeGroupView = useCallback(() => {
     setGroupView(null);
-    setConfirmAction(null);
   }, []);
   const handleGroupListPageChange = useCallback(
     (_, p) => setGroupListPage(p),
@@ -712,9 +698,8 @@ export default function useInventory() {
     // Per-JEV verdicts — PendingInventory renders the voucher-style
     // balance banner from them, one per JEV card.
     jevBalances,
-    confirmAction,
-    setConfirmAction,
-    handleConfirmAction,
+    handleCreateJev,
+    handleFinalizeJevs,
     jev_types,
     jev_status,
     jevPendingKey,

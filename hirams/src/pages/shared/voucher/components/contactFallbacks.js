@@ -1,8 +1,4 @@
-import {
-  NO_ADDRESS,
-  NO_TIN,
-  NO_ADDRESS_TIN,
-} from "../../../../constants/tableDataFallbacks";
+import { DEFAULT_FALLBACK } from "../../../../constants/tableDataFallbacks";
 
 /**
  * The address and TIN lines of a contact block (a supplier or an
@@ -17,8 +13,8 @@ export const contactFallbacks = (address, tin) => {
   const hasAddress = Boolean(address);
   const hasTin = Boolean(tin);
   return {
-    address: address || NO_ADDRESS,
-    tin: hasTin ? `TIN: ${tin}` : NO_TIN,
-    combined: !hasAddress && !hasTin ? NO_ADDRESS_TIN : null,
+    address: address || DEFAULT_FALLBACK,
+    tin: hasTin ? `TIN: ${tin}` : DEFAULT_FALLBACK,
+    combined: !hasAddress && !hasTin ? DEFAULT_FALLBACK : null,
   };
 };

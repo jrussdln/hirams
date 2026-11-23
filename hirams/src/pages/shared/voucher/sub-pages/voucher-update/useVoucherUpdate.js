@@ -891,12 +891,11 @@ export default function useVoucherUpdate() {
     close: "closed",
   };
 
-  const handleConfirmAction = async () => {
-    if (!confirmAction) return;
-    const action = confirmAction;
+  // Runs an action directly — no confirmation dialog. Only the destructive
+  // Cancel flow still asks first (the view keeps that one modal).
+  const runAction = async (action) => {
+    if (!action) return;
     const entity = "Voucher";
-
-    setConfirmAction(null);
 
     if (action === "print_only") {
       try {
@@ -1048,6 +1047,13 @@ export default function useVoucherUpdate() {
     }
   };
 
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    const action = confirmAction;
+    setConfirmAction(null);
+    await runAction(action);
+  };
+
   return {
     voucher,
     company, // ← add this
@@ -1118,6 +1124,7 @@ export default function useVoucherUpdate() {
     handleDeleteAssignee,
     handleSaveAssignee,
     handleConfirmAction,
+    runAction,
     handlePreviewVoucher,
     handlePreviewCheque,
     fetchVoucher,

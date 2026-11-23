@@ -40,17 +40,25 @@ const slimRows = (rows) =>
 // "Journal Entry Voucher" section, not by a filter on the page.
 //
 // Each row opens the journal on its own page (/jev-update?id=…) and carries a
-// Delete — the JEV itself may be removed ONLY while it is Pending or
-// Cancelled; an Active one shows nothing (the view withholds the button,
-// this hook re-checks it too so a stale row can't slip past).
+// Delete — the JEV itself may be removed ONLY while it is Draft or
+// Cancelled; a finalized one (Pending Clearance / Active) shows nothing
+// (the view withholds the button, this hook re-checks it too so a stale row
+// can't slip past).
 export default function useJournalEntryVoucher() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const {
     jev_types,
     jev_status,
+    jev_status_common,
+    jev_status_pending_clearance,
+    jevCollectionKey,
+    jevDraftKey,
+    jevPendingClearanceKey,
     jevActiveKey,
     jevPendingKey,
     jevCancelledKey,
+    jevPendingClearanceLabel,
     // The viewer's entry CRUD is role-gated the same way every other
     // screen gates it — Management or Finance Officer only.
     isManagement,
@@ -67,13 +75,24 @@ export default function useJournalEntryVoucher() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(15);
   const [selectedTypeCode, setSelectedTypeCode] = useState("");
-  // "all" or a raw jev_status code (A / C / P) — page-local, unlike the type,
-  // which the sidebar owns.
+  // "all" or a raw jev_status code (P / R / A / C) — page-local, unlike the
+  // type, which the sidebar owns.
   const [statusFilter, setStatusFilter] = useState("all");
+  // Collection-only view: show Pending Clearance journals exclusively. The
+  // footer toggles it; leaving the Collection type turns it off.
+  const [collectionPendingOnly, setCollectionPendingOnly] = useState(false);
+  // Carry the list's view in the deep link so the JEV page's Back returns to
+  // the Pending Clearance list ONLY when that's where the journal was opened
+  // from. Key off the VIEW STATE, not just the URL: the pending view is also
+  // entered by the Collection footer button, which doesn't change the URL.
+  const jevUpdateUrl = useCallback(
+    (id) => `/jev-update?id=${id}${collectionPendingOnly ? "&from=pending" : ""}`,
+    [collectionPendingOnly],
+  );
   // ── Delete ───────────────────────────────────────────────────────────
-  // The view only offers the button for a Pending / Cancelled row; the
+  // The view only offers the button for a Draft / Cancelled row; the
   // guard repeats here because the list re-renders off a payload fetched
-  // once (the status could have moved to Active since).
+  // once (the status could have moved to a finalized state since).
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [entityToDelete, setEntityToDelete] = useState(null);
 
@@ -93,6 +112,33 @@ export default function useJournalEntryVoucher() {
 
   const typeCodes = useMemo(() => Object.keys(jev_types || {}), [jev_types]);
   const firstCode = typeCodes[0] ?? "";
+  const isCollectionType =
+    !!selectedTypeCode &&
+    String(selectedTypeCode) === String(jevCollectionKey);
+  const isPendingClearanceView = isCollectionType && collectionPendingOnly;
+
+  useEffect(() => {
+    if (!isCollectionType) {
+      if (collectionPendingOnly) setCollectionPendingOnly(false);
+      // Pending Clearance is Collection-only; drop it if it was selected.
+      if (
+        statusFilter !== "all" &&
+        String(statusFilter) === String(jevPendingClearanceKey)
+      ) {
+        setStatusFilter("all");
+      }
+    }
+  }, [
+    isCollectionType,
+    collectionPendingOnly,
+    statusFilter,
+    jevPendingClearanceKey,
+  ]);
+
+  const toggleCollectionPendingClearance = useCallback(() => {
+    setCollectionPendingOnly((prev) => !prev);
+    setPage(0);
+  }, []);
 
   // ── Fetch ────────────────────────────────────────────────────────────
   // Persists a slim copy (entries stripped) — see slimRows above.
@@ -177,20 +223,42 @@ export default function useJournalEntryVoucher() {
 
   // ── Filter — the sidebar's type, then status, then the search box ─────
   const filteredJevs = useMemo(() => {
-    const byType = jevs.filter(
-      (j) =>
-        (!selectedTypeCode ||
-          String(j.cJEVLinkType) === String(selectedTypeCode)) &&
-        (statusFilter === "all" || String(j.cStatus) === String(statusFilter)),
-    );
+    const pendingCode = String(jevPendingClearanceKey ?? "");
+    const effectiveStatusFilter = isPendingClearanceView
+      ? pendingCode
+      : statusFilter;
+    const byType = jevs.filter((j) => {
+      if (
+        selectedTypeCode &&
+        String(j.cJEVLinkType) !== String(selectedTypeCode)
+      ) {
+        return false;
+      }
 
-    // Status first (Pending → Active → Cancelled), then newest first within
-    // each status — dtOccur is "YYYY-MM-DD HH:mm:ss", so a plain string
-    // compare already sorts correctly.
+      const status = String(j.cStatus ?? "");
+
+      // Collection Pending Clearance is viewed only via the footer button.
+      if (isPendingClearanceView) {
+        return status === pendingCode;
+      }
+      if (isCollectionType && status === pendingCode) {
+        return false;
+      }
+
+      return (
+        effectiveStatusFilter === "all" ||
+        status === String(effectiveStatusFilter)
+      );
+    });
+
+    // Status first (Draft → Pending Clearance → Active → Cancelled), then
+    // newest first within each status — dtOccur is "YYYY-MM-DD HH:mm:ss",
+    // so a plain string compare already sorts correctly.
     const statusRank = {
-      [jevPendingKey]: 0,
-      [jevActiveKey]: 1,
-      [jevCancelledKey]: 2,
+      [jevDraftKey || jevPendingKey]: 0,
+      [jevPendingClearanceKey]: 1,
+      [jevActiveKey]: 2,
+      [jevCancelledKey]: 3,
     };
     const rankOf = (j) => statusRank[j.cStatus] ?? 3;
 
@@ -221,11 +289,29 @@ export default function useJournalEntryVoucher() {
     jevs,
     selectedTypeCode,
     statusFilter,
+    isPendingClearanceView,
     search,
+    jevDraftKey,
+    jevPendingClearanceKey,
     jevActiveKey,
     jevPendingKey,
     jevCancelledKey,
   ]);
+
+  // Badge for the Collection footer's "Pending Clearance" button. Counted
+  // from the full list (not the filtered rows), so the number stays steady
+  // while the reader searches or switches statuses.
+  const pendingClearanceCount = useMemo(() => {
+    if (!jevCollectionKey || !jevPendingClearanceKey) return 0;
+    const cType = String(jevCollectionKey);
+    const rStatus = String(jevPendingClearanceKey);
+    return jevs.filter(
+      (j) =>
+        String(j?.cJEVLinkType ?? "") === cType &&
+        String(j?.cStatus ?? "") === rStatus,
+    ).length;
+  }, [jevs, jevCollectionKey, jevPendingClearanceKey]);
+
   const tableRows = useMemo(
     () =>
       filteredJevs.map((j) => {
@@ -245,7 +331,7 @@ export default function useJournalEntryVoucher() {
           _raw: j,
           id: j.nJEVId,
           // Empty string (not "—") so the table can detect a missing
-          // number and render the NO_JEV_NO fallback.
+          // number and render the shared DEFAULT_FALLBACK.
           strJEVNumber: j.strJEVNumber ?? "",
           // The journal's OWN title — every link type carries one now. The
           // API additionally derives a name per type (strDisplayTitle: the
@@ -266,7 +352,7 @@ export default function useJournalEntryVoucher() {
           // Created column (tbljevs.nUserId → tblusers.strNickName, shipped
           // by the API as strCreatedBy). A dash from the API (or a null for
           // a pre-column row) means "no creator" — blank so the view can
-          // print the NO_CREATOR placeholder.
+          // print the shared DEFAULT_FALLBACK placeholder.
           strCreatedByName:
             j.strCreatedBy && j.strCreatedBy !== "—" ? j.strCreatedBy : "",
           // Whether this row may be deleted, and why not when it may not.
@@ -287,16 +373,22 @@ export default function useJournalEntryVoucher() {
     (row) => {
       const j = row?._raw ?? row;
       if (!j?.nJEVId) return;
-      navigate(`/jev-update?id=${j.nJEVId}`);
+      navigate(jevUpdateUrl(j.nJEVId));
     },
-    [navigate],
+    [navigate, jevUpdateUrl],
   );
 
   // ── Deep link — /journal-entry-voucher?id=… opens that very journal ──
   // The JEV number printed by the panel header (JevViewPanel) links
   // here, so the list answers the id: it hands the journal straight to
   // its own page.
-  const [searchParams] = useSearchParams();
+  const isPendingParam = searchParams.get("pending") === "1";
+  useEffect(() => {
+    if (isPendingParam && jevCollectionKey) {
+      setSelectedTypeCode(String(jevCollectionKey));
+      setCollectionPendingOnly(true);
+    }
+  }, [isPendingParam, jevCollectionKey]);
   const deepLinkId = searchParams.get("id");
   // The id already handled — one opening per id, so a refetch (or the
   // close of the modal) never re-opens the journal behind the reader.
@@ -306,8 +398,8 @@ export default function useJournalEntryVoucher() {
     const id = String(deepLinkId ?? "");
     if (!id || deepLinkOpenedRef.current === id) return;
     deepLinkOpenedRef.current = id;
-    navigate(`/jev-update?id=${id}`);
-  }, [deepLinkId, navigate]);
+    navigate(jevUpdateUrl(id));
+  }, [deepLinkId, navigate, jevUpdateUrl]);
 
   const handleDeleteClick = useCallback(
     (row) => {
@@ -396,7 +488,7 @@ export default function useJournalEntryVoucher() {
             ? res.data
             : (res?.jev ?? null);
         window.dispatchEvent(new CustomEvent("jev_data_updated"));
-        if (created?.nJEVId) navigate(`/jev-update?id=${created.nJEVId}`);
+        if (created?.nJEVId) navigate(jevUpdateUrl(created.nJEVId));
       });
     } catch (err) {
       console.error("Failed to create the JEV:", err);
@@ -405,7 +497,7 @@ export default function useJournalEntryVoucher() {
       setCreateTitleError("Failed to create. Please try again.");
       setCreateJevOpen(true);
     }
-  }, [createTitle, createDate, navigate]);
+  }, [createTitle, createDate, navigate, jevUpdateUrl]);
 
   // The "Add JEV" button only opens the dialog; this is what actually
   // creates it (same contract as inventory's handleConfirmAction).
@@ -445,9 +537,9 @@ export default function useJournalEntryVoucher() {
     (row) => {
       const j = row?._raw ?? row;
       if (!j?.nJEVId) return;
-      navigate(`/jev-update?id=${j.nJEVId}`);
+      navigate(jevUpdateUrl(j.nJEVId));
     },
-    [navigate],
+    [navigate, jevUpdateUrl],
   );
 
   const handleStatusFilterChange = useCallback((e) => {
@@ -467,9 +559,19 @@ export default function useJournalEntryVoucher() {
     mappingLoading,
     jev_types,
     jev_status,
+    jev_status_common,
+    jev_status_pending_clearance,
+    jevCollectionKey,
+    jevDraftKey,
+    jevPendingClearanceKey,
     jevActiveKey,
     jevPendingKey,
     jevCancelledKey,
+    jevPendingClearanceLabel,
+    isCollectionType,
+    isPendingClearanceView,
+    pendingClearanceCount,
+    toggleCollectionPendingClearance,
     // Role flags for the viewer's entry CRUD (Management / Finance Officer)
     isManagement,
     isFinanceOfficer,
@@ -479,7 +581,7 @@ export default function useJournalEntryVoucher() {
     handleRowsPerPageChange,
     handleRowClick,
     openJevModal,
-    // Add JEV — the naming modal opened by the confirmation dialog
+    // Add JEV — the naming modal opened directly by the Add JEV button
     createJevOpen,
     createTitle,
     createDate,
@@ -487,6 +589,8 @@ export default function useJournalEntryVoucher() {
     setCreateDate,
     createTitleError,
     createDateError,
+    setCreateTitleError,
+    setCreateDateError,
     createTitleRef,
     openAddJev,
     handleCreateJev,
@@ -497,7 +601,7 @@ export default function useJournalEntryVoucher() {
     handleDeleteClick,
     handleCloseDeleteModal,
     handleDeleteSuccess,
-    // Status — any of A / P / C (see JevStatusUpdateTooltip)
+    // Status — any of P / R / A / C (see JevStatusUpdateTooltip)
     statusTarget,
     setStatusTarget,
     statusAnchorEl,

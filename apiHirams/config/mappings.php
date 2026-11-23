@@ -152,7 +152,7 @@ return [
         '350' => 'For Collection', //it filters and fetch transactions that code = 350 the created_by is equal to the current nUserID, and displays count
     ],
     'finance_status' => [ //this is for finance officer
-     '340' => 'For Purchase/Delivery',
+        '340' => 'For Purchase/Delivery',
         '350' => 'For Collection', //it filters and fetch all transactions that code = 200, 210, 220, 225, 230, 240, 245 and displays count
 
     ],
@@ -202,7 +202,7 @@ return [
     ],
     'voucher_type' => [
         'S' => 'Supplier', //0
-        'A' => 'Assignee', //
+        'A' => 'Assignee', //   
     ],
     'shipping_method' => [
         'P' => 'Pick-up',
@@ -234,10 +234,16 @@ return [
         'N' => 'Other JEV'
     ],
     'jev_status' => [
-        'A' => 'Active', //0
-        'C' => 'Cancelled', //1
-        'P' => 'Pending', //
+        'P' => 'Draft', //0
+        'A' => 'Active', //2
+        'C' => 'Cancelled', //3
     ],
+    // Pending Clearance applies to Collection JEVs only — kept separate so
+    // non-collection JEV types never offer or display it as a general status.
+    'jev_status_pending_clearance' => [
+        'R' => 'Pending Clearance', //1
+    ],
+
     'unit_price_status' => [
         'A' => 'Active', //0
         'P' => 'Pending', //

@@ -487,7 +487,7 @@ export default function useVoucher() {
           // Created column (tblvouchers.nUserId → tblusers.strNickName,
           // shipped by the API as strCreatedBy). A dash from the API (or a
           // null for a pre-column row) means "no creator" — blank so the
-          // view can print the NO_CREATOR placeholder.
+          // view can print the shared DEFAULT_FALLBACK placeholder.
           strCreatedByName:
             v.strCreatedBy && v.strCreatedBy !== "—" ? v.strCreatedBy : "",
           poCount: supplierLinks.length,
@@ -555,12 +555,10 @@ export default function useVoucher() {
       );
   };
 
-  const handleConfirmMark = async () => {
-    if (!confirmRow || !confirmAction) return;
-    const row = confirmRow;
-    const action = confirmAction;
-    setConfirmAction(null);
-    setConfirmRow(null);
+  // Runs the paid/unpaid status change directly — the list no longer asks
+  // for confirmation first.
+  const runMark = async (row, action) => {
+    if (!row || !action) return;
     setConfirmLoading(true);
     try {
       await withSpinner("Voucher", async () => {
@@ -607,6 +605,15 @@ export default function useVoucher() {
     } finally {
       setConfirmLoading(false);
     }
+  };
+
+  const handleConfirmMark = async () => {
+    if (!confirmRow || !confirmAction) return;
+    const row = confirmRow;
+    const action = confirmAction;
+    setConfirmAction(null);
+    setConfirmRow(null);
+    await runMark(row, action);
   };
 
   return {
@@ -657,5 +664,6 @@ export default function useVoucher() {
     setConfirmRow,
     confirmLoading,
     handleConfirmMark,
+    runMark,
   };
 }

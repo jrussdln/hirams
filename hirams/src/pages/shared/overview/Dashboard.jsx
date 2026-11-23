@@ -3,6 +3,8 @@ import { Box, Typography, Card } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import useKeysLabels from "../../../hooks/useKeysLabels";
 import PageLayout from "../../../components/layouts/page/content-page";
+import BaseButton from "../../../components/ui/form/BaseButton";
+import icons from "../../../utils/style/iconFormatStyles";
 import { getPhilippinesTime } from "../../../utils/helpers/timeZone";
 import { getItem } from "../../../utils/storage/localStorage";
 import getThemeColors from "../../../utils/style/getThemeColors";
@@ -42,6 +44,11 @@ export default function Dashboard() {
   const { isManagement, isProcurement, isAccountOfficer, isFinanceOfficer } =
     useKeysLabels();
 
+  // Which ledger the dashboard is showing in full (null = normal dashboard).
+  // Lifted here so the welcome banner and Needs Attention can be hidden and
+  // the page subtitle can name what is being viewed.
+  const [viewingAll, setViewingAll] = useState(null);
+
   // Live Philippine time, ticking inside the banner.
   const [phTime, setPhTime] = useState(getPhilippinesTime());
   useEffect(() => {
@@ -54,10 +61,24 @@ export default function Dashboard() {
     updateTime();
   }, []);
 
+  // View All opens a focused ledger view — Back lives in the page footer.
+  const footer = viewingAll ? (
+    <Box sx={{ width: "100%", display: "flex", justifyContent: "flex-start" }}>
+      <BaseButton
+        label="Back"
+        icon={icons.back}
+        actionColor="back"
+        tooltip="Back to dashboard"
+        onClick={() => setViewingAll(null)}
+      />
+    </Box>
+  ) : false;
+
   return (
-    <PageLayout title={"Dashboard"}>
+    <PageLayout title={"Dashboard"} subtitle={viewingAll || undefined} footer={footer}>
       <div className="space-y-6">
-        {/* Welcome Banner — Themed Gradient */}
+        {/* Welcome Banner — hidden while a ledger is being viewed in full */}
+        {!viewingAll && (
         <Card
           sx={{
             ...cardSx(theme),
@@ -200,9 +221,15 @@ export default function Dashboard() {
             </Box>
           </Box>
         </Card>
+        )}
 
         {/* Role-specific dashboard body — one view per user role */}
-        {isManagement && <ManagementView />}
+        {isManagement && (
+          <ManagementView
+            viewingAll={viewingAll}
+            onViewingAllChange={setViewingAll}
+          />
+        )}
         {isProcurement && <ProcurementView />}
         {isAccountOfficer && <AOView />}
         {isFinanceOfficer && <FinanceView />}

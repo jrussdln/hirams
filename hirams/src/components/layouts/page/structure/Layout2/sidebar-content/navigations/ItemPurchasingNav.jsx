@@ -112,7 +112,6 @@ const ItemPurchasingNavSection = ({
     loading: mappingLoading,
     isManagement,
     isFinanceOfficer,
-    forApprovalKey,
     pendingReceiptKey,
     forDeliveryKey,
     deliveredKey,
@@ -140,16 +139,6 @@ const ItemPurchasingNavSection = ({
     location.pathname === "/item-purchasing-update" ||
     location.pathname === "/preview-po" ||
     location.pathname === "/quantity-history";
-
-  // Carts still waiting on approval — the alarm count. Management and
-  // finance are the two roles who act on the For Approval stage.
-  const canActOnApproval = isManagement || isFinanceOfficer;
-  const pendingCarts =
-    canActOnApproval && forApprovalKey
-      ? purchaseOrders.filter(
-          (po) => String(po.nStatus) === String(forApprovalKey),
-        ).length
-      : 0;
 
   const [viewingCode, setViewingCode] = useState(null);
   const activeCode =
@@ -283,11 +272,6 @@ const ItemPurchasingNavSection = ({
         collapsed={collapsed}
         forceExpanded={forceExpanded}
         onParentClick={entries.length ? handleParentClick : undefined}
-        // While the status list is folded away, the parent row itself
-        // carries the alarm: amber pulse + blinking triangle before the
-        // chevron. Open the section and the row calms — the For Approval
-        // sub-row takes over.
-        attentionWhenCollapsed={pendingCarts > 0}
       >
         {entries.length > 0 ? (
           entries.map(([code, label]) => {
@@ -349,14 +333,6 @@ const ItemPurchasingNavSection = ({
                 key={code}
                 label={label}
                 active={isOnPage && activeCode === String(code)}
-                // Carts waiting on approval keep the row amber + blinking
-                // until one of the approvers acts — management and
-                // finance only.
-                attention={
-                  canActOnApproval &&
-                  String(code) === String(forApprovalKey) &&
-                  count > 0
-                }
                 count={count}
                 countLoading={countLoading}
                 onClick={() => handleSelect(String(code))}

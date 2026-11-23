@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useTheme } from "@mui/material/styles";
 import useKeysLabels from "../../../../../../hooks/useKeysLabels";
@@ -15,8 +15,6 @@ import { Box } from "@mui/material";
 import { buildNavItems } from "../sidebar-content/BuildNavItems";
 import getThemeColors from "../../../../../../utils/style/getThemeColors";
 import UpDownIndicatorWidget from "../../../../../../components/ui/widget/UpDownIndicatorWidget";
-import usePendingApprovals from "../../../../../../hooks/usePendingApprovals";
-// import { notifyWarningCounts } from "../../../../../../utils/helpers/attentionChime";
 // ─────────────────────────────────────────────────────────────────
 // PROMPT 1 — Inline color map: receives c = getThemeColors(isDark)
 // ─────────────────────────────────────────────────────────────────
@@ -29,13 +27,10 @@ const useColors = (c) => ({
 // A section title plus everything under it. Clicking the title hides /
 // shows the items; the choice is remembered (useSectionToggle).
 // ─────────────────────────────────────────────────────────────────
-const SectionGroup = ({ label, collapsed, forceExpanded, activeSection, attentionWhenCollapsed = false, children }) => {
+const SectionGroup = ({ label, collapsed, forceExpanded, activeSection, children }) => {
   const [open, toggle] = useSectionToggle(label, label === activeSection);
   // The title is dropped in icon-rail mode — the items must stay visible.
   const titleVisible = !(collapsed && !forceExpanded);
-  // The section hides something that needs a human — the header itself
-  // pulses amber until the section is opened again.
-  const attention = attentionWhenCollapsed && !open;
 
   return (
     <div className="flex flex-col w-full">
@@ -45,7 +40,6 @@ const SectionGroup = ({ label, collapsed, forceExpanded, activeSection, attentio
         onToggle={toggle}
         collapsed={collapsed}
         forceExpanded={forceExpanded}
-        attention={attention}
       />
       {(!titleVisible || open) && children}
     </div>
@@ -115,117 +109,14 @@ const SidebarContent = ({
 
   // ✅ SINGLE SOURCE OF TRUTH — mappings + roles from one hook
   const {
-    userTypes,
     isManagement,
     isProcurement,
     isAccountOfficer,
     isFinanceOfficer,
-    isAO,
-    isAOTL,
     loading: isLoading,
   } = useKeysLabels();
 
   const navConfig = buildNavItems();
-
-  // Needs Attention (management/procurement/AO) — the transaction decision stages
-  // holding work, rolled up by TransactionSubItems so the TRANSACTION header
-  // can blink while the section is collapsed.
-  const [txnStagesPending, setTxnStagesPending] = useState(false);
-  useEffect(() => {
-    const handler = (e) => setTxnStagesPending(Boolean(e.detail?.pending));
-    window.addEventListener("txn_verification_pending", handler);
-    return () =>
-      window.removeEventListener("txn_verification_pending", handler);
-  }, []);
-
-  // Needs Attention — MANAGEMENT, FINANCE, ACCOUNT OFFICERS, and PROCUREMENT.
-  // Other roles never fetch the counts (the hook stays 0), and the
-  // bell only rings for these roles.
-  const attentionEnabled =
-    isManagement || isFinanceOfficer || isAO || isAOTL || isProcurement;
-  const {
-    clients: pendingClients,
-    suppliers: pendingSuppliers,
-    carts: pendingCarts,
-    pendingJev,
-    transactionVerification,
-    forAssignment,
-    itemsVerification,
-    canvasVerification,
-    priceVerification,
-    priceApproval,
-  } = usePendingApprovals(attentionEnabled);
-
-  // Every warning sub-row the sidebar can blink for in THIS role, along
-  // with its current count. The chime tracks each row separately: the
-  // total staying flat no longer hides a new item (one row can gain work
-  // while another row clears). Same rules as the blinking rows below.
-  const warningCounts = useMemo(() => {
-    if (!attentionEnabled) return {};
-    const counts = {};
-
-    if (isManagement) {
-      counts.clients = pendingClients;
-      counts.suppliers = pendingSuppliers;
-      counts.carts = pendingCarts;
-    } else if (isFinanceOfficer) {
-      counts.suppliers = pendingSuppliers;
-      counts.carts = pendingCarts;
-    }
-
-    // Pending JEV blinks for management, finance, AO and AOTL only.
-    if (isManagement || isFinanceOfficer || isAO || isAOTL) {
-      counts.pendingJev = pendingJev;
-    }
-
-    if (isManagement) {
-      counts.txnVerification = transactionVerification;
-      counts.forAssignment = forAssignment;
-      counts.itemsVerification = itemsVerification;
-      counts.canvasVerification = canvasVerification;
-      counts.priceVerification = priceVerification;
-      counts.priceApproval = priceApproval;
-    } else if (isAOTL) {
-      counts.forAssignment = forAssignment;
-      counts.itemsVerification = itemsVerification;
-      counts.canvasVerification = canvasVerification;
-    } else if (isAO) {
-      counts.itemsVerification = itemsVerification;
-      counts.canvasVerification = canvasVerification;
-    } else if (isProcurement) {
-      counts.txnVerification = transactionVerification;
-      counts.priceVerification = priceVerification;
-    }
-
-    return counts;
-  }, [
-    attentionEnabled,
-    isManagement,
-    isFinanceOfficer,
-    isAO,
-    isAOTL,
-    isProcurement,
-    pendingClients,
-    pendingSuppliers,
-    pendingCarts,
-    pendingJev,
-    transactionVerification,
-    forAssignment,
-    itemsVerification,
-    canvasVerification,
-    priceVerification,
-    priceApproval,
-  ]);
-
-  // The bell lives HERE, in the sidebar shell, not on the dashboard —
-  // the sidebar is mounted on every page, so the reminder follows the
-  // user wherever they are. First load rings if any warning row already
-  // has work; afterwards it rings only when a row's count increments.
-  // (Browsers mute it until the tab has had one interaction — the
-  // helper replays the pending ring on that first interaction.)
-  useEffect(() => {
-    // notifyWarningCounts(warningCounts);
-  }, [warningCounts]);
 
   const renderNavItem = (entry) => {
     if (entry?.type === "nav") {
@@ -319,7 +210,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.management}
                     activeSection={activeSection}
-                    attentionWhenCollapsed={pendingClients + pendingSuppliers > 0}
                     {...{ collapsed, forceExpanded }}
                   >
                     {navConfig.management.common.map(renderNavItem)}
@@ -328,9 +218,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.transaction}
                     activeSection={activeSection}
-                    attentionWhenCollapsed={
-                      pendingCarts + (txnStagesPending ? 1 : 0) > 0
-                    }
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.transaction)}
@@ -342,9 +229,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.records}
                     activeSection={activeSection}
-                    // The RECORDS section hides Inventory — its Pending
-                    // JEV alarm blinks on the header while collapsed.
-                    attentionWhenCollapsed={pendingJev > 0}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.inventory)}
@@ -365,7 +249,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.management}
                     activeSection={activeSection}
-                    attentionWhenCollapsed={false}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.common[1])}
@@ -374,7 +257,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.transaction}
                     activeSection={activeSection}
-                    attentionWhenCollapsed={txnStagesPending}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.transaction)}
@@ -384,7 +266,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.records}
                     activeSection={activeSection}
-                    attentionWhenCollapsed={false}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.inventory)}
@@ -397,7 +278,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.management}
                     activeSection={activeSection}
-                    attentionWhenCollapsed={false}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.common[2])}
@@ -406,7 +286,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.transaction}
                     activeSection={activeSection}
-                    attentionWhenCollapsed={txnStagesPending}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.transaction)}
@@ -417,9 +296,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.records}
                     activeSection={activeSection}
-                    // The RECORDS section hides Inventory — its Pending
-                    // JEV alarm blinks on the header while collapsed.
-                    attentionWhenCollapsed={pendingJev > 0}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.inventory)}
@@ -436,7 +312,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.management}
                     activeSection={activeSection}
-                    attentionWhenCollapsed={pendingSuppliers > 0}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.common[2])}
@@ -446,7 +321,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.transaction}
                     activeSection={activeSection}
-                    attentionWhenCollapsed={pendingCarts > 0}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.transaction)}
@@ -456,9 +330,6 @@ const SidebarContent = ({
                   <SectionGroup
                     label={SECTION_LABELS.records}
                     activeSection={activeSection}
-                    // The RECORDS section hides Inventory — its Pending
-                    // JEV alarm blinks on the header while collapsed.
-                    attentionWhenCollapsed={pendingJev > 0}
                     {...{ collapsed, forceExpanded }}
                   >
                     {renderNavItem(navConfig.management.inventory)}
