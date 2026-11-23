@@ -1386,7 +1386,21 @@ function TransactionView(props) {
                 xs: 1.5,
                 render: (_, row) => {
                   const data = txnCollectibleMap[row.id];
-                  if (!data)
+                  const peso = (v) =>
+                    Number(v ?? 0).toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    });
+
+                  // The collectible figure is the transaction's ABC — the
+                  // same number the transaction detail prints — not the
+                  // chosen pricing set's total selling price.
+                  const amount =
+                    row.dTotalABC != null && row.dTotalABC !== ""
+                      ? row.dTotalABC
+                      : data?.collectible;
+
+                  if (amount == null || amount === "")
                     return (
                       <span
                         style={{ color: colors.textMuted, fontSize: "0.7rem" }}
@@ -1395,19 +1409,10 @@ function TransactionView(props) {
                       </span>
                     );
 
-                  const peso = (v) =>
-                    Number(v ?? 0).toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    });
-
-                  // One clean figure — the collectible amount itself. The
-                  // EWT / TAX / Retention breakdown and its NET live in the
-                  // payment details, not this column.
                   return (
                     <div className="flex min-w-0 justify-end">
                       <span className="text-[0.75rem] font-semibold leading-tight whitespace-nowrap">
-                        ₱ {peso(data.collectible)}
+                        ₱ {peso(amount)}
                       </span>
                     </div>
                   );

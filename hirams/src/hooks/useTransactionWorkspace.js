@@ -1190,7 +1190,13 @@ export default function useTransactionWorkspace() {
       .then((res) => {
         if (!active) return;
         const chosen = (res.data ?? []).find((s) => s.bChosen === 1);
-        setTotalCollectibleValue(chosen?.totalSellingPrice ?? 0);
+        // The collectible figure is the transaction ABC — the number the
+        // transaction detail prints — with the pricing set total only as a
+        // fallback for records that have no ABC stored yet.
+        const abc = Number(transaction?.dTotalABC);
+        setTotalCollectibleValue(
+          Number.isFinite(abc) && abc > 0 ? abc : (chosen?.totalSellingPrice ?? 0),
+        );
       })
       .catch((err) => {
         console.error("Failed to fetch chosen pricing set total:", err);
@@ -1199,7 +1205,7 @@ export default function useTransactionWorkspace() {
     return () => {
       active = false;
     };
-  }, [transaction?.nTransactionId]);
+  }, [transaction?.nTransactionId, transaction?.dTotalABC]);
   useEffect(() => {
     if (!transaction?.nTransactionId || (!forCollection && !forPurchase)) {
       return;

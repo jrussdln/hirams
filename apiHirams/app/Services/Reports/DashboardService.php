@@ -2,12 +2,10 @@
 
 namespace App\Services\Reports;
 
-use App\Helpers\FormulaHelper;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\DirectCost;
 use App\Models\ItemPricings;
-use App\Models\PricingSet;
 use App\Models\Supplier;
 use App\Models\TransactionHistory;
 use App\Models\Transactions;
@@ -320,17 +318,6 @@ class DashboardService
                 ->get();
         }
 
-        // The chosen set of every collectible transaction — ONE query, no
-        // per-row N+1. The figure is computed through FormulaHelper, the same
-        // path the pricing-set listing uses, so the card can never disagree
-        // with the table.
-        $chosen = $collectibleTxns->isEmpty() ? collect() : PricingSet::whereIn(
-            'nTransactionId',
-            $collectibleTxns->pluck('nTransactionId'),
-        )
-            ->where('bChosen', 1)
-            ->pluck('nPricingSetId', 'nTransactionId');
-
         // ONE retention query for every transaction both lists touch — the
         // same rule the For Collection workspace applies (DirectCost rows
         // whose option name contains "retention", summed per transaction).
@@ -345,9 +332,9 @@ class DashboardService
         $collectibles = $collectibleTxns
             ->map(fn($txn) => $this->collectionCardRow(
                 $txn,
-                isset($chosen[$txn->nTransactionId])
-                    ? FormulaHelper::calculateTotalSellingPrice($chosen[$txn->nTransactionId])
-                    : 0.0,
+                // The transaction ABC — the same figure the For Collection
+                // workspace and the transaction detail now print.
+                (float) ($txn->dTotalABC ?? 0),
                 $retentionMap[$txn->nTransactionId] ?? 0.0,
                 // When it reached "For Collection" — the date the filter windows
                 $txn->latestHistory?->dtOccur
