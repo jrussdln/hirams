@@ -536,12 +536,9 @@ function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleVie
   const [filter, setFilter] = useState(null);
   const [filterAnchor, setFilterAnchor] = useState(null);
 
-  // A Collection journal with no posted entries reads ₱0.00 and carries no
-  // completion date — drop it so the count, totals and table agree.
-  const validRows = useMemo(
-    () => (rows || []).filter((r) => Number(r.amount) > 0),
-    [rows],
-  );
+  // Every row the API returns for the section is shown — the count and table
+  // must agree with the workspace page behind them.
+  const validRows = rows || [];
 
   // A quick window keeps only rows whose date falls inside it; rows without
   // a date can never match a window, so they only show under "All".

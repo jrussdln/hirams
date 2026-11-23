@@ -2,10 +2,12 @@
 
 namespace App\Services\Reports;
 
+use App\Helpers\FormulaHelper;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\DirectCost;
 use App\Models\ItemPricings;
+use App\Models\PricingSet;
 use App\Models\Supplier;
 use App\Models\TransactionHistory;
 use App\Models\Transactions;
@@ -318,6 +320,15 @@ class DashboardService
                 ->get();
         }
 
+        // Fallback for records with no ABC stored: the chosen pricing set's
+        // selling price — the same fallback the For Collection list uses.
+        $chosen = $collectibleTxns->isEmpty() ? collect() : PricingSet::whereIn(
+            'nTransactionId',
+            $collectibleTxns->pluck('nTransactionId'),
+        )
+            ->where('bChosen', 1)
+            ->pluck('nPricingSetId', 'nTransactionId');
+
         // ONE retention query for every transaction both lists touch — the
         // same rule the For Collection workspace applies (DirectCost rows
         // whose option name contains "retention", summed per transaction).
@@ -330,15 +341,24 @@ class DashboardService
         );
 
         $collectibles = $collectibleTxns
-            ->map(fn($txn) => $this->collectionCardRow(
-                $txn,
-                // The transaction ABC — the same figure the For Collection
-                // workspace and the transaction detail now print.
-                (float) ($txn->dTotalABC ?? 0),
-                $retentionMap[$txn->nTransactionId] ?? 0.0,
-                // When it reached "For Collection" — the date the filter windows
-                $txn->latestHistory?->dtOccur
-            ))
+            ->map(function ($txn) use ($chosen, $retentionMap) {
+                $abc = (float) ($txn->dTotalABC ?? 0);
+                $amount = $abc > 0
+                    ? $abc
+                    : (isset($chosen[$txn->nTransactionId])
+                        ? (float) FormulaHelper::calculateTotalSellingPrice(
+                            $chosen[$txn->nTransactionId]
+                        )
+                        : 0.0);
+
+                return $this->collectionCardRow(
+                    $txn,
+                    $amount,
+                    $retentionMap[$txn->nTransactionId] ?? 0.0,
+                    // When it reached "For Collection" — the date the filter windows
+                    $txn->latestHistory?->dtOccur
+                );
+            })
             ->values()
             ->all();
 
