@@ -3,7 +3,9 @@
 namespace App\Services\Reports;
 
 use App\Helpers\FormulaHelper;
+use App\Services\Finance\JevService;
 use App\Models\Client;
+use App\Models\Jev;
 use App\Models\Company;
 use App\Models\DirectCost;
 use App\Models\ItemPricings;
@@ -24,6 +26,10 @@ use Illuminate\Support\Facades\DB;
  */
 class DashboardService
 {
+    public function __construct(private readonly JevService $jevService)
+    {
+    }
+
     /**
      * Totals shown on the dashboard header: active users/clients/suppliers
      * and the raw company count.
@@ -280,10 +286,19 @@ class DashboardService
      *     amount is the journal's credit side (the sum of its positive
      *     entries), i.e. what the receipt actually collected.
      *
-     * Every row also carries the inputs the card's metrics strip needs to
-     * reproduce the receipt's deduction ledger (see CollectionReceiptCard):
-     * cItemType (drives the EWT rate — goods 1%, services 2%) and retention
-     * (the direct-cost rows whose option name contains "retention").
+     * Active Delivered (D) JEVs with NO inventory link are appended to
+     * Collectibles as JEV rows (`isJev`): their code/title/date are the
+     * journal's own, the badge is the client nickname only, BID Amount is
+     * the journal's balanced side (sum of its positive entries), and Net
+     * Amount is that balance less collection EWT and tax (goods by default,
+     * services when any word of the title is "Service"). Inventory-backed
+     * D JEVs have a transaction behind them and are not listed here.
+     *
+     * Every transaction row also carries the inputs the card's metrics strip
+     * needs to reproduce the receipt's deduction ledger (see
+     * CollectionReceiptCard): cItemType (drives the EWT rate — goods 1%,
+     * services 2%) and retention (the direct-cost rows whose option name
+     * contains "retention").
      *
      * @return array{
      *     collectibles: array<int, array<string, mixed>>,
@@ -296,6 +311,10 @@ class DashboardService
         $forCollection  = (string) (array_search('For Collection', $statusCodes, true) ?: '');
         $jevTypes       = config('mappings.jev_types', []);
         $typeCollection = (string) (array_search('Collection', $jevTypes, true) ?: '');
+        $typeDelivered  = (string) (array_search('Delivered Items', $jevTypes, true) ?: 'D');
+        // The mapping calls A "Active" (some installs label it "Completed");
+        // A is the code either way — use it if the label lookup misses.
+        $activeStatus   = (string) (array_search('Active', config('mappings.jev_status', []), true) ?: 'A');
 
         // ── Collectibles: the For Collection workspace itself ──────────
         // Every transaction sitting at For Collection belongs here, even if a
@@ -362,6 +381,49 @@ class DashboardService
             ->values()
             ->all();
 
+        // ── Active Delivered JEVs with NO inventory link ───────────────
+        // Only hand-added D JEVs belong here: ones stamped onto inventory
+        // batches already have a transaction behind them and belong to the
+        // normal collectibles rows. They ride as JEV rows (flagged `isJev`):
+        // the badge is the client nickname only, BID Amount is the journal's
+        // balanced side, and Net Amount is that balance less EWT / tax.
+        $deliveredJevs = collect();
+        if ($typeDelivered !== '') {
+            $deliveredJevs = Jev::with([
+                'entries.journal_account.client',
+                'inventories',
+            ])
+                ->where('cJEVLinkType', $typeDelivered)
+                ->where('cStatus', $activeStatus)
+                ->whereDoesntHave('inventories')
+                ->get()
+                ->map(function ($jev) {
+                    // The balanced side — same figure the JEV list prints
+                    // as its total (credits, i.e. positive dAmount rows).
+                    $balanced = $jev->entries->reduce(
+                        fn($sum, $entry) => $sum + max(0, (float) $entry->dAmount),
+                        0,
+                    );
+
+                    return [
+                        'id'              => $jev->nJEVId,
+                        'strCode'         => $jev->strJEVNumber,
+                        'strTitle'        => $jev->strTitle,
+                        'clientNickName'  => $this->jevService->displayTitleOf($jev),
+                        'companyNickName' => null,
+                        'officeNickName'  => null,
+                        'cItemType'       => null,
+                        'retention'       => 0,
+                        // The card puts jevTotal in BID Amount and derives
+                        // Net Amount from EWT / tax on that balance.
+                        'amount'          => 0,
+                        'jevTotal'        => round($balanced, 2),
+                        'date'            => $jev->dtOccur,
+                        'isJev'           => true,
+                    ];
+                });
+        }
+
         $collections = $collectedTxns
             ->map(function ($txn) use ($retentionMap) {
                 $txnId = $txn->nTransactionId;
@@ -379,10 +441,181 @@ class DashboardService
             ->values()
             ->all();
 
+        // ── An Active Collection JEV covers a hand-added Delivered one ──
+        // Only inventory-free JEVs of BOTH types take part: an inventory
+        // JEV already has a transaction behind it, so it is neither hidden
+        // here nor offered as a match. Once matched, the D row leaves
+        // Collectibles and the C JEV takes its place in Collection.
+        $matchedCollectionJevs = collect();
+        if ($typeCollection !== '' && $deliveredJevs->isNotEmpty()) {
+            $collectionJevs = Jev::with([
+                'entries.journal_account.client',
+                'inventories',
+                'collections',
+                'transactions.client',
+            ])
+                ->where('cJEVLinkType', $typeCollection)
+                ->where('cStatus', $activeStatus)
+                ->whereDoesntHave('inventories')
+                ->get();
+
+            // Index every candidate by its match key (client | amount |
+            // period-or-words) — one pass, no per-row queries.
+            $byKey = [];
+            foreach ($collectionJevs as $jev) {
+                $balanced = $jev->entries->reduce(
+                    fn($sum, $entry) => $sum + max(0, (float) $entry->dAmount),
+                    0,
+                );
+                $key = $this->jevMatchKey(
+                    $jev->strTitle,
+                    $this->jevService->displayTitleOf($jev),
+                    $balanced,
+                );
+                $byKey[$key][] = $jev;
+            }
+
+            $matchedIds = [];
+            $deliveredJevs = $deliveredJevs->reject(
+                function ($row) use ($byKey, &$matchedIds) {
+                    $key = $this->jevMatchKey(
+                        $row['strTitle'],
+                        $row['clientNickName'],
+                        $row['jevTotal'],
+                    );
+                    if (empty($byKey[$key])) {
+                        return false;
+                    }
+                    foreach ($byKey[$key] as $jev) {
+                        $matchedIds[$jev->nJEVId] = true;
+                    }
+                    return true;
+                }
+            );
+
+            // A C JEV whose bound transaction already produced a Collection
+            // row must not be printed twice.
+            $existingTxnIds = collect($collections)
+                ->pluck('id')
+                ->filter()
+                ->map(fn($id) => (string) $id)
+                ->all();
+
+            $matchedCollectionJevs = $collectionJevs
+                ->filter(fn($jev) => isset($matchedIds[$jev->nJEVId]))
+                ->reject(function ($jev) use ($existingTxnIds) {
+                    $txnId = $jev->collections->first()?->nTransactionId;
+                    return $txnId !== null && in_array((string) $txnId, $existingTxnIds, true);
+                })
+                ->map(function ($jev) {
+                    $balanced = $jev->entries->reduce(
+                        fn($sum, $entry) => $sum + max(0, (float) $entry->dAmount),
+                        0,
+                    );
+
+                    return [
+                        'id'              => $jev->nJEVId,
+                        'strCode'         => $jev->strJEVNumber,
+                        'strTitle'        => $jev->strTitle,
+                        'clientNickName'  => $this->jevService->displayTitleOf($jev),
+                        'companyNickName' => null,
+                        'officeNickName'  => null,
+                        'cItemType'       => null,
+                        'retention'       => 0,
+                        'amount'          => 0,
+                        'jevTotal'        => round($balanced, 2),
+                        'date'            => $jev->dtOccur,
+                        'isJev'           => true,
+                    ];
+                });
+        }
+
+        // JEV rows come after the transaction rows; the existing order of
+        // the transaction rows is left untouched.
+        $collectibles = collect($collectibles)
+            ->concat($deliveredJevs)
+            ->values()
+            ->all();
+        $collections = collect($collections)
+            ->concat($matchedCollectionJevs)
+            ->values()
+            ->all();
+
         return [
             'collectibles' => $collectibles,
             'collections'  => $collections,
         ];
+    }
+
+    /** Month names (full + abbreviated) used to read a period out of a title. */
+    private function monthWords(): array
+    {
+        return [
+            'january' => 1, 'jan' => 1,
+            'february' => 2, 'feb' => 2,
+            'march' => 3, 'mar' => 3,
+            'april' => 4, 'apr' => 4,
+            'may' => 5,
+            'june' => 6, 'jun' => 6,
+            'july' => 7, 'jul' => 7,
+            'august' => 8, 'aug' => 8,
+            'september' => 9, 'sep' => 9, 'sept' => 9,
+            'october' => 10, 'oct' => 10,
+            'november' => 11, 'nov' => 11,
+            'december' => 12, 'dec' => 12,
+        ];
+    }
+
+    /** "July 2026" / "Jul 2026" / "07/2026" → "2026-07"; null when absent. */
+    private function monthYearKey(?string $title): ?string
+    {
+        $text = strtolower((string) $title);
+        foreach ($this->monthWords() as $word => $month) {
+            if (preg_match('/\b' . preg_quote($word, '/') . '\b\D{0,12}\b(20\d{2})\b/', $text, $m)) {
+                return sprintf('%04d-%02d', (int) $m[1], $month);
+            }
+        }
+        if (preg_match('/\b(0?[1-9]|1[0-2])\s*\/\s*(20\d{2})\b/', $text, $m)) {
+            return sprintf('%04d-%02d', (int) $m[2], (int) $m[1]);
+        }
+        return null;
+    }
+
+    /**
+     * Stable words of a title after dropping the JEV / boilerplate prefixes.
+     * "CSI - Drone - PGOM-SP" and "Collection for Drone PGOM-SP" both
+     * become "drone pgom sp".
+     */
+    private function descriptorKey(?string $title): string
+    {
+        $stop = array_merge(
+            array_keys($this->monthWords()),
+            ['csi', 'collection', 'for', 'of', 'the', 'and', 'a', 'an', 'to', 'in', 'on', 'by', 'payment', 'jev']
+        );
+        $words = preg_split('/[^a-z0-9]+/', strtolower((string) $title), -1, PREG_SPLIT_NO_EMPTY);
+        $words = array_values(array_filter(
+            $words,
+            fn($w) => !in_array($w, $stop, true) && !preg_match('/^\d{4}$/', $w)
+        ));
+        sort($words, SORT_STRING);
+        return implode(' ', $words);
+    }
+
+    /**
+     * One match key for a JEV: normalized client + balanced amount in
+     * centavos + either the title's period or its descriptor words. A
+     * period-bearing title never matches a word-only one, so "June" and
+     * "July" cannot collide with an undated C JEV.
+     */
+    private function jevMatchKey(?string $title, ?string $client, $amount): string
+    {
+        $prefix = preg_replace('/\s+/', ' ', strtolower(trim((string) $client))) . '|'
+            . (string) ((int) round(((float) $amount) * 100)) . '|';
+        $period = $this->monthYearKey($title);
+
+        return $period !== null
+            ? $prefix . 'p:' . $period
+            : $prefix . 'w:' . $this->descriptorKey($title);
     }
 
     /**

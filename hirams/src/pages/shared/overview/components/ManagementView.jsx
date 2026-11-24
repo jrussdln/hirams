@@ -22,8 +22,16 @@ import { fmtDate, fmtDateTime } from "../../../../utils/helpers/timeZone";
 import { getDueDateColor } from "../../../../utils/helpers/dueDateColor";
 import useKeysLabels from "../../../../hooks/useKeysLabels";
 import { fmtPHP } from "../../../../utils/formatters/formatter";
-import { calculateCollectionEWT } from "../../../../utils/helpers/calculateEWT";
-import { calculateCollectionTax } from "../../../../utils/helpers/calculateTax";
+import {
+  calculateCollectionEWT,
+  calculateCollectionEWTExact,
+  phpRoundHalfUp,
+} from "../../../../utils/helpers/calculateEWT";
+import {
+  calculateCollectionTax,
+  calculateCollectionTaxExact,
+} from "../../../../utils/helpers/calculateTax";
+import { calculateCollectionNet } from "../../../../utils/helpers/calculateCollectionNet";
 import { getItem, setItem } from "../../../../utils/storage/localStorage";
 import { cardSx, cardVariants } from "./overviewStyles";
 import {
@@ -466,27 +474,61 @@ function OngoingTransactionsPanel({
  * Rows are display-only: the figures feed management's overview, they are
  * not a worklist the way the Ongoing Transactions panel below is.
  *
- * The EWT / TAX are worked out PER ROW exactly the way CollectionReceiptCard
- * does it (the rate depends on the transaction's cItemType; the tax is a
- * flat 5% of the VAT-net amount). Summing the row figures — not the formulas
- * of the sums — keeps every row and the total in agreement.
+ * The EWT / TAX are derived at FULL precision per row, and each net is
+ * rounded ONCE — the same rule CollectionReceiptCard uses. The section
+ * totals sum those exact components and round once at the end, so the
+ * tiles agree with Excel and with the rows down to the centavo.
  */
 
-// Section totals: Amount → Less EWT → Less Tax → Less Retention → Net,
-// summed from the ROW figures (not the formulas of the sums).
-const ledgerTotalsOf = (rows) => {
+// A hand-added JEV carries no cItemType — its EWT rate comes from its
+// title. Any "service" makes it a service (2%); everything else is goods
+// (1%). Punctuation is stripped first so "Service-", "SERVICE," or
+// "(Service)" still match. The EWT helper applies the VAT-net base either way.
+const jevItemTypeOf = (title) =>
+  String(title ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .includes("service")
+    ? "S"
+    : "G";
+
+// One card row's figures, whether it came from a transaction or a JEV.
+// A JEV's amount is its balanced total (jevTotal); a transaction's is its
+// BID amount. This keeps the tiles and the table on exactly the same rule.
+const ledgerRowOf = (r) => {
   const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-  const amount = rows.reduce((s, r) => s + num(r.amount), 0);
-  const ewt = rows.reduce(
-    (s, r) => s + num(calculateCollectionEWT(num(r.amount), r.cItemType)),
+  const isJev = r.isJev === true;
+  return {
+    isJev,
+    amount: isJev ? num(r.jevTotal) : num(r.amount),
+    cItemType: isJev ? jevItemTypeOf(r.strTitle) : r.cItemType,
+    retention: isJev ? 0 : num(r.retention),
+  };
+};
+
+// Section totals: Amount → Less EWT → Less Tax → Less Retention → Net.
+const ledgerTotalsOf = (rows) => {
+  const figures = rows.map(ledgerRowOf);
+  const amount = figures.reduce((s, r) => s + r.amount, 0);
+  // Exact sums — rounding each row's EWT/tax before summing can drift a
+  // centavo from the round of the whole.
+  const ewt = figures.reduce(
+    (s, r) => s + calculateCollectionEWTExact(r.amount, r.cItemType),
     0,
   );
-  const tax = rows.reduce(
-    (s, r) => s + num(calculateCollectionTax(num(r.amount))),
+  const tax = figures.reduce(
+    (s, r) => s + calculateCollectionTaxExact(r.amount),
     0,
   );
-  const retention = rows.reduce((s, r) => s + num(r.retention), 0);
-  return { amount, ewt, tax, retention, net: amount - ewt - tax - retention };
+  const retention = figures.reduce((s, r) => s + r.retention, 0);
+  return {
+    amount: phpRoundHalfUp(amount),
+    ewt: phpRoundHalfUp(ewt),
+    tax: phpRoundHalfUp(tax),
+    retention: phpRoundHalfUp(retention),
+    // Net from the unrounded sums, not from the rounded display figures.
+    net: phpRoundHalfUp(amount - ewt - tax - retention),
+  };
 };
 
 // ── The section's date filter — the same This ▾ / Previous ▾ quick picks
@@ -574,23 +616,28 @@ function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleVie
     () =>
       filteredRows.map((r) => {
         const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
-        const amount = num(r.amount);
-        const ewt = num(calculateCollectionEWT(amount, r.cItemType));
+        const { isJev, amount, cItemType, retention } = ledgerRowOf(r);
+        // Display EWT/tax are the rounded lines (what Excel shows); the
+        // NET keeps full precision and rounds once, like the receipt.
+        const ewt = num(calculateCollectionEWT(amount, cItemType));
         const tax = num(calculateCollectionTax(amount));
-        const retention = num(r.retention);
         return {
-          id: r.id ?? r.strCode,
+          // JEV ids live in a different table from transaction ids —
+          // namespace them so the two can never collide as row keys.
+          id: isJev ? `jev-${r.id}` : (r.id ?? r.strCode),
+          isJev,
           code: r.strCode || "—",
-          company: r.companyNickName || "",
+          // A JEV badge prints the client nickname only — no company.
+          company: isJev ? "" : r.companyNickName || "",
           client: r.clientNickName || "",
-          office: r.officeNickName || "",
+          office: isJev ? "" : r.officeNickName || "",
           title: r.strTitle || "—",
           date: r.date,
           amount,
           ewt,
           tax,
           retention,
-          net: amount - ewt - tax - retention,
+          net: calculateCollectionNet(amount, cItemType, retention),
         };
       }),
     [filteredRows],
@@ -659,7 +706,11 @@ function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleVie
         label: "BID Amount",
         xs: 1.1,
         align: "right",
-        render: (v) => <Typography sx={{ fontSize: "0.68rem", fontWeight: 600 }}>{fmtPHP(v)}</Typography>,
+        render: (v) => (
+          <Typography sx={{ fontSize: "0.68rem", fontWeight: 600 }}>
+            {fmtPHP(v)}
+          </Typography>
+        ),
       },
       {
         key: "net",

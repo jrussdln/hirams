@@ -39,7 +39,16 @@ const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
  * @param amount collectible amount
  */
 export const calculateCollectionTax = (amount) =>
-  round2((num(amount) / TAX_VAT_FACTOR) * COLLECTION_TAX_RATE);
+  round2(calculateCollectionTaxExact(amount));
+
+/**
+ * The UNROUNDED twin of calculateCollectionTax — the collectible tax at
+ * full precision, for callers that round only the final net. Rounding the
+ * tax on its own before subtracting shifts the net by a centavo against
+ * Excel (e.g. 497,500 → 470,848.22 instead of 470,848.21).
+ */
+export const calculateCollectionTaxExact = (amount) =>
+  (num(amount) / TAX_VAT_FACTOR) * COLLECTION_TAX_RATE;
 
 /**
  * The total purchase price of a transaction item — the included options.

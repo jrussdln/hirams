@@ -14,6 +14,7 @@ import { numberToWords } from "../../../../utils/helpers/numberToWords";
 import { fmtDate, fmtPHP } from "../../../../utils/formatters/formatter.js";
 import getThemeColors from "../../../../utils/style/getThemeColors.js";
 import { calculateCollectionEWT } from "../../../../utils/helpers/calculateEWT.js";
+import { calculateCollectionNet } from "../../../../utils/helpers/calculateCollectionNet.js";
 import { calculateCollectionTax } from "../../../../utils/helpers/calculateTax.js";
 import PickableValue from "../../../../components/ui/form/AmountPick.jsx";
 
@@ -215,8 +216,13 @@ export default function CollectionReceiptCard({
   const headerName =
     !showClient && clientName ? `${clientName} - ${eventName}` : eventName;
 
-  const netAmount =
-    Number(collectibleAmount || 0) - ewtAmount - taxAmount - retentionAmount;
+  // The deduction LINES show the rounded EWT / tax (what Excel displays);
+  // the NET keeps full precision and rounds once (calculateCollectionNet).
+  const netAmount = calculateCollectionNet(
+    collectibleAmount,
+    cItemType,
+    retentionAmount,
+  );
   const amountInWords = numberToWords(netAmount);
 
   return (

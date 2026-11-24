@@ -23,6 +23,10 @@ class JevService
     {
         return [
             'entries.journal_account.parent',
+            // A hand-added Delivered JEV has no inventory batches: its
+            // counterparty is read from a TO-side account of type C, whose
+            // nRecordId points at a client (see resolveDisplayTitle).
+            'entries.journal_account.client',
             'vouchers.supplier',
             'vouchers.voucher_assignees.assignee',
             'vouchers.company',
@@ -407,15 +411,28 @@ class JevService
     }
 
     /**
+     * Public entry point for other read-only screens (the dashboard's
+     * collectibles card) that need a JEV's counterparty name — the same
+     * derivation the JEV list uses, so the two can never disagree.
+     */
+    public function displayTitleOf(Jev $jev): ?string
+    {
+        return $this->resolveDisplayTitle($jev);
+    }
+
+    /**
      * The JEV list shows one name under each JEV number.
      *
      *   • N — the JEV's own strTitle.
      *   • R — the supplier, read off the inventory batches booked on the JEV:
      *          each batch knows its purchase option, and that option knows
      *          the supplier.
-     *   • D — the client, from the same batch chain via the transaction item.
-     *   • C — the client of the transaction the collection was raised on
-     *          (the same counterparty the Delivered Items rows read).
+     *   • D — the client, from the same batch chain via the transaction item;
+     *          a hand-added JEV (no batches) falls back to the client behind
+     *          a TO-side account of type C.
+     *   • C — the client of the transaction the collection was raised on;
+     *          a hand-added JEV (no transaction) falls back to the client
+     *          behind a debit-side account of type C.
      *   • V — whichever party stands behind the voucher: an assignee
      *          when the voucher has assignee rows, otherwise its supplier.
      */
@@ -440,13 +457,46 @@ class JevService
                 ->map(fn($inv) => $inv->purchaseOption?->transactionItem?->transaction?->client)
                 ->first(fn($c) => $c);
 
-            return $client?->strClientNickName ?: $client?->strClientName;
+            if ($client) {
+                return $client->strClientNickName ?: $client->strClientName;
+            }
+
+            // A Delivered JEV added from the Add JEV button has no inventory
+            // batches, so the client chain above is empty. Fall back to the
+            // journal's own TO side (dAmount >= 0): a linked account of type
+            // C carries the client id in nRecordId. The client relation
+            // resolves that id against tblclients.
+            $toClient = $jev->entries
+                ->filter(fn($e) => (float) $e->dAmount >= 0)
+                ->map(fn($e) => $e->journal_account)
+                ->filter(fn($a) => $a && (string) $a->cAccountType === 'C')
+                ->map(fn($a) => $a->client)
+                ->first(fn($c) => $c);
+
+            return $toClient?->strClientNickName ?: $toClient?->strClientName;
         }
 
         if ($linkType === 'C') {
-            $client = $jev->transactions->first()?->client;
+            $txnClient = $jev->transactions->first()?->client;
 
-            return $client?->strClientNickName ?: $client?->strClientName;
+            if ($txnClient) {
+                return $txnClient->strClientNickName ?: $txnClient->strClientName;
+            }
+
+            // A Collection JEV added from the Add JEV button has no
+            // transaction, so the client chain above is empty. Fall back
+            // to the journal's DEBIT side (dAmount < 0 — the "From"/Debit
+            // column in the entry UI): a linked account of type C carries
+            // the client id in nRecordId, resolved by the client relation
+            // against tblclients.
+            $debitClient = $jev->entries
+                ->filter(fn($e) => (float) $e->dAmount < 0)
+                ->map(fn($e) => $e->journal_account)
+                ->filter(fn($a) => $a && (string) $a->cAccountType === 'C')
+                ->map(fn($a) => $a->client)
+                ->first(fn($c) => $c);
+
+            return $debitClient?->strClientNickName ?: $debitClient?->strClientName;
         }
 
         // Disbursement Voucher / Collection — the voucher's own counterparty.

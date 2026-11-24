@@ -205,14 +205,9 @@ export const calculateEWT = ({
   cItemType = null,
 } = {}) => round2(ewtExact({ quantity, unitPrice, cEWTType, bEWT, bVAT, cItemType }));
 
-/**
- * Calculate the For Collection EWT from the collectible amount.
- * Collection uses the transaction item type directly: goods are 1% and
- * services are 2%, independent of the supplier flags used for purchase
- * lines. The collectible amount is a VAT-INCLUSIVE figure, so the base is
- * the VAT-net share: (amount / 1.12) x 1% / 2%.
- */
-export const calculateCollectionEWT = (amount, cItemType) => {
+// Normalize the collection inputs once — both the rounded and the exact
+// EWT below must use identical inputs or the two can disagree by a cent.
+const collectionEWTInputs = (amount, cItemType) => {
   const rawType =
     cItemType && typeof cItemType === "object"
       ? Object.keys(cItemType)[0] || Object.values(cItemType)[0]
@@ -220,7 +215,7 @@ export const calculateCollectionEWT = (amount, cItemType) => {
   const type = String(rawType ?? "").trim().toUpperCase();
   const normalizedType = type === "S" || type.startsWith("SERVICE") ? "S" : "G";
 
-  return calculateEWT({
+  return {
     quantity: 1,
     unitPrice: amount,
     bEWT: 1,
@@ -228,8 +223,27 @@ export const calculateCollectionEWT = (amount, cItemType) => {
     // (1.12) before applying the rate — the collectible amount is VAT-in.
     bVAT: 1,
     cItemType: normalizedType,
-  });
+  };
 };
+
+/**
+ * Calculate the For Collection EWT from the collectible amount.
+ * Collection uses the transaction item type directly: goods are 1% and
+ * services are 2%, independent of the supplier flags used for purchase
+ * lines. The collectible amount is a VAT-INCLUSIVE figure, so the base is
+ * the VAT-net share: (amount / 1.12) x 1% / 2%.
+ */
+export const calculateCollectionEWT = (amount, cItemType) =>
+  calculateEWT(collectionEWTInputs(amount, cItemType));
+
+/**
+ * The UNROUNDED twin of calculateCollectionEWT. Use it when the EWT is a
+ * component of a larger figure (e.g. the collection net): rounding each
+ * deduction to centavos before subtracting drifts one centavo from Excel,
+ * which keeps the full precision and rounds only the final result.
+ */
+export const calculateCollectionEWTExact = (amount, cItemType) =>
+  ewtExact(collectionEWTInputs(amount, cItemType));
 
 /**
  * Pull the EWT inputs out of an option, whatever shape it comes in.

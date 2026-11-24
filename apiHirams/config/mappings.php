@@ -229,7 +229,7 @@ return [
     'jev_types' => [
         'V' => 'Disbursement Voucher', //DV
         'R' => 'Received Purchases', //Received Items
-        'D' => 'Delivered Items', //Deivery Receipt
+        'D' => 'Delivered / CSI', //Deivery Receipt
         'C' => 'Collection', //Collection Receipt
         'N' => 'Other JEV'
     ],
