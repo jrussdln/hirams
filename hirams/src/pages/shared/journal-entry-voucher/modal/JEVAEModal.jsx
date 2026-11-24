@@ -2,11 +2,12 @@ import { useEffect } from "react";
 import { Box, TextField } from "@mui/material";
 import ModalContainer from "../../../../components/layouts/modal/ModalContainer.jsx";
 
-// ── Add JEV — the No Type journal's creation dialog ─────────────────────
+// ── Add JEV — the creation dialog (No Type / Collection / Delivered) ────
 // Opened AFTER the "Create JEV?" confirmation dialog is answered: this modal
 // is where the journal gets NAMED before the record exists — the Title field
 // is focused on open, and Save creates the JEV with that title and hands it
-// to /jev-update?id=….
+// to /jev-update?id=…. The subTitle names the type being created (the
+// listing passes its own type's label).
 //
 // Standard ModalContainer chrome: an "Add JEV" header, the Title / Date
 // fields in the content, and the default footer — Cancel and Save live on
@@ -16,6 +17,8 @@ import ModalContainer from "../../../../components/layouts/modal/ModalContainer.
 // overlay covers the create (see useJournalEntryVoucher.handleCreateJev).
 export default function JEVAEModal({
   open,
+  // The type being created — printed under the "Add JEV" header.
+  subTitle = "No Type",
   // Controlled field values.
   titleValue,
   dateValue,
@@ -43,7 +46,7 @@ export default function JEVAEModal({
       open={open}
       handleClose={onClose}
       title="Add JEV"
-      subTitle="No Type"
+      subTitle={subTitle}
       onSave={onSave}
       showSave={true}
       onCancel={onClose}

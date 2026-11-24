@@ -67,7 +67,9 @@ const inlineBadgeStyle = (c, colors) => ({
 
 // JEV listing — the type comes from the sidebar (see useJournalEntryVoucher).
 //   • Row click / View → shared JEV viewer (entries managed there).
-//   • Add JEV          → creates a No Type JEV and opens it in the viewer.
+//   • Add JEV          → creates a JEV of the list's type (No Type /
+//                        Collection / Delivered Items) and opens it in
+//                        the viewer.
 //   • Delete           → enabled for Draft / Cancelled, disabled once the
 //                        JEV is finalized (Pending Clearance / Active).
 export default function JournalEntryVoucherView({
@@ -89,6 +91,7 @@ export default function JournalEntryVoucherView({
   jevCancelledKey,
   jevPendingClearanceLabel,
   isCollectionType,
+  isDeliveredType,
   isPendingClearanceView,
   pendingClearanceCount,
   toggleCollectionPendingClearance,
@@ -117,6 +120,7 @@ export default function JournalEntryVoucherView({
   handleConfirmAction,
   // Add JEV — the naming modal opened by the confirmation dialog
   openAddJev,
+  createTypeLabel,
   createJevOpen,
   createTitle,
   createDate,
@@ -172,12 +176,14 @@ export default function JournalEntryVoucherView({
     jevPendingClearanceKey,
   ]);
 
-  // Add belongs to the No Type list alone — every other type is written by
-  // the voucher, purchase or inventory flow that owns it — and only for the
-  // roles that may write here at all.
+  // Add belongs to the No Type, Collection and Delivered Items lists —
+  // every other type is written by the voucher, purchase or inventory flow
+  // that owns it — and only for the roles that may write here at all. The
+  // new JEV takes the list's type (see useJournalEntryVoucher.createTypeCode).
   const canManage = Boolean(isManagement || isFinanceOfficer);
   const isNoTypeList = String(selectedTypeCode) === NO_TYPE_CODE;
-  const showAddJev = canManage && isNoTypeList;
+  const showAddJev =
+    canManage && (isNoTypeList || isCollectionType || isDeliveredType);
   const isAllStatus = !isPendingClearanceView && statusFilter === "all";
   const selectedTypeLabel =
     selectedTypeCode && jev_types?.[selectedTypeCode]
@@ -463,7 +469,13 @@ export default function JournalEntryVoucherView({
                 label="Add JEV"
                 icon={icons.add}
                 actionColor="add"
-                tooltip="Add a No Type JEV"
+                tooltip={
+                  isNoTypeList
+                    ? "Add a No Type JEV"
+                    : isCollectionType
+                      ? "Add a Collection JEV"
+                      : "Add a Delivered Items JEV"
+                }
                 onClick={openAddJev}
               />
             )}
@@ -501,10 +513,12 @@ export default function JournalEntryVoucherView({
       />
 
       {/* Add JEV — the naming card (Title already focused). Save creates
-          the No Type JEV with that title + today's date and opens it on
-          /jev-update?id=…; Close discards without creating anything. */}
+          the JEV of the list's type (No Type / Collection / Delivered)
+          with that title + today's date and opens it on /jev-update?id=…;
+          Close discards without creating anything. */}
       <JEVAEModal
         open={createJevOpen}
+        subTitle={createTypeLabel}
         titleValue={createTitle}
         dateValue={createDate}
         onTitleChange={(e) => {

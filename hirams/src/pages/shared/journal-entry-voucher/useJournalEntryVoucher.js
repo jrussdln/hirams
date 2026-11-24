@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import JevAPI from "../../../api/endpoints/jev.api.js";
 import useKeysLabels from "../../../hooks/useKeysLabels.js";
 import { fmtPHP } from "../../../utils/formatters/formatter.js";
-import { fmtDateTime } from "../../../utils/helpers/timeZone.js";
+import { fmtDateTime, getPhilippinesTime } from "../../../utils/helpers/timeZone.js";
 import { getItem, setItem, hasItem } from "../../../utils/storage/localStorage.js";
 import { withSpinner } from "../../../utils/helpers/swal.jsx";
 
@@ -12,9 +12,10 @@ import { withSpinner } from "../../../utils/helpers/swal.jsx";
 // Voucher / Client sections use for their status codes.
 const SESSION_KEY = "selectedJevTypeCode";
 
-// "No Type" — the one JEV type this page can CREATE: the view shows its
-// Add JEV button on that list alone, and Add writes this code before
-// landing the new journal on /jev-update. Mirrors jev_types in
+// "No Type" — the default JEV type this page CREATES: the view shows its
+// Add JEV button on the No Type, Collection and Delivered Items lists, and
+// Add writes the list's own code (Collection / Delivered there, this one
+// here) before landing the new journal on /jev-update. Mirrors jev_types in
 // apiHirams/config/mappings.php; JevNav picks the entry up from the same
 // mapping, so the sidebar sub-item and this list always agree.
 export const NO_TYPE_CODE = "N";
@@ -53,6 +54,7 @@ export default function useJournalEntryVoucher() {
     jev_status_common,
     jev_status_pending_clearance,
     jevCollectionKey,
+    jevDeliveredItemsKey,
     jevDraftKey,
     jevPendingClearanceKey,
     jevActiveKey,
@@ -115,6 +117,9 @@ export default function useJournalEntryVoucher() {
   const isCollectionType =
     !!selectedTypeCode &&
     String(selectedTypeCode) === String(jevCollectionKey);
+  const isDeliveredType =
+    !!selectedTypeCode &&
+    String(selectedTypeCode) === String(jevDeliveredItemsKey);
   const isPendingClearanceView = isCollectionType && collectionPendingOnly;
 
   useEffect(() => {
@@ -344,8 +349,8 @@ export default function useJournalEntryVoucher() {
           totalLabel: fmtPHP(total),
           statusLabel: jev_status?.[j.cStatus] ?? j.cStatus ?? "—",
           cStatus: j.cStatus ?? "",
-          // A No Type row is the only kind this page can create — the gate
-          // the Add button keys off.
+          // No Type / Collection / Delivered rows are the kinds this page
+          // can create — the gate the Add button keys off.
           cJEVLinkType: j.cJEVLinkType ?? "",
           dtOccur: fmtDateTime(j.dtOccur),
           // Who created the journal — "BY: <nickname>" over the date in the
@@ -432,7 +437,19 @@ export default function useJournalEntryVoucher() {
   // Confirming "Create JEV?" opens JEVAEModal — the Title / Date card in a
   // modal, Title already focused. Save is what actually creates the record
   // (today's date prefilled, like the old direct create), then the journal
-  // opens on /jev-update?id=….
+  // opens on /jev-update?id=…. The picked date is stored with the current
+  // PHT time so the Created column shows a real clock time (not 12:00 AM).
+  //
+  // The type Add writes is the LIST's type: Collection on the Collection
+  // list, Delivered Items on the Delivered list, No Type on the No Type
+  // list — the only three that offer the button (every other type is
+  // written by the flow that owns it).
+  const createTypeCode = isCollectionType
+    ? jevCollectionKey
+    : isDeliveredType
+      ? jevDeliveredItemsKey
+      : NO_TYPE_CODE;
+  const createTypeLabel = jev_types?.[createTypeCode] ?? "";
   const [createJevOpen, setCreateJevOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState("");
   const [createDate, setCreateDate] = useState("");
@@ -477,10 +494,16 @@ export default function useJournalEntryVoucher() {
     setCreateJevOpen(false);
     try {
       await withSpinner("JEV", async () => {
+        // Keep the date the user picked, but stamp the current PHT clock time
+        // onto it. A bare "00:00:00" renders as "12:00 AM" in the Created
+        // column, unlike JEVs written by the other flows (real datetime).
+        const now = getPhilippinesTime();
+        const pad = (n) => String(n).padStart(2, "0");
+        const time = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
         const res = await JevAPI.create({
-          cJEVLinkType: NO_TYPE_CODE,
+          cJEVLinkType: createTypeCode,
           strTitle: title,
-          dtOccur: `${date} 00:00:00`,
+          dtOccur: `${date} ${time}`,
         });
         const created = res?.nJEVId
           ? res
@@ -497,7 +520,7 @@ export default function useJournalEntryVoucher() {
       setCreateTitleError("Failed to create. Please try again.");
       setCreateJevOpen(true);
     }
-  }, [createTitle, createDate, navigate, jevUpdateUrl]);
+  }, [createTitle, createDate, createTypeCode, navigate, jevUpdateUrl]);
 
   // The "Add JEV" button only opens the dialog; this is what actually
   // creates it (same contract as inventory's handleConfirmAction).
@@ -569,6 +592,7 @@ export default function useJournalEntryVoucher() {
     jevCancelledKey,
     jevPendingClearanceLabel,
     isCollectionType,
+    isDeliveredType,
     isPendingClearanceView,
     pendingClearanceCount,
     toggleCollectionPendingClearance,
@@ -582,6 +606,7 @@ export default function useJournalEntryVoucher() {
     handleRowClick,
     openJevModal,
     // Add JEV — the naming modal opened directly by the Add JEV button
+    createTypeLabel,
     createJevOpen,
     createTitle,
     createDate,

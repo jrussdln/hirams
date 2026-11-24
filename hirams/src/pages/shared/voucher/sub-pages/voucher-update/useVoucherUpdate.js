@@ -329,24 +329,21 @@ export default function useVoucherUpdate() {
         const toCentsTotal = list
           .filter((e) => Number(e.dAmount) >= 0)
           .reduce((sum, e) => sum + toCents(e.dAmount), 0);
-        const grandCents = toCents(particularsGrandTotal);
-
+        // A journal is balanced when its own From and To sides agree. The
+        // voucher's grand total is a different figure (EWT, freight, etc.)
+        // and must NOT gate finalizing.
         const balanced =
           fromCents > 0 && toCentsTotal > 0 && fromCents === toCentsTotal;
-        const matchesGrandTotal = fromCents === grandCents;
-        setIsJevBalanced(balanced && matchesGrandTotal);
+        setIsJevBalanced(balanced);
         setJevBalanceAmounts({
           fromCents,
           toCents: toCentsTotal,
-          grandCents,
         });
 
         if (fromCents === 0 && toCentsTotal === 0) {
           setJevBalanceStatus("no_entries");
         } else if (!balanced) {
           setJevBalanceStatus("unbalanced");
-        } else if (!matchesGrandTotal) {
-          setJevBalanceStatus("balanced_mismatch");
         } else {
           setJevBalanceStatus("balanced");
         }
@@ -366,7 +363,7 @@ export default function useVoucherUpdate() {
     return () => {
       active = false;
     };
-  }, [voucher?.nJEVId, particularsGrandTotal, balanceRefreshKey]);
+  }, [voucher?.nJEVId, balanceRefreshKey]);
 
   // ── Real-time: JEV entries changed (from JevViewPanel or another tab) ──
   useEffect(() => {
@@ -395,10 +392,6 @@ export default function useVoucherUpdate() {
         return a
           ? `JEV entries not balanced yet — From ₱${centsLabel(a.fromCents)} / To ₱${centsLabel(a.toCents)}`
           : "JEV entries not balanced yet";
-      case "balanced_mismatch":
-        return a
-          ? `JEV entries balance at ₱${centsLabel(a.fromCents)} but the grand total is ₱${centsLabel(a.grandCents)}`
-          : "JEV entries balanced but do not match the grand total";
       default:
         return "";
     }
