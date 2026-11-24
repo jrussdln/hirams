@@ -56,6 +56,7 @@ export default function ManagePOVoucherModal({
   po,
   supplierId,
   voucherActiveKey,
+  voucherCancelledKey,
   isEditable,
   voucherSupplierTypeKey,
   onSuccess,
@@ -70,7 +71,13 @@ export default function ManagePOVoucherModal({
   const [listLoading, setListLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [linkedVoucher, setLinkedVoucher] = useState(null);
+  // The cancelled voucher stays on screen under the active one as a record
+  // of what was replaced — it is never used for linking/unlinking.
+  const [cancelledVoucher, setCancelledVoucher] = useState(null);
   const [checking, setChecking] = useState(true);
+  // voucher_status: A Active · C Closed · P Paid · X Cancelled.
+  // Never hardcode "C" here — that is CLOSED, not cancelled.
+  const cancelledCode = String(voucherCancelledKey || "X");
 
   useEffect(() => {
     if (!open || !po) return;
@@ -78,32 +85,38 @@ export default function ManagePOVoucherModal({
     setActionLoading(false);
     setListLoading(false);
     setVouchers([]);
+    setCancelledVoucher(null);
     (async () => {
       try {
         const res = await VoucherAPI.getVouchers();
         const all = Array.isArray(res) ? res : res?.data || [];
-        const found = all.find((v) =>
+        const linked = all.filter((v) =>
           (v.voucher_suppliers || []).some(
             (vs) =>
               vs.nPurchaseOrderId &&
               Number(vs.nPurchaseOrderId) === Number(po.nPurchaseOrderId),
           ),
         );
-        if (found) {
-          setLinkedVoucher(found);
-          setView(VIEW.LINKED);
-        } else {
-          setLinkedVoucher(null);
-          setView(VIEW.MAIN);
-        }
+        const active = linked.find(
+          (v) => String(v.cStatus) !== cancelledCode,
+        );
+        const cancelled = linked.find(
+          (v) => String(v.cStatus) === cancelledCode,
+        );
+        // A cancelled voucher alone opens the Create / Link screen; once a
+        // replacement exists the LINKED screen shows both cards.
+        setLinkedVoucher(active || null);
+        setCancelledVoucher(cancelled || null);
+        setView(active ? VIEW.LINKED : VIEW.MAIN);
       } catch {
         setLinkedVoucher(null);
+        setCancelledVoucher(null);
         setView(VIEW.MAIN);
       } finally {
         setChecking(false);
       }
     })();
-  }, [open, po]);
+  }, [open, po, cancelledCode]);
 
   const fetchOpenVouchers = useCallback(async () => {
     if (!supplierId) return;
@@ -133,16 +146,19 @@ export default function ManagePOVoucherModal({
       const res = await VoucherAPI.getVouchers();
       const all = Array.isArray(res) ? res : res?.data || [];
       return (
-        all.find((v) =>
-          (v.voucher_suppliers || []).some(
-            (vs) => Number(vs.nPurchaseOrderId) === Number(po.nPurchaseOrderId),
-          ),
+        all.find(
+          (v) =>
+            String(v.cStatus) !== cancelledCode &&
+            (v.voucher_suppliers || []).some(
+              (vs) =>
+                Number(vs.nPurchaseOrderId) === Number(po.nPurchaseOrderId),
+            ),
         ) || null
       );
     } catch {
       return null;
     }
-  }, [po]);
+  }, [po, cancelledCode]);
 
   const handleCreateVoucher = () => {
     if (!isEditable) return;
@@ -150,24 +166,26 @@ export default function ManagePOVoucherModal({
   };
   const handleLinkVoucher = (voucher) => {
     if (!isEditable) return;
-    if (String(voucher.cStatus) !== "C")
+    if (String(voucher.cStatus) !== cancelledCode)
       runConfirm(CONFIRM_TYPE.LINK, voucher);
   };
   const handleUnlinkVoucher = () => {
     if (!isEditable) return;
-    if (linkedVoucher && String(linkedVoucher.cStatus) !== "C")
+    if (linkedVoucher && String(linkedVoucher.cStatus) !== cancelledCode)
       runConfirm(CONFIRM_TYPE.UNLINK);
   };
-  const handleNavigateToVoucher = () => {
-    if (linkedVoucher) {
-      // voucherStatusCode → the Vouchers sidebar highlights the linked
-      // voucher's real status filter.
-      navigate(`/voucher-update?id=${linkedVoucher.nVoucherId}`, {
-        state: { voucherStatusCode: linkedVoucher.cStatus },
-      });
-      onClose();
-    }
+  const navigateToVoucher = (voucher) => {
+    if (!voucher?.nVoucherId) return;
+    // voucherStatusCode → the Vouchers sidebar highlights the voucher's
+    // real status filter (including X for a cancelled one).
+    navigate(`/voucher-update?id=${voucher.nVoucherId}`, {
+      state: { voucherStatusCode: voucher.cStatus },
+    });
+    onClose();
   };
+  const handleNavigateToVoucher = () => navigateToVoucher(linkedVoucher);
+  const handleNavigateToCancelledVoucher = () =>
+    navigateToVoucher(cancelledVoucher);
   const handleGoLinkList = () => {
     if (!isEditable) return;
     fetchOpenVouchers();
@@ -647,7 +665,8 @@ export default function ManagePOVoucherModal({
                       size="small"
                       onClick={handleUnlinkVoucher}
                       disabled={
-                        actionLoading || String(linkedVoucher.cStatus) === "C"
+                        actionLoading ||
+                        String(linkedVoucher.cStatus) === cancelledCode
                       }
                       sx={{
                         width: 34,
@@ -665,8 +684,8 @@ export default function ManagePOVoucherModal({
                         },
                       }}
                       title={
-                        String(linkedVoucher.cStatus) === "C"
-                          ? "Voucher is closed"
+                        String(linkedVoucher.cStatus) === cancelledCode
+                          ? "Voucher is cancelled"
                           : "Unlink Voucher"
                       }
                     >
@@ -675,6 +694,89 @@ export default function ManagePOVoucherModal({
                   </Box>
                 )}
               </Box>
+
+              {/* The cancelled voucher stays visible as a record of what
+                  was replaced — reference only, no link/unlink actions. */}
+              {cancelledVoucher && (
+                <Box
+                  sx={{
+                    mt: 1.25,
+                    borderRadius: "8px",
+                    border: `0.5px solid ${c.border}`,
+                    background: c.cardBg,
+                    px: 1.5,
+                    py: 1.25,
+                    opacity: 0.8,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 1,
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontSize: "0.62rem",
+                        fontWeight: 700,
+                        color: c.textMuted,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.3px",
+                      }}
+                    >
+                      Cancelled Voucher
+                    </Typography>
+                    <Box
+                      component="span"
+                      sx={{
+                        px: 0.75,
+                        py: "2px",
+                        borderRadius: "9999px",
+                        border: `1px solid ${c.dangerButtonBorder}`,
+                        background: c.dangerButtonBg,
+                        color: c.dangerButtonColor,
+                        fontSize: "0.55rem",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.3px",
+                      }}
+                    >
+                      Cancelled
+                    </Box>
+                  </Box>
+                  <Typography
+                    component="button"
+                    onClick={handleNavigateToCancelledVoucher}
+                    title="Go to cancelled voucher"
+                    sx={{
+                      display: "block",
+                      mt: 0.3,
+                      fontSize: "0.95rem",
+                      fontWeight: 800,
+                      color: c.linkButtonColor,
+                      lineHeight: 1.2,
+                      textAlign: "left",
+                      p: 0,
+                      border: "none",
+                      background: "transparent",
+                      fontFamily: "inherit",
+                      cursor: "pointer",
+                      "&:hover": { textDecoration: "underline" },
+                    }}
+                  >
+                    {cancelledVoucher.strNumber ?? "—"}
+                  </Typography>
+                  <Typography
+                    sx={{ fontSize: "0.72rem", color: c.textMuted, mt: 0.4 }}
+                  >
+                    {cancelledVoucher.supplier?.strSupplierNickName ??
+                      cancelledVoucher.supplier?.strSupplierName ??
+                      "—"}
+                  </Typography>
+                </Box>
+              )}
             </Box>
           )}
       </>

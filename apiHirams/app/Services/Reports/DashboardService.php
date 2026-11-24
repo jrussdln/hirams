@@ -315,6 +315,17 @@ class DashboardService
         // The mapping calls A "Active" (some installs label it "Completed");
         // A is the code either way — use it if the label lookup misses.
         $activeStatus   = (string) (array_search('Active', config('mappings.jev_status', []), true) ?: 'A');
+        // A matched Collection JEV can also be Pending Clearance (R) — it
+        // still claims its Delivered row and is printed with that status.
+        $pendingClearanceStatus = (string) (array_search(
+            'Pending Clearance',
+            config('mappings.jev_status_pending_clearance', []),
+            true
+        ) ?: 'R');
+        $matchedJevStatuses = array_values(array_filter([
+            $activeStatus,
+            $pendingClearanceStatus,
+        ]));
 
         // ── Collectibles: the For Collection workspace itself ──────────
         // Every transaction sitting at For Collection belongs here, even if a
@@ -445,8 +456,12 @@ class DashboardService
         // Only inventory-free JEVs of BOTH types take part: an inventory
         // JEV already has a transaction behind it, so it is neither hidden
         // here nor offered as a match. Once matched, the D row leaves
-        // Collectibles and the C JEV takes its place in Collection.
+        // Collectibles and the C JEV takes its place in Collection. A
+        // Pending Clearance JEV is printed in BOTH lists: its figures count
+        // in Collectibles, but only its net is called out under Collection's
+        // Net Amount tile (it is excluded from that section's metrics).
         $matchedCollectionJevs = collect();
+        $pendingClearanceJevs = collect();
         if ($typeCollection !== '' && $deliveredJevs->isNotEmpty()) {
             $collectionJevs = Jev::with([
                 'entries.journal_account.client',
@@ -455,7 +470,7 @@ class DashboardService
                 'transactions.client',
             ])
                 ->where('cJEVLinkType', $typeCollection)
-                ->where('cStatus', $activeStatus)
+                ->whereIn('cStatus', $matchedJevStatuses)
                 ->whereDoesntHave('inventories')
                 ->get();
 
@@ -501,43 +516,58 @@ class DashboardService
                 ->map(fn($id) => (string) $id)
                 ->all();
 
-            $matchedCollectionJevs = $collectionJevs
+            $matchedJevs = $collectionJevs
                 ->filter(fn($jev) => isset($matchedIds[$jev->nJEVId]))
                 ->reject(function ($jev) use ($existingTxnIds) {
                     $txnId = $jev->collections->first()?->nTransactionId;
                     return $txnId !== null && in_array((string) $txnId, $existingTxnIds, true);
-                })
-                ->map(function ($jev) {
-                    $balanced = $jev->entries->reduce(
-                        fn($sum, $entry) => $sum + max(0, (float) $entry->dAmount),
-                        0,
-                    );
-
-                    return [
-                        'id'              => $jev->nJEVId,
-                        'strCode'         => $jev->strJEVNumber,
-                        'strTitle'        => $jev->strTitle,
-                        'clientNickName'  => $this->jevService->displayTitleOf($jev),
-                        'companyNickName' => null,
-                        'officeNickName'  => null,
-                        'cItemType'       => null,
-                        'retention'       => 0,
-                        'amount'          => 0,
-                        'jevTotal'        => round($balanced, 2),
-                        'date'            => $jev->dtOccur,
-                        'isJev'           => true,
-                    ];
                 });
+
+            $buildRow = function ($jev) use ($pendingClearanceStatus) {
+                $balanced = $jev->entries->reduce(
+                    fn($sum, $entry) => $sum + max(0, (float) $entry->dAmount),
+                    0,
+                );
+
+                return [
+                    'id'                 => $jev->nJEVId,
+                    'strCode'            => $jev->strJEVNumber,
+                    'strTitle'           => $jev->strTitle,
+                    'clientNickName'     => $this->jevService->displayTitleOf($jev),
+                    'companyNickName'    => null,
+                    'officeNickName'     => null,
+                    'cItemType'          => null,
+                    'retention'          => 0,
+                    'amount'             => 0,
+                    'jevTotal'           => round($balanced, 2),
+                    'date'               => $jev->dtOccur,
+                    'isJev'              => true,
+                    // Drives the italic status line under Net Amount.
+                    'isPendingClearance' => (string) $jev->cStatus === $pendingClearanceStatus,
+                ];
+            };
+
+            // Pending Clearance rows are printed in both lists with their
+            // status. Collectibles counts their figures in its metrics;
+            // Collection leaves them out and shows only the net as a sub-line.
+            $pendingClearanceJevs = $matchedJevs
+                ->filter(fn($jev) => (string) $jev->cStatus === $pendingClearanceStatus)
+                ->map($buildRow);
+            $matchedCollectionJevs = $matchedJevs
+                ->filter(fn($jev) => (string) $jev->cStatus !== $pendingClearanceStatus)
+                ->map($buildRow);
         }
 
         // JEV rows come after the transaction rows; the existing order of
         // the transaction rows is left untouched.
         $collectibles = collect($collectibles)
             ->concat($deliveredJevs)
+            ->concat($pendingClearanceJevs)
             ->values()
             ->all();
         $collections = collect($collections)
             ->concat($matchedCollectionJevs)
+            ->concat($pendingClearanceJevs)
             ->values()
             ->all();
 

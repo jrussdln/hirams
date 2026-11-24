@@ -161,15 +161,19 @@ function CalcKey({ label, tone = "plain", aria, onPress, colors }) {
  *  - open      panel visible or not. The instance stays mounted while closed,
  *              so its position and size survive open → close → open.
  *  - onClose   close request (X button, Escape, or another calculator opening).
- *  - target    { name, label } of the field this calculator was opened for —
- *              null renders a plain calculator with no "Use in…" button.
+ *  - target    { name, label, value } of the field this calculator opened for.
+ *  - initialValue the field's current amount — the display is seeded with it
+ *              on open instead of starting at 0.
  *  - onApply   onApply(value) hands the shown number back to the caller as a
- *              plain numeric string ("1234.56"); FormGrid writes it into the field.
+ *              plain numeric string ("1234.56"); FormGrid writes it into the
+ *              field when "Apply to amount" is pressed. "Use amount" reloads
+ *              the field's amount into the display.
  */
 export default function CalculatorWidget({
   open = false,
   onClose,
   target = null,
+  initialValue = null,
   onApply = null,
 }) {
   const theme = useTheme();
@@ -204,6 +208,12 @@ export default function CalculatorWidget({
     sizeRef.current = size;
   }, [size]);
 
+  // Read the field's value at the moment of opening — without putting it in
+  // the effect's deps, so an external field change while the panel is open
+  // never wipes what the user is typing.
+  const initialValueRef = useRef(initialValue);
+  initialValueRef.current = initialValue;
+
   const rootRef = useRef(null);
   const idRef = useRef(`calc-${Math.random().toString(36).slice(2)}`);
   const [applied, setApplied] = useState(false);
@@ -231,13 +241,18 @@ export default function CalculatorWidget({
     return () => window.removeEventListener("calculator-opened", h);
   }, [onClose]);
 
-  // Fresh tape on every opening; the panel keeps its place and size.
+  // Fresh tape on every opening, seeded with the field's current amount
+  // ("1000.00" → entry "1000") instead of a blank 0 display. The panel keeps
+  // its place and size across open → close → open.
   useEffect(() => {
     if (!open) return;
-    setEntry("");
+    const raw = String(initialValueRef.current ?? "").replace(/,/g, "").trim();
+    const n = Number(raw);
+    const seed = raw !== "" && Number.isFinite(n) ? String(n) : "";
+    setEntry(seed);
     setAcc(null);
     setOp(null);
-    setFresh(true);
+    setFresh(seed === "");
     setTape("");
     setError("");
   }, [open]);
@@ -489,6 +504,23 @@ export default function CalculatorWidget({
     applyRef.current = setTimeout(() => setApplied(false), 1200);
   };
 
+  // "Use amount" — re-load the field's amount as the calculator's starting
+  // value (handy after AC or a long calculation).
+  const handleUseAmount = () => {
+    const raw = String(initialValueRef.current ?? "").replace(/,/g, "").trim();
+    const n = Number(raw);
+    if (raw === "" || !Number.isFinite(n)) {
+      reset();
+      return;
+    }
+    setEntry(String(n));
+    setAcc(null);
+    setOp(null);
+    setFresh(false);
+    setTape("");
+    setError("");
+  };
+
   const handleCopy = () => {
     const n = shownNumber();
     if (!Number.isFinite(n)) return;
@@ -560,10 +592,6 @@ export default function CalculatorWidget({
       : acc !== null
         ? groupDigits(round12(acc))
         : "0";
-
-  const applyLabel = target?.label
-    ? `Use in ${target.label}`
-    : "Use in amount field";
 
   return createPortal(
     <Box
@@ -727,6 +755,35 @@ export default function CalculatorWidget({
           bgcolor: colors.headerBg,
         }}
       >
+        {/* "Use amount" reloads the field's amount into the calculator;
+            "Apply to amount" writes the result back into the field. */}
+        <Box
+          component="button"
+          type="button"
+          onClick={handleUseAmount}
+          title="Reload the field's current amount into the calculator"
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            height: 30,
+            px: 1,
+            border: `1px solid ${colors.blue.text}`,
+            borderRadius: "7px",
+            background: colors.blue.bg,
+            color: colors.blue.text,
+            fontFamily: "inherit",
+            fontSize: "0.68rem",
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            cursor: "pointer",
+            transition: "background 0.15s",
+            "&:hover": { background: colors.blue.border },
+          }}
+        >
+          Use amount
+        </Box>
         <Box
           component="button"
           type="button"
@@ -753,7 +810,7 @@ export default function CalculatorWidget({
             transition: "background 0.15s, color 0.15s",
           }}
         >
-          {applied ? "Applied ✓" : applyLabel}
+          {applied ? "Applied ✓" : "Apply to amount"}
         </Box>
         <IconButton
           size="small"

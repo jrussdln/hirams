@@ -862,7 +862,13 @@ export default function FormGrid({
                           aria-label={`Open calculator for ${field.label}`}
                           title="Open calculator"
                           onClick={() =>
-                            setCalcField({ name: field.name, label: field.label })
+                            setCalcField({
+                              name: field.name,
+                              label: field.label,
+                              // Seed the calculator with what the field holds
+                              // right now, not a blank 0 display.
+                              value: formData[field.name],
+                            })
                           }
                           sx={{
                             color: clr.textMuted,
@@ -1197,6 +1203,7 @@ export default function FormGrid({
       <CalculatorWidget
         open={!!calcField}
         target={calcField}
+        initialValue={calcField?.value}
         onClose={() => setCalcField(null)}
         onApply={(value) => {
           if (!calcField) return;

@@ -483,7 +483,7 @@ export default function VoucherUpdateView() {
           totals on the voucher read the same values, so the refetch keeps
           them in step. A voucher linked to SEVERAL POs disables it — the
           row trucks on the PO list pick the PO there. */}
-      {!isAssigneeType && supplierLinks.length > 0 && (
+      {!isAssigneeType && supplierLinks.length > 0 && !isCancelled && (
         <Tooltip
           title={
             supplierLinks.length > 1
@@ -539,11 +539,29 @@ export default function VoucherUpdateView() {
         </>
       )}
       {String(voucher.cStatus) === String(voucherCancelledKey) && (
-        <Typography
-          sx={{ color: c.red.text, fontWeight: 600, fontSize: "0.85rem" }}
+        <Box
+          component="span"
+          sx={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 0.5,
+            px: 1.1,
+            py: 0.45,
+            borderRadius: "9999px",
+            border: `1px solid ${c.red.border}`,
+            backgroundColor: c.red.bg,
+            color: c.red.text,
+            fontSize: "0.7rem",
+            fontWeight: 700,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            lineHeight: 1,
+            whiteSpace: "nowrap",
+          }}
         >
-          ✅ Cancelled
-        </Typography>
+          <CloseOutlined sx={{ fontSize: "0.85rem" }} />
+          Cancelled
+        </Box>
       )}
     </Box>
   );

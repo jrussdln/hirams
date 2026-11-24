@@ -196,6 +196,7 @@ export default function ItemPurchasingUpdateView({
   voucherActiveKey,
   voucherClosedKey,
   voucherPaidKey,
+  voucherCancelledKey,
   voucherSupplierTypeKey,
   currentUserId,
   shippingMethod,
@@ -517,6 +518,13 @@ export default function ItemPurchasingUpdateView({
   };
   const confirmSlot = confirmAction ? toConfirmSlot(confirmAction) : null;
 
+  // A cancelled voucher is no longer a journal to open — the PO needs the
+  // Manage Voucher editor so a replacement can be created/linked.
+  const isVoucherCancelled =
+    !!voucherCancelledKey &&
+    (String(poVoucherStatus ?? "") === String(voucherCancelledKey) ||
+      String(poVoucher?.cStatus ?? "") === String(voucherCancelledKey));
+
   const showPODetails =
     !isArrivedView &&
     !(
@@ -780,11 +788,12 @@ export default function ItemPurchasingUpdateView({
           flashing one label and flipping to another a beat later. A PO
           WITHOUT a voucher gets Manage Voucher — the creation/link editor;
           one that already HAS a voucher gets View Voucher: a straight jump
-          to it, with the closed-voucher confirmation on the View side. */}
+          to it, with the closed-voucher confirmation on the View side. A CANCELLED
+           voucher gets Manage Voucher instead — nothing left to view. */}
       {selectedStatusCode === forPaymentKey &&
         (isFinanceOfficer || isManagement) &&
         voucherStatusResolved &&
-        (poVoucherStatus ? (
+        (poVoucherStatus && !isVoucherCancelled ? (
             <BaseButton
               label="View Voucher"
               icon={icons.view}
@@ -1334,6 +1343,7 @@ export default function ItemPurchasingUpdateView({
         po={po}
         supplierId={supplierId}
         voucherActiveKey={voucherActiveKey}
+        voucherCancelledKey={voucherCancelledKey}
         isEditable={isFinanceOfficer || isManagement}
         voucherSupplierTypeKey={voucherSupplierTypeKey}
         onSuccess={async () => {

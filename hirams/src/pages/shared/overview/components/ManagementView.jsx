@@ -507,8 +507,13 @@ const ledgerRowOf = (r) => {
 };
 
 // Section totals: Amount → Less EWT → Less Tax → Less Retention → Net.
-const ledgerTotalsOf = (rows) => {
-  const figures = rows.map(ledgerRowOf);
+const ledgerTotalsOf = (rows, excludePending = false) => {
+  // In Collection, Pending Clearance figures are not collected yet — keep
+  // them out of the BID / EWT / Tax / Net metrics (their net is called out
+  // under the Net Amount tile). Collectibles still counts them normally.
+  const figures = rows
+    .filter((r) => !excludePending || r.isPendingClearance !== true)
+    .map(ledgerRowOf);
   const amount = figures.reduce((s, r) => s + r.amount, 0);
   // Exact sums — rounding each row's EWT/tax before summing can drift a
   // centavo from the round of the whole.
@@ -564,7 +569,16 @@ const FILTER_GROUPS = [
 // NOTE: defined at MODULE scope, not inside the panel — an inline component
 // gets a fresh identity every parent render, so React would unmount it (and
 // wipe its `viewAll` state) whenever the dashboard data refreshed.
-function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleViewAll }) {
+function CollectionLedgerSection({
+  title,
+  rows,
+  emptyLabel,
+  viewAll,
+  onToggleViewAll,
+  // Collection only: pending figures stay out of the tiles, net shown as
+  // a sub-line. Collectibles leaves this off and counts them normally.
+  excludePendingFromTotals = false,
+}) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
 
@@ -585,25 +599,52 @@ function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleVie
   // A quick window keeps only rows whose date falls inside it; rows without
   // a date can never match a window, so they only show under "All".
   const filteredRows = useMemo(() => {
-    if (!filter) return validRows;
-    const [from, to] = quickRange(filter);
-    return validRows.filter((r) => {
-      const d = (r.date || "").slice(0, 10);
-      return d && d >= from && d <= to;
+    let scoped = validRows;
+    if (filter) {
+      const [from, to] = quickRange(filter);
+      scoped = validRows.filter((r) => {
+        const d = (r.date || "").slice(0, 10);
+        return d && d >= from && d <= to;
+      });
+    }
+    // Newest first; undated rows go last. Date strings are MySQL-style
+    // "YYYY-MM-DD HH:mm:ss", so a plain string compare sorts correctly.
+    return [...scoped].sort((a, b) => {
+      const da = String(a?.date ?? "");
+      const db = String(b?.date ?? "");
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return db.localeCompare(da);
     });
   }, [validRows, filter]);
 
-  const totals = useMemo(() => ledgerTotalsOf(filteredRows), [filteredRows]);
+  const totals = useMemo(
+    () => ledgerTotalsOf(filteredRows, excludePendingFromTotals),
+    [filteredRows, excludePendingFromTotals],
+  );
+
+  // Collectibles only: the net sitting in Pending Clearance rows, printed
+  // as a sub-line under the Net Amount tile (not a fourth grid column).
+  const pendingClearanceNet = useMemo(
+    () =>
+      filteredRows.reduce((sum, r) => {
+        if (r.isPendingClearance !== true) return sum;
+        const f = ledgerRowOf(r);
+        return sum + calculateCollectionNet(f.amount, f.cItemType, f.retention);
+      }, 0),
+    [filteredRows],
+  );
 
   // Default dashboard tiles hide Tax and Retention; the View All header keeps
   // the full five-figure ledger.
   const metricTiles = [
-    { label: "BID Amount", value: totals.amount },
+    { label: "Amount", value: totals.amount },
     { label: "Less: EWT", value: totals.ewt, deduction: true },
     { label: "Net Amount", value: totals.net, strong: true },
   ];
   const viewAllTiles = [
-    { label: "BID Amount", value: totals.amount },
+    { label: "Amount", value: totals.amount },
     { label: "Less: EWT", value: totals.ewt, deduction: true },
     { label: "Less: Tax", value: totals.tax, deduction: true },
     { label: "Less: Retention", value: totals.retention, deduction: true },
@@ -626,6 +667,8 @@ function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleVie
           // namespace them so the two can never collide as row keys.
           id: isJev ? `jev-${r.id}` : (r.id ?? r.strCode),
           isJev,
+          // A matched Collection JEV in Pending Clearance prints its status.
+          isPendingClearance: isJev && r.isPendingClearance === true,
           code: r.strCode || "—",
           // A JEV badge prints the client nickname only — no company.
           company: isJev ? "" : r.companyNickName || "",
@@ -648,7 +691,7 @@ function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleVie
       {
         key: "title",
         label: "Transaction",
-        xs: 2.4,
+        xs: 2.6,
         render: (_, row) => (
           <Box sx={{ textAlign: "left", lineHeight: 1.1 }}>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0, lineHeight: 1.1 }}>
@@ -703,45 +746,71 @@ function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleVie
       },
       {
         key: "amount",
-        label: "BID Amount",
-        xs: 1.1,
-        align: "right",
-        render: (v) => (
-          <Typography sx={{ fontSize: "0.68rem", fontWeight: 600 }}>
-            {fmtPHP(v)}
-          </Typography>
-        ),
-      },
-      {
-        key: "net",
-        label: "Net Amount",
-        xs: 1.4,
+        label: "Amount",
+        xs: 0.9,
         align: "right",
         render: (v, row) => (
-          <Box sx={{ textAlign: "right", lineHeight: 1.45 }}>
-            <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: green }}>
+          <Box sx={{ textAlign: "right", lineHeight: 1.05 }}>
+            <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, lineHeight: 1.05 }}>
               {fmtPHP(v)}
             </Typography>
             {row.ewt > 0 && (
-              <Typography sx={{ fontSize: "0.58rem", color: "text.secondary" }}>
+              <Typography sx={{ fontSize: "0.58rem", color: "text.secondary", lineHeight: 1.05 }}>
                 EWT: {fmtPHP(row.ewt)}
               </Typography>
             )}
             {row.tax > 0 && (
-              <Typography sx={{ fontSize: "0.58rem", color: "text.secondary" }}>
+              <Typography sx={{ fontSize: "0.58rem", color: "text.secondary", lineHeight: 1.05 }}>
                 Tax: {fmtPHP(row.tax)}
               </Typography>
             )}
             {row.retention > 0 && (
-              <Typography sx={{ fontSize: "0.58rem", color: "text.secondary" }}>
+              <Typography sx={{ fontSize: "0.58rem", color: "text.secondary", lineHeight: 1.05 }}>
                 Retention: {fmtPHP(row.retention)}
               </Typography>
             )}
           </Box>
         ),
       },
+      {
+        key: "net",
+        label: "Net Amount",
+        xs: 1.0,
+        align: "right",
+        render: (v, row) => {
+          const pending = row.isPendingClearance === true;
+          return (
+            <Box sx={{ textAlign: "right", lineHeight: 1.05 }}>
+              <Typography
+                sx={{
+                  fontSize: "0.82rem",
+                  fontWeight: 700,
+                  lineHeight: 1.05,
+                  // Collection: money coming in (+ green); Collectibles:
+                  // still-uncollected (- red).
+                  color:
+                    pending && !excludePendingFromTotals
+                      ? getThemeColors(isDark).red.text
+                      : green,
+                }}
+              >
+                {pending ? (excludePendingFromTotals ? "+ " : "- ") : ""}
+                {fmtPHP(v)}
+              </Typography>
+              {pending && (
+                <Typography
+                  component="em"
+                  sx={{ fontSize: "0.58rem", color: "text.secondary", lineHeight: 1.05 }}
+                >
+                  Processing
+                </Typography>
+              )}
+            </Box>
+          );
+        },
+      },
     ],
-    [green, badgeColors, badgeBorder],
+    [green, badgeColors, badgeBorder, excludePendingFromTotals, isDark],
   );
 
   return (
@@ -981,6 +1050,23 @@ function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleVie
             >
               {fmtPHP(tile.value)}
             </Typography>
+            {tile.strong && pendingClearanceNet > 0 && (
+              <Typography
+                sx={{
+                  fontSize: "0.55rem",
+                  fontStyle: "italic",
+                  // Collectibles shows the still-uncollected amount as a
+                  // deduction; Collection shows it as money coming in.
+                  color: excludePendingFromTotals
+                    ? green
+                    : getThemeColors(isDark).red.text,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Processing: {excludePendingFromTotals ? "+" : "-"}
+                {fmtPHP(pendingClearanceNet)}
+              </Typography>
+            )}
           </Box>
         ))}
         </Box>
@@ -1032,6 +1118,21 @@ function CollectionLedgerSection({ title, rows, emptyLabel, viewAll, onToggleVie
               >
                 {fmtPHP(tile.value)}
               </Typography>
+              {tile.strong && pendingClearanceNet > 0 && (
+                <Typography
+                  sx={{
+                    fontSize: "0.55rem",
+                    fontStyle: "italic",
+                    color: excludePendingFromTotals
+                      ? green
+                      : getThemeColors(isDark).red.text,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Processing: {excludePendingFromTotals ? "+" : "-"}
+                  {fmtPHP(pendingClearanceNet)}
+                </Typography>
+              )}
             </Box>
           ))}
         </Box>
@@ -1094,6 +1195,7 @@ function CollectiblesCollectionPanel({
         <CollectionLedgerSection
           title="Collection"
           rows={collections}
+          excludePendingFromTotals
           emptyLabel="No collections raised yet."
           viewAll={viewingAll === "Collection"}
           onToggleViewAll={() => toggle("Collection")}
