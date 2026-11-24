@@ -232,7 +232,12 @@ export default function Dashboard() {
         )}
         {isProcurement && <ProcurementView />}
         {isAccountOfficer && <AOView />}
-        {isFinanceOfficer && <FinanceView />}
+        {isFinanceOfficer && (
+          <FinanceView
+            viewingAll={viewingAll}
+            onViewingAllChange={setViewingAll}
+          />
+        )}
       </div>
     </PageLayout>
   );

@@ -21,6 +21,7 @@ import ChartStructure from "../../../../components/ui/structure/ChartStructure";
 import { fmtDate, fmtDateTime } from "../../../../utils/helpers/timeZone";
 import { getDueDateColor } from "../../../../utils/helpers/dueDateColor";
 import useKeysLabels from "../../../../hooks/useKeysLabels";
+import useCollectiblesCollection from "./useCollectiblesCollection";
 import { fmtPHP } from "../../../../utils/formatters/formatter";
 import {
   calculateCollectionEWT,
@@ -1160,7 +1161,7 @@ function CollectionLedgerSection({
   );
 }
 
-function CollectiblesCollectionPanel({
+export function CollectiblesCollectionPanel({
   collectibles,
   collections,
   theme,
@@ -1520,7 +1521,6 @@ export default function ManagementView({ viewingAll, onViewingAllChange }) {
   const cacheKey = {
     metrics: "overview_metrics_cache",
     ongoingTxns: "overview_ongoing_txns_cache",
-    collectibles: "overview_collectibles_cache",
     employee: (year) => `overview_employee_performance_${year}`,
   };
   const currentYear = new Date().getFullYear();
@@ -1572,11 +1572,8 @@ export default function ManagementView({ viewingAll, onViewingAllChange }) {
   const [allTxns, setAllTxns] = useState(() =>
     getItem(cacheKey.ongoingTxns, []),
   );
-  // Seeded { collectibles, collections } — empty arrays render an empty card
-  // on first visit, cached lists render instantly on a revisit.
-  const [collectiblesData, setCollectiblesData] = useState(() =>
-    getItem(cacheKey.collectibles, { collectibles: [], collections: [] }),
-  );
+  // Collectibles / Collection — fetched through the hook shared with Finance.
+  const collectiblesData = useCollectiblesCollection();
   const [employeeData, setEmployeeData] = useState(() =>
     getItem(cacheKey.employee(currentYear), []),
   );
@@ -1645,26 +1642,6 @@ export default function ManagementView({ viewingAll, onViewingAllChange }) {
       })
       .catch((err) =>
         console.error("Failed to load ongoing transactions", err),
-      );
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-    OverviewAPI.getCollectiblesCollection()
-      .then((res) => {
-        if (!mounted) return;
-        const data = {
-          collectibles: res?.collectibles || [],
-          collections: res?.collections || [],
-        };
-        setCollectiblesData(data);
-        setItem(cacheKey.collectibles, data);
-      })
-      .catch((err) =>
-        console.error("Failed to load collectibles and collections", err),
       );
     return () => {
       mounted = false;
