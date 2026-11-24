@@ -33,7 +33,7 @@ export default function useVoucher() {
 
   const [voucherModalOpen, setVoucherModalOpen] = useState(false);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [optionStatuses, setOptionStatuses] = useState(() =>
     getItem(optionStatusesKey, {}),
   );

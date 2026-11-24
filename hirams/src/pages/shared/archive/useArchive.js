@@ -20,7 +20,7 @@ export default function useArchive() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [transactions, setTransactions] = useState(() =>
     getItem(ARCHIVE_CACHE_KEY, []),
   );

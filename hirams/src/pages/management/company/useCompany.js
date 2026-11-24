@@ -11,7 +11,7 @@ const companiesCacheKey = (search) =>
 export default function useCompany() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [openModal, setOpenModal] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [companies, setCompanies] = useState(() =>

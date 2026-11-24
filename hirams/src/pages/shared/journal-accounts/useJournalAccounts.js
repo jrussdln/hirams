@@ -21,7 +21,7 @@ export default function useJournalAccounts() {
   // Table / Search State
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
   // Data State — seeded from cache, instant render on revisit.
   const [journalAccounts, setJournalAccounts] = useState(() =>

@@ -111,7 +111,7 @@ function PricingSetPanel({
   });
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalData, setModalData] = useState(null);

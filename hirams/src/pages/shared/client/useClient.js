@@ -36,7 +36,7 @@ export default function useClient() {
   const [isFetched, setIsFetched] = useState(() => hasItem(CLIENTS_CACHE_KEY));
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
   const [selectedClient, setSelectedClient] = useState(null);
   const [openAEModal, setOpenAEModal] = useState(false);

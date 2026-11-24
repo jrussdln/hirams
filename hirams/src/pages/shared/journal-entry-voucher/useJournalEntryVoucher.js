@@ -75,7 +75,7 @@ export default function useJournalEntryVoucher() {
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   const [selectedTypeCode, setSelectedTypeCode] = useState("");
   // "all" or a raw jev_status code (P / R / A / C) — page-local, unlike the
   // type, which the sidebar owns.

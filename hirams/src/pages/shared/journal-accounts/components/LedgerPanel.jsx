@@ -187,7 +187,7 @@ const EntryBranch = ({
   onTransferEntry,
 }) => {
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
   // One row per entry. Entries arrive newest first, so the running balance
   // starts at the LAST row and accumulates upward (first row = grand total).

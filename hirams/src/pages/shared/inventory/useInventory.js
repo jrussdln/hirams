@@ -53,7 +53,7 @@ export default function useInventory() {
   // { scope: "supplier" | "client", name } while a group's item list is open
   const [groupView, setGroupView] = useState(null);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
   // Paging is separate for a group's item list so the group table
   // keeps its own position while you drill in and back out.
   const [groupListPage, setGroupListPage] = useState(0);

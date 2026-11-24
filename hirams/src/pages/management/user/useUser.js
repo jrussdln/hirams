@@ -88,7 +88,7 @@ export default function useUser() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(15);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
   const [openUserModal, setOpenUserModal] = useState(false);
   const [openInfoModal, setOpenInfoModal] = useState(false);
