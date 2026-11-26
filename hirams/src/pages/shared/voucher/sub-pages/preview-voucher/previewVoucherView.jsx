@@ -5,6 +5,7 @@ import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
 import icons from "../../../../../utils/style/iconFormatStyles.jsx";
 import { fmtPHP, fmtQty } from "../../../../../utils/formatters/formatter.js";
 import PrintPreview from "../../../../../components/ui/print-preview/PrintPreview.jsx";
+import { getPrintLayoutProps } from "../../../../../constants/defaultPrintLayout.js";
 import PrintPreviewPageFooter from "../../../../../components/ui/print-preview/PrintPreviewPageFooter.jsx";
 import EditableCell, {
   PrintEditableContext,
@@ -938,6 +939,7 @@ export default function PreviewVoucherView({
       footerRActions={<PrintPreviewPageFooter printControls={printControls} />}
     >
       <PrintPreview
+        {...getPrintLayoutProps("Voucher")}
         onExport={() => console.log("wire up export")}
         onControlsReady={setPrintControls}
         hideHeaderControls={true}

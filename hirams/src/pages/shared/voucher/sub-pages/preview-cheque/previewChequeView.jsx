@@ -5,6 +5,8 @@ import BaseButton from "../../../../../components/ui/form/BaseButton.jsx";
 import icons from "../../../../../utils/style/iconFormatStyles.jsx";
 import { fmtPHP } from "../../../../../utils/formatters/formatter.js";
 import PrintPreview from "../../../../../components/ui/print-preview/PrintPreview.jsx";
+import PreviewFormOverlay from "../../../../../components/ui/print-preview/PreviewFormOverlay.jsx";
+import { getPrintLayoutProps } from "../../../../../constants/defaultPrintLayout.js";
 import PrintPreviewPageFooter from "../../../../../components/ui/print-preview/PrintPreviewPageFooter.jsx";
 import EditableCell from "../../../../../components/ui/print-preview/EditableCell.jsx";
 import getThemeColors from "../../../../../utils/style/getThemeColors.js";
@@ -156,10 +158,12 @@ export default function PreviewChequeView({
       footerRActions={<PrintPreviewPageFooter printControls={printControls} />}
     >
       <PrintPreview
+        {...getPrintLayoutProps("Cheque")}
         onExport={() => console.log("wire up export")}
         onControlsReady={setPrintControls}
         hideHeaderControls={true}
         showSystemGenerated={false}
+        previewOverlay={<PreviewFormOverlay docType="CHEQUE" />}
         pdfFileName={pdfFileName}
       >
         <div
@@ -185,7 +189,7 @@ export default function PreviewChequeView({
                           ...plainCellSx,
                           textAlign: "right",
                           verticalAlign: "top",
-                          paddingBottom: 16,
+                          paddingBottom: 10,
                         }}
                       >
                         <DateDigitBoxes date={date} />

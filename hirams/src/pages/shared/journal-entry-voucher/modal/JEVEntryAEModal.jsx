@@ -137,7 +137,6 @@ export default function JEVEntryAEModal({
   particularsGrandTotal = 0,
   sideTotal = 0,
   equivalentValue = 0,
-  oppositeSideAccountIds = [],
   usedAccountIds = [],
   isAssigneeType,
   assigneeLinks = [],
@@ -231,6 +230,8 @@ export default function JEVEntryAEModal({
   const formRef = useRef(null);
 
   // ── Account uniqueness ───────────────────────────────────────────────
+  // Only ONE usage per side: an account already on this side is rejected,
+  // but the same account may be used again on the opposite side.
   const validateAccountIsUnique = useCallback(
     (accountId) => {
       if (!accountId) return "";
@@ -242,14 +243,11 @@ export default function JEVEntryAEModal({
       if (
         usedAccountIds.some((u) => Number(u) === id && Number(u) !== editingId)
       )
-        return "This account is already used — please choose a different one.";
-
-      if (oppositeSideAccountIds.some((o) => Number(o) === id))
-        return "This account already exists on the other side — cannot use same account.";
+        return "This account is already used on this side — please choose a different one.";
 
       return "";
     },
-    [usedAccountIds, oppositeSideAccountIds, editingEntry],
+    [usedAccountIds, editingEntry],
   );
 
   useEffect(() => {

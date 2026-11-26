@@ -12,6 +12,7 @@ import { useReactToPrint } from "react-to-print";
 import ChevronLeftOutlined from "@mui/icons-material/ChevronLeftOutlined";
 import ChevronRightOutlined from "@mui/icons-material/ChevronRightOutlined";
 import PrintPreviewRightPanel from "./PrintPreviewRightPanel.jsx";
+import PrintPreviewRulers from "./PrintPreviewRulers.jsx";
 import BaseButton from "../form/BaseButton.jsx";
 import UndoOutlined from "@mui/icons-material/UndoOutlined";
 import RedoOutlined from "@mui/icons-material/RedoOutlined";
@@ -27,6 +28,8 @@ import {
 import { toCanvas } from "html-to-image";
 import { jsPDF } from "jspdf";
 import { getFontEmbedCSS } from "../../../utils/print/getFontEmbedCSS.js";
+import { FALLBACK_PRINT_LAYOUT } from "../../../constants/defaultPrintLayout.js";
+import { DEFAULT_CUSTOM_MARGINS } from "../../../constants/customPrintMargins.js";
 
 export { EditableCell };
 
@@ -47,6 +50,7 @@ export const MARGINS = {
   Normal: { label: "Normal (12mm)", preview: "12mm", print: "12mm" },
   Narrow: { label: "Narrow (5mm)", preview: "5mm", print: "5mm" },
   Wide: { label: "Wide (25mm)", preview: "25mm", print: "25mm" },
+  Custom: { label: "Custom", preview: null, print: null },
 };
 
 const MM_TO_PX = 96 / 25.4;
@@ -55,13 +59,33 @@ export default function PrintPreview({
   children,
   header = null,
   footer = null,
-  defaultPaperSize = "A4",
-  defaultOrientation = "portrait",
-  defaultMargin = "Normal",
+  defaultPaperSize = FALLBACK_PRINT_LAYOUT.paperSize,
+  defaultOrientation = FALLBACK_PRINT_LAYOUT.orientation,
+  defaultMargin = FALLBACK_PRINT_LAYOUT.margin,
   maxWidth = "800px",
   pdfFileName = "document",
   onControlsReady,
   showSystemGenerated = true,
+  // Optional layer for the Print Preview view (e.g. a blank form template).
+  // It starts hidden and is shown only while "Check Actual" is toggled on in
+  // the menu. Never rendered in normal view or in the hidden print / PDF /
+  // copy-image nodes, so it cannot end up in the actual printed document.
+  previewOverlay = null,
+  // Preview-only horizontal ruler guides (mm from page top), supplied by the
+  // page via getPrintLayoutProps for company-specific forms.
+  rulerGuides = [],
+  // Optional company-specific band for the paged part of the document. When
+  // set, `pagedChildren` is paginated between these mm positions while
+  // `children` stays in normal flow above the band. Omitted → old behaviour.
+  contentWindowMm = null,
+  pagedChildren = null,
+  // Optional content shown just below the last guide, on the final page only
+  // (e.g. a Sales Invoice's grand-total block).
+  bandFooter = null,
+  // Optional content anchored just above the last guide on the final page
+  // (e.g. the per-page subtotal summary). Both slots may be render functions
+  // receiving { pageIndex, totalPages, subtotals, subtotal }.
+  bandTopFooter = null,
 }) {
   const theme = useTheme();
   const isDark = theme.palette.mode === "dark";
@@ -98,10 +122,20 @@ export default function PrintPreview({
   const [paperSize, setPaperSize] = useState(defaultPaperSize);
   const [orientation, setOrientation] = useState(defaultOrientation);
   const [margin, setMargin] = useState(defaultMargin);
+  const [customMargins, setCustomMargins] = useState(DEFAULT_CUSTOM_MARGINS);
   const [scale, setScale] = useState(1);
   const [panelOpen, setPanelOpen] = useState(false);
   const [portalTarget, setPortalTarget] = useState(null);
   const [colorMode, setColorMode] = useState("color");
+  // "Check Actual" overlay is off until the user asks for it in the menu.
+  const [checkActual, setCheckActual] = useState(false);
+
+  // Guides start at the configured mm values but can be dragged in the
+  // preview; the band follows the live positions.
+  const [guidePositions, setGuidePositions] = useState(rulerGuides);
+  React.useEffect(() => {
+    setGuidePositions(rulerGuides);
+  }, [rulerGuides]);
 
   // Centralized "System Generated" stamp — captured once so the timestamp
   // stays stable across re-renders, page changes, printing, and PDF export.
@@ -135,6 +169,10 @@ export default function PrintPreview({
   const contentRef = useRef(null);
   const [totalPages, setTotalPages] = useState(1);
   const [contentTotalHeight, setContentTotalHeight] = useState(0);
+  // Band mode: cumulative content offsets where each page ends, snapped to
+  // item boundaries so an item is never cut in half by the guide line.
+  const [pageBreaks, setPageBreaks] = useState([]);
+  const [pageSubtotals, setPageSubtotals] = useState([]);
   const [headerH, setHeaderH] = useState(0);
   const [footerH, setFooterH] = useState(0);
 
@@ -144,6 +182,17 @@ export default function PrintPreview({
   const size = PAPER_SIZES[paperSize];
   const marginPreset = MARGINS[margin];
   const isLandscape = orientation === "landscape";
+  const isCustomMargin = margin === "Custom";
+
+  // Presets are equal on every side; Custom uses the six menu fields.
+  const marginValues = isCustomMargin
+    ? customMargins
+    : (() => {
+        const mm = parseFloat(marginPreset?.print) || 0;
+        return { top: mm, header: 0, left: mm, right: mm, bottom: mm, footer: 0 };
+      })();
+  const marginCss = `${marginValues.top}mm ${marginValues.right}mm ${marginValues.bottom}mm ${marginValues.left}mm`;
+  const marginWidthMm = marginValues.left + marginValues.right;
 
   // Edit mode is automatic: on in print view, off in normal view
   const editingEnabled = viewMode === "print";
@@ -198,6 +247,54 @@ export default function PrintPreview({
   const PRINT_H_MM = isLandscape ? size.wMm : size.hMm;
   const [dragEnabled, setDragEnabled] = useState(false);
 
+  // Band mode — only paged rows are confined to the guide window; everything
+  // else (the regular `children`) stays in normal flow at the top of the page.
+  const bandMode = Boolean(contentWindowMm && pagedChildren);
+  const activeGuides =
+    bandMode && guidePositions.length >= 2 ? guidePositions : rulerGuides;
+  const activeWindow =
+    activeGuides.length >= 2
+      ? { top: activeGuides[0], bottom: activeGuides[activeGuides.length - 1] }
+      : contentWindowMm;
+  const bandTopPx = bandMode && activeWindow ? activeWindow.top * MM_TO_PX : 0;
+  const bandBottomPx =
+    bandMode && activeWindow ? activeWindow.bottom * MM_TO_PX : PAGE_H;
+  const bandHeightPx = Math.max(1, bandBottomPx - bandTopPx);
+
+  // Width of the band, inset by the page margins. Matches the padded content
+  // above it so columns line up across pages.
+  const bandLeftPx = marginValues.left * MM_TO_PX;
+  const bandRightPx = marginValues.right * MM_TO_PX;
+  const bandWidthPx = Math.max(1, PAGE_W - bandLeftPx - bandRightPx);
+
+  // In band mode the break points are measured item boundaries; elsewhere the
+  // legacy fixed-height slicing is used.
+  const pageOffset = (pageIndex) =>
+    bandMode
+      ? (pageBreaks[pageIndex] ?? pageIndex * bandHeightPx)
+      : pageIndex * usablePageHeight;
+
+  const sliceHeightForPage = (pageIndex) =>
+    bandMode
+      ? Math.max(
+          0,
+          (pageBreaks[pageIndex + 1] ?? contentTotalHeight) -
+            pageOffset(pageIndex),
+        )
+      : Math.min(
+          usablePageHeight,
+          Math.max(0, contentTotalHeight - pageIndex * usablePageHeight),
+        );
+
+  const slotProps = (pageIndex) => ({
+    pageIndex,
+    totalPages,
+    subtotals: pageSubtotals,
+    subtotal: pageSubtotals[pageIndex] ?? 0,
+  });
+  const renderSlot = (slot, pageIndex) =>
+    typeof slot === "function" ? slot(slotProps(pageIndex)) : slot;
+
   const syncPageStyleTag = () => {
     let styleTag = document.getElementById("rtp-dynamic-page-style");
     if (!styleTag) {
@@ -208,14 +305,14 @@ export default function PrintPreview({
     styleTag.innerHTML = `
 @page {
   size: ${PRINT_W_MM}mm ${PRINT_H_MM}mm;
-  margin: ${marginPreset.print};
+  margin: ${bandMode ? "0" : marginCss};
 }
     `;
   };
 
   useEffect(() => {
     syncPageStyleTag();
-  }, [PRINT_W_MM, PRINT_H_MM, marginPreset]);
+  }, [PRINT_W_MM, PRINT_H_MM, marginCss, bandMode]);
 
   useEffect(() => {
     const outerScroll = scrollAreaRef.current?.closest(".overflow-auto");
@@ -276,7 +373,7 @@ export default function PrintPreview({
   const handlePrint = useReactToPrint({
     contentRef: printRef,
     pageStyle: `
-  @page { size: ${PRINT_W_MM}mm ${PRINT_H_MM}mm; margin: ${marginPreset.print}; }
+  @page { size: ${PRINT_W_MM}mm ${PRINT_H_MM}mm; margin: ${bandMode ? "0" : marginCss}; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
   table { border-collapse: collapse !important; }
   tr { page-break-inside: avoid; break-inside: avoid; }
@@ -325,21 +422,20 @@ export default function PrintPreview({
       // The hidden print node has NO padding (printer margins come from
       // @page), so capturing it directly yields an image cropped flush to
       // the content. Build a temporary off-screen wrapper padded with the
-      // current margin preset so the copied image has breathing room.
+      // current margins so the copied image has breathing room.
       // NOTE: the fixed off-screen positioning must live on a HOLDING
       // parent — html-to-image copies the captured node's own computed
       // styles into its clone, and a fixed/negative-offset node renders
       // far outside the capture canvas, producing a blank white image.
-      const marginMm = parseFloat(marginPreset.print) || 12;
       const holdingBox = document.createElement("div");
       holdingBox.style.position = "fixed";
       holdingBox.style.left = "-10000px";
       holdingBox.style.top = "0";
-      holdingBox.style.width = `${PRINT_W_MM + marginMm * 2}mm`;
+      holdingBox.style.width = `${PRINT_W_MM + marginWidthMm}mm`;
 
       const wrapper = document.createElement("div");
       wrapper.style.width = "100%";
-      wrapper.style.padding = marginPreset.print;
+      wrapper.style.padding = marginCss;
       wrapper.style.boxSizing = "border-box";
       wrapper.style.background = "#ffffff";
       wrapper.style.color = "#1E293B";
@@ -405,7 +501,7 @@ export default function PrintPreview({
     } finally {
       setCopyBusy(false);
     }
-  }, [copyBusy, copied, pdfFileName, marginPreset, PRINT_W_MM]);
+  }, [copyBusy, copied, pdfFileName, marginCss, marginWidthMm, PRINT_W_MM]);
 
   const handleGeneratePdf = useCallback(async () => {
     const nodes = pdfPageRefs.current.slice(0, totalPages).filter(Boolean);
@@ -478,11 +574,22 @@ export default function PrintPreview({
     }
   }, [pdfBusy, totalPages, isLandscape, PRINT_W_MM, PRINT_H_MM, pdfFileName]);
 
-  const marginPx = parseFloat(marginPreset.preview) * MM_TO_PX;
-  const usablePageHeight = Math.max(
-    1,
-    PAGE_H - marginPx * 2 - headerH - footerH,
-  );
+  const marginTopPx = marginValues.top * MM_TO_PX;
+  const marginBottomPx = marginValues.bottom * MM_TO_PX;
+  const headerGapPx = header ? marginValues.header * MM_TO_PX : 0;
+  const footerGapPx = footer ? marginValues.footer * MM_TO_PX : 0;
+  const usablePageHeight = bandMode
+    ? bandHeightPx
+    : Math.max(
+        1,
+        PAGE_H -
+          marginTopPx -
+          marginBottomPx -
+          headerGapPx -
+          footerGapPx -
+          headerH -
+          footerH,
+      );
 
   useEffect(() => {
     const el = topBarRef.current;
@@ -519,7 +626,81 @@ export default function PrintPreview({
     const recompute = () => {
       const contentHeight = node.scrollHeight;
       setContentTotalHeight(contentHeight);
-      setTotalPages(Math.max(1, Math.ceil(contentHeight / usablePageHeight)));
+
+      if (!bandMode) {
+        setPageBreaks([]);
+        setPageSubtotals([]);
+        setTotalPages(Math.max(1, Math.ceil(contentHeight / usablePageHeight)));
+        return;
+      }
+
+      // Break points must land on whole-item boundaries so an item's spec /
+      // serial lines are never split across pages. Each preview marks the
+      // LAST row of an item's block with `data-print-item-end`; the bottom of
+      // that row is a real boundary. This is stronger than using the next
+      // item's main-row top: it cannot drift when rows wrap differently.
+      //
+      // getBoundingClientRect() is affected by the `scale()` on the page
+      // wrapper while scrollHeight/offsetHeight are not, so convert measured
+      // rect offsets back to unscaled layout pixels before comparing them
+      // with bandHeightPx (which is mm -> px, unscaled).
+      const nodeRect = node.getBoundingClientRect();
+      const scaleFactor = node.offsetHeight
+        ? nodeRect.height / node.offsetHeight
+        : 1;
+      const nodeTop = nodeRect.top;
+      const toLocalY = (rectY) => (rectY - nodeTop) / scaleFactor;
+
+      const itemRows = Array.from(node.querySelectorAll("[data-print-item]"));
+      const rowTops = itemRows.map((row) =>
+        toLocalY(row.getBoundingClientRect().top),
+      );
+      const endRows = Array.from(
+        node.querySelectorAll("[data-print-item-end]"),
+      );
+      // Every item has an end marker; fall back to main-row boundaries if an
+      // older caller hasn't been updated to emit the marker yet.
+      const endOffsets = endRows.length
+        ? endRows.map((row) => toLocalY(row.getBoundingClientRect().bottom))
+        : rowTops.slice(1);
+      // contentHeight is the final boundary (it also covers the trailing
+      // "nothing follows" row). Dropping the last end marker avoids spawning
+      // a spurious extra page that contains only that trailing row.
+      const candidates = endOffsets.slice(0, -1).concat(contentHeight);
+
+      const breaks = [0];
+      let start = 0;
+      while (start < contentHeight - 1) {
+        let end = start;
+        for (const candidate of candidates) {
+          if (candidate - start > bandHeightPx + 0.5) break;
+          if (candidate > end) end = candidate;
+        }
+        if (end <= start) {
+          // No whole item fits (a single item is taller than the band).
+          // Move that entire item to this page instead of slicing its specs.
+          end =
+            candidates.find((candidate) => candidate > start + 0.5) ??
+            contentHeight;
+        }
+        breaks.push(end);
+        start = end;
+      }
+      // Sum each item's data-print-amount within its page range.
+      const subtotals = breaks.slice(0, -1).map((pageStart, pageIndex) => {
+        const pageEnd = breaks[pageIndex + 1];
+        return itemRows.reduce((sum, row, rowIndex) => {
+          const top = rowTops[rowIndex];
+          if (top >= pageStart - 0.5 && top < pageEnd - 0.5) {
+            return sum + (Number(row.getAttribute("data-print-amount")) || 0);
+          }
+          return sum;
+        }, 0);
+      });
+
+      setPageBreaks(breaks);
+      setPageSubtotals(subtotals);
+      setTotalPages(Math.max(1, breaks.length - 1));
     };
 
     recompute();
@@ -527,7 +708,7 @@ export default function PrintPreview({
     const observer = new ResizeObserver(recompute);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [viewMode, usablePageHeight]);
+  }, [viewMode, usablePageHeight, bandMode, bandHeightPx]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -855,6 +1036,8 @@ export default function PrintPreview({
                 >
                   {header}
                   {children}
+                  {pagedChildren}
+                  {bandFooter && renderSlot(bandFooter, null)}
                   {footer}
                   {systemGeneratedStamp}
                 </Box>
@@ -877,6 +1060,7 @@ export default function PrintPreview({
                     transition: "transform 0.15s ease",
                     flexShrink: 0,
                     boxSizing: "border-box",
+                    position: "relative",
                     animation:
                       slideDir === 1
                         ? "pageSlideNext 0.2s ease"
@@ -885,41 +1069,128 @@ export default function PrintPreview({
                           : "none",
                   }}
                 >
+                  <PrintPreviewRulers
+                    widthPx={PAGE_W}
+                    heightPx={PAGE_H}
+                    widthMm={PRINT_W_MM}
+                    heightMm={PRINT_H_MM}
+                    guidesMm={guidePositions}
+                    onGuidesChange={setGuidePositions}
+                    scale={scale}
+                  />
+                  {previewOverlay && checkActual && (
+                    <Box
+                      sx={{
+                        position: "absolute",
+                        inset: 0,
+                        zIndex: 0,
+                        overflow: "hidden",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {previewOverlay}
+                    </Box>
+                  )}
                   <Box
                     sx={{
-                      p: marginPreset.preview,
+                      position: "relative",
+                      zIndex: 1,
+                      padding: marginCss,
                       boxSizing: "border-box",
                       display: "flex",
                       flexDirection: "column",
                     }}
                   >
-                    <Box ref={headerRef}>{header}</Box>
-
                     <Box
-                      sx={{
-                        height: Math.min(
-                          usablePageHeight,
-                          Math.max(
-                            0,
-                            contentTotalHeight -
-                              (currentPage - 1) * usablePageHeight,
-                          ),
-                        ),
-                        overflow: "hidden",
-                        position: "relative",
-                      }}
+                      ref={headerRef}
+                      sx={{ mt: header ? `${marginValues.header}mm` : 0 }}
                     >
-                      <Box
-                        ref={contentRef}
-                        sx={{
-                          transform: `translateY(-${(currentPage - 1) * usablePageHeight}px)`,
-                        }}
-                      >
-                        {children}
-                      </Box>
+                      {header}
                     </Box>
 
-                    <Box ref={footerRef}>{footer}</Box>
+                    {bandMode ? (
+                      <>
+                        {/* Non-paged header portion — repeated on every page */}
+                        <Box>{children}</Box>
+
+                        {/* Paged rows, confined to the guide window */}
+                        <Box
+                          sx={{
+                            position: "absolute",
+                            top: bandTopPx,
+                            left: bandLeftPx,
+                            width: bandWidthPx,
+                            height: sliceHeightForPage(currentPage - 1),
+                            overflow: "hidden",
+                            zIndex: 1,
+                          }}
+                        >
+                          <Box
+                            ref={contentRef}
+                            sx={{
+                              transform: `translateY(-${pageOffset(currentPage - 1)}px)`,
+                            }}
+                          >
+                            {pagedChildren}
+                          </Box>
+                        </Box>
+
+                        {/* Summary just above the last guide — final page only */}
+                        {bandTopFooter && currentPage === totalPages && (
+                          <Box
+                            sx={{
+                              position: "absolute",
+                              top: bandBottomPx - 2,
+                              left: bandLeftPx,
+                              width: bandWidthPx,
+                              transform: "translateY(-100%)",
+                              zIndex: 1,
+                            }}
+                          >
+                            {renderSlot(bandTopFooter, currentPage - 1)}
+                          </Box>
+                        )}
+
+                        {/* Below-guide footer: per-page subtotal, or grand totals on last page */}
+                        {bandFooter && (
+                          <Box
+                            sx={{
+                              position: "absolute",
+                              top: bandBottomPx + 5,
+                              left: bandLeftPx,
+                              width: bandWidthPx,
+                              zIndex: 1,
+                            }}
+                          >
+                            {renderSlot(bandFooter, currentPage - 1)}
+                          </Box>
+                        )}
+                      </>
+                    ) : (
+                      <Box
+                        sx={{
+                          height: sliceHeightForPage(currentPage - 1),
+                          overflow: "hidden",
+                          position: "relative",
+                        }}
+                      >
+                        <Box
+                          ref={contentRef}
+                          sx={{
+                            transform: `translateY(-${(currentPage - 1) * usablePageHeight}px)`,
+                          }}
+                        >
+                          {children}
+                        </Box>
+                      </Box>
+                    )}
+
+                    <Box
+                      ref={footerRef}
+                      sx={{ mb: footer ? `${marginValues.footer}mm` : 0 }}
+                    >
+                      {footer}
+                    </Box>
                     {systemGeneratedStamp}
                   </Box>
                 </Box>
@@ -947,10 +1218,99 @@ export default function PrintPreview({
                 colorScheme: "light",
               }}
             >
-              {header}
-              {children}
-              {footer}
-              {systemGeneratedStamp}
+              <div
+                style={{
+                  marginTop: header ? `${marginValues.header}mm` : undefined,
+                }}
+              >
+                {header}
+              </div>
+              {bandMode ? (
+                Array.from({ length: totalPages }, (_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      position: "relative",
+                      width: `${PRINT_W_MM}mm`,
+                      height: `${PRINT_H_MM}mm`,
+                      boxSizing: "border-box",
+                      overflow: "hidden",
+                      breakAfter: i < totalPages - 1 ? "page" : "auto",
+                      pageBreakAfter: i < totalPages - 1 ? "always" : "auto",
+                    }}
+                  >
+                    {/* Non-paged header portion — repeated on every page */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: `${marginValues.top}mm`,
+                        left: `${marginValues.left}mm`,
+                        right: `${marginValues.right}mm`,
+                      }}
+                    >
+                      {children}
+                    </div>
+                    {/* Paged rows inside the guide window */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: `${activeWindow.top}mm`,
+                        left: `${marginValues.left}mm`,
+                        right: `${marginValues.right}mm`,
+                        height: sliceHeightForPage(i),
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          transform: `translateY(-${pageOffset(i)}px)`,
+                        }}
+                      >
+                        {pagedChildren}
+                      </div>
+                    </div>
+                    {bandTopFooter && i === totalPages - 1 && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: `calc(${activeWindow.bottom}mm - 2px)`,
+                          left: `${marginValues.left}mm`,
+                          right: `${marginValues.right}mm`,
+                          transform: "translateY(-100%)",
+                        }}
+                      >
+                        {renderSlot(bandTopFooter, i)}
+                      </div>
+                    )}
+                    {bandFooter && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: `calc(${activeWindow.bottom}mm + 5px)`,
+                          left: `${marginValues.left}mm`,
+                          right: `${marginValues.right}mm`,
+                        }}
+                      >
+                        {renderSlot(bandFooter, i)}
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <>
+                  {children}
+                  <div
+                    style={{
+                      marginBottom: footer
+                        ? `${marginValues.footer}mm`
+                        : undefined,
+                    }}
+                  >
+                    {footer}
+                  </div>
+                  {systemGeneratedStamp}
+                </>
+              )}
             </div>
           </ThemeProvider>
         </Box>
@@ -969,10 +1329,7 @@ export default function PrintPreview({
           >
             <ThemeProvider theme={lightTheme}>
               {Array.from({ length: totalPages }, (_, i) => i).map((i) => {
-                const sliceH = Math.min(
-                  usablePageHeight,
-                  Math.max(0, contentTotalHeight - i * usablePageHeight),
-                );
+                const sliceH = sliceHeightForPage(i);
                 return (
                   <div
                     key={i}
@@ -983,7 +1340,8 @@ export default function PrintPreview({
                       width: `${PRINT_W_MM}mm`,
                       height: `${PRINT_H_MM}mm`,
                       boxSizing: "border-box",
-                      padding: marginPreset.print,
+                      padding: bandMode ? 0 : marginCss,
+                      position: bandMode ? "relative" : undefined,
                       filter:
                         colorMode === "grayscale" ? "grayscale(1)" : "none",
                       background: "#ffffff",
@@ -993,24 +1351,98 @@ export default function PrintPreview({
                       flexDirection: "column",
                     }}
                   >
-                    {header}
                     <div
                       style={{
-                        height: sliceH,
-                        overflow: "hidden",
-                        position: "relative",
+                        marginTop: header ? `${marginValues.header}mm` : undefined,
                       }}
                     >
+                      {header}
+                    </div>
+                    {bandMode ? (
+                      <>
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: `${marginValues.top}mm`,
+                            left: `${marginValues.left}mm`,
+                            right: `${marginValues.right}mm`,
+                          }}
+                        >
+                          {children}
+                        </div>
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: `${activeWindow.top}mm`,
+                            left: `${marginValues.left}mm`,
+                            right: `${marginValues.right}mm`,
+                            height: sliceH,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              transform: `translateY(-${pageOffset(i)}px)`,
+                            }}
+                          >
+                            {pagedChildren}
+                          </div>
+                        </div>
+                        {bandTopFooter && i === totalPages - 1 && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: `calc(${activeWindow.bottom}mm - 2px)`,
+                              left: `${marginValues.left}mm`,
+                              right: `${marginValues.right}mm`,
+                              transform: "translateY(-100%)",
+                            }}
+                          >
+                            {renderSlot(bandTopFooter, i)}
+                          </div>
+                        )}
+                        {bandFooter && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: `calc(${activeWindow.bottom}mm + 5px)`,
+                              left: `${marginValues.left}mm`,
+                              right: `${marginValues.right}mm`,
+                            }}
+                          >
+                            {renderSlot(bandFooter, i)}
+                          </div>
+                        )}
+                      </>
+                    ) : (
                       <div
                         style={{
-                          transform: `translateY(-${i * usablePageHeight}px)`,
+                          height: sliceH,
+                          overflow: "hidden",
+                          position: "relative",
                         }}
                       >
-                        {children}
+                        <div
+                          style={{
+                            transform: `translateY(-${i * usablePageHeight}px)`,
+                          }}
+                        >
+                          {children}
+                        </div>
                       </div>
-                    </div>
-                    {footer}
-                    {showSystemGenerated && (
+                    )}
+                    {!bandMode && (
+                      <div
+                        style={{
+                          marginBottom: footer
+                            ? `${marginValues.footer}mm`
+                            : undefined,
+                        }}
+                      >
+                        {footer}
+                      </div>
+                    )}
+                    {!bandMode && showSystemGenerated && (
                       <div
                         style={{
                           marginTop: 4,
@@ -1050,8 +1482,13 @@ export default function PrintPreview({
             margin={margin}
             setMargin={setMargin}
             margins={MARGINS}
+            customMargins={customMargins}
+            setCustomMargins={setCustomMargins}
             colorMode={colorMode}
             setColorMode={setColorMode}
+            showCheckActual={Boolean(previewOverlay)}
+            checkActual={checkActual}
+            setCheckActual={setCheckActual}
             dragEnabled={dragEnabled}
             onToggleDrag={() => setDragEnabled((v) => !v)}
             onPrint={() => {

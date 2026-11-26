@@ -486,11 +486,6 @@ export default function JevViewPanel({
     return ids;
   }, [formSide, fromAccountIds, toAccountIds, editingEntry]);
 
-  const oppositeSideAccountIds = useMemo(
-    () => (formSide === "from" ? toAccountIds : fromAccountIds),
-    [formSide, toAccountIds, fromAccountIds],
-  );
-
   // ── Entry triggers ───────────────────────────────────────────────────
   // Add / Edit Entry ALWAYS opens the built-in JEVEntryAEModal modal —
   // the inline form hand-off (onEntryAction → JEVTitleDateUpdate) is retired.
@@ -538,17 +533,11 @@ export default function JevViewPanel({
       errs.nJournalAccountId = "Account is required";
     if (!formData.amount || amount <= 0) errs.amount = "Amount must be > 0";
 
+    // An account may be used only ONCE per side. The same account is allowed
+    // again on the opposite side (once in Debit and once in Credit).
     if (selectedAccountId && usedAccountIds.includes(selectedAccountId)) {
       errs.nJournalAccountId =
         "This account already exists here — please choose a different one.";
-    }
-
-    if (
-      selectedAccountId &&
-      oppositeSideAccountIds.includes(selectedAccountId)
-    ) {
-      errs.nJournalAccountId =
-        "Cannot use the same account in both From and To.";
     }
 
     // A voucher JEV is capped by its particulars. An R/D JEV is NOT: the
@@ -1275,7 +1264,6 @@ export default function JevViewPanel({
           equivalentValue={equivalentValue}
           sideTotal={formSide === "from" ? fromTotal : toTotal}
           usedAccountIds={usedAccountIds}
-          oppositeSideAccountIds={oppositeSideAccountIds}
           isAssigneeType={isAssigneeType}
           assigneeLinks={assigneeLinks}
           supplierLinks={supplierLinks}

@@ -229,13 +229,19 @@ export default function PendingInventory({
         if (!isScopeRow(r, scope)) return;
         const name = r[field] || "—";
         const company = r.strCompanyNickName || "—";
-        const key = `${name}\u0000${company}`;
+        // A client/supplier + company that already has a pending JEV is a
+        // DIFFERENT group from newly delivered goods of the same name —
+        // otherwise a new delivery silently joins a booked group.
+        const jevId = r.nJEVId ?? r._raw?.nJEVId;
+        const jevBucket = jevId != null ? "with-jev" : "no-jev";
+        const key = `${name}\u0000${company}\u0000${jevBucket}`;
         const qty = Math.abs(Number(r._raw?.nQuantity ?? 0));
         const unitPrice = Number(r._raw?.purchaseOption?.dUnitPrice ?? 0);
         const entry = byKey.get(key) ?? {
           id: `${scope}:${key}`,
           name,
           company,
+          jevBucket,
           aoNicks: new Set(),
           scope,
           total: 0,
@@ -254,7 +260,10 @@ export default function PendingInventory({
         }))
         .sort(
           (a, b) =>
-            a.name.localeCompare(b.name) || a.company.localeCompare(b.company),
+            a.name.localeCompare(b.name) ||
+            a.company.localeCompare(b.company) ||
+            // Same nickname + company: the unbooked (new) group first.
+            String(a.jevBucket).localeCompare(String(b.jevBucket)),
         )
         .forEach((entry) => rows.push(entry));
     });
@@ -300,7 +309,7 @@ export default function PendingInventory({
                     : inventoryDeliveredLabel}
                 </span>
               </div>
-              <span className="block truncate italic tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
+              <span className="block truncate tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
                 {val || "—"}
               </span>
               {/* WHO the batches were assigned to — under the counterparty
@@ -336,7 +345,12 @@ export default function PendingInventory({
               actionColor="view"
               onClick={(e) => {
                 e.stopPropagation();
-                openGroupView(row.scope, row.name, row.company);
+                openGroupView(
+                  row.scope,
+                  row.name,
+                  row.company,
+                  row.jevBucket,
+                );
               }}
             />
           </div>
@@ -365,7 +379,9 @@ export default function PendingInventory({
         // received batches that merely share the same client nickname.
         isScopeRow(r, groupView.scope) &&
         (r[field] || "—") === groupView.name &&
-        (r.strCompanyNickName || "—") === company,
+        (r.strCompanyNickName || "—") === company &&
+        (r.nJEVId != null ? "with-jev" : "no-jev") ===
+          (groupView.jevBucket ?? "with-jev"),
     );
   }, [groupView, tableRows]);
 
@@ -645,7 +661,12 @@ export default function PendingInventory({
           onPageChange={handlePageChange}
           onRowsPerPageChange={handleRowsPerPageChange}
           onRowClick={(row) =>
-            openGroupView(row.scope, row.name, row.company)
+            openGroupView(
+              row.scope,
+              row.name,
+              row.company,
+              row.jevBucket,
+            )
           }
           enableSorting={directionFilter !== "all"}
         />

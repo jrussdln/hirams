@@ -75,17 +75,37 @@ export default function usePreviewSI() {
         .replace(/\s+/g, " ")
         .trim();
 
+    // Company that owns the transaction — used to pick the matching blank
+    // form template (`<id>-CSI.*`) for the preview-only overlay.
+    const companyId =
+      company.nCompanyId ??
+      company.id ??
+      transaction?.nCompanyId ??
+      transaction?.nCompanyID ??
+      null;
+
+    // HiRams' own form (company 1) differs from the other companies': no
+    // Business Style line, no assigned-AO row, ADDRESS above TIN, and a
+    // different item-row layout. Match by company name with the known ID as
+    // a fallback in case the name fields are missing.
+    const companyLabel =
+      `${company.strCompanyNickName || ""} ${company.strCompanyName || ""}`.trim();
+    const isHirams =
+      /hiram/i.test(companyLabel) || String(companyId ?? "") === "1";
+
     return {
       clientName:
         client.strClientNickName || client.strClientName || DEFAULTS.clientName,
       clientTIN: client.strTIN || "",
       clientAddress: client.strAddress || "",
       clientBusinessStyle: client.strBusinessStyle || "",
+      isHirams,
       contactPerson: assignedAOName || "",
       contactNumber: assignedAONo || client.strContactNumber || "",
       code: transactionCode || "",
       items,
       grandTotal,
+      companyId,
 
       // Save-as-PDF file name: TXNCODE(ClientNick)-SalesInvoice(CompanyNick)
       pdfFileName,

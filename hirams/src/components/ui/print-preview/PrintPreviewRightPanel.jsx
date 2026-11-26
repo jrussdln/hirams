@@ -7,9 +7,11 @@ import {
   Select,
   MenuItem,
   Tooltip,
+  TextField,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import getThemeColors from "../../../utils/style/getThemeColors";
+import { FALLBACK_PRINT_LAYOUT } from "../../../constants/defaultPrintLayout.js";
 import PageRightPanel from "../panel/PageRightPanel";
 import CloseIcon from "@mui/icons-material/Close";
 import PrintOutlined from "@mui/icons-material/PrintOutlined";
@@ -19,12 +21,23 @@ import CheckOutlined from "@mui/icons-material/CheckOutlined";
 import TuneOutlined from "@mui/icons-material/TuneOutlined";
 import PanToolOutlined from "@mui/icons-material/PanToolOutlined";
 import BackHandOutlined from "@mui/icons-material/BackHandOutlined";
+import VisibilityOutlined from "@mui/icons-material/VisibilityOutlined";
+import VisibilityOffOutlined from "@mui/icons-material/VisibilityOffOutlined";
 
 import ZoomInOutlined from "@mui/icons-material/ZoomInOutlined";
 import ZoomOutOutlined from "@mui/icons-material/ZoomOutOutlined";
 import Slider from "@mui/material/Slider";
 // Shared by the panel header and the preview toolbar so they always match
 export const PRINT_HEADER_H = 56;
+
+const CUSTOM_MARGIN_FIELDS = [
+  { key: "top", label: "Top" },
+  { key: "header", label: "Header" },
+  { key: "left", label: "Left" },
+  { key: "right", label: "Right" },
+  { key: "bottom", label: "Bottom" },
+  { key: "footer", label: "Footer" },
+];
 
 const useColors = (c) => ({
   outerBg: c.slate.outerBg,
@@ -56,8 +69,13 @@ export default function PrintPreviewRightPanel({
   margin,
   setMargin,
   margins = {},
+  customMargins = {},
+  setCustomMargins,
   colorMode,
   setColorMode,
+  showCheckActual = false,
+  checkActual = false,
+  setCheckActual,
   onPrint,
   onSavePdf,
   pdfBusy,
@@ -186,7 +204,7 @@ export default function PrintPreviewRightPanel({
                 </Typography>
                 <FormControl fullWidth size="small">
                   <Select
-                    value={paperSize || "A4"}
+                    value={paperSize || FALLBACK_PRINT_LAYOUT.paperSize}
                     onChange={(e) => setPaperSize(e.target.value)}
                     sx={{
                       fontSize: "0.8rem",
@@ -224,7 +242,7 @@ export default function PrintPreviewRightPanel({
                 </Typography>
                 <FormControl fullWidth size="small">
                   <Select
-                    value={orientation || "portrait"}
+                    value={orientation || FALLBACK_PRINT_LAYOUT.orientation}
                     onChange={(e) => setOrientation(e.target.value)}
                     sx={{
                       fontSize: "0.8rem",
@@ -259,7 +277,7 @@ export default function PrintPreviewRightPanel({
                 </Typography>
                 <FormControl fullWidth size="small">
                   <Select
-                    value={margin || "normal"}
+                    value={margin || FALLBACK_PRINT_LAYOUT.margin}
                     onChange={(e) => setMargin(e.target.value)}
                     sx={{
                       fontSize: "0.8rem",
@@ -282,6 +300,58 @@ export default function PrintPreviewRightPanel({
                   </Select>
                 </FormControl>
               </Box>
+
+              {/* Custom margins — shown only when "Custom" is selected. */}
+              {margin === "Custom" && (
+                <Box>
+                  <Typography
+                    sx={{
+                      fontSize: "0.72rem",
+                      fontWeight: 600,
+                      color: colors.textSecondary,
+                      mb: 0.75,
+                    }}
+                  >
+                    Custom Margins (mm)
+                  </Typography>
+                  <Box
+                    sx={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 1,
+                    }}
+                  >
+                    {CUSTOM_MARGIN_FIELDS.map(({ key, label }) => (
+                      <TextField
+                        key={key}
+                        label={label}
+                        type="number"
+                        size="small"
+                        value={customMargins?.[key] ?? 0}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          setCustomMargins?.((prev) => ({
+                            ...prev,
+                            [key]: raw === "" ? 0 : Number(raw),
+                          }));
+                        }}
+                        inputProps={{ step: 0.1, min: 0 }}
+                        sx={{
+                          "& .MuiInputBase-root": {
+                            fontSize: "0.8rem",
+                            bgcolor: colors.btnBg,
+                            borderRadius: 1.5,
+                          },
+                          "& .MuiInputLabel-root": { fontSize: "0.75rem" },
+                          "& .MuiOutlinedInput-notchedOutline": {
+                            borderColor: colors.borderLight,
+                          },
+                        }}
+                      />
+                    ))}
+                  </Box>
+                </Box>
+              )}
 
               {/* Color Mode */}
               <Box>
@@ -319,6 +389,68 @@ export default function PrintPreviewRightPanel({
               </Box>
             </Box>
           </Box>
+
+          {/* SECTION: CHECK ACTUAL — only shown by documents that ship a
+              blank-form template (Sales Invoice and Delivery Receipt). */}
+          {showCheckActual && (
+            <Box sx={{ display: "flex", flexDirection: "column" }}>
+              <Box
+                sx={{
+                  bgcolor: colors.innerBg,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: 2,
+                  p: 1.75,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 1.25,
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontSize: "0.75rem",
+                    color: colors.textSecondary,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Overlay the blank template to check that the printed content
+                  lines up with the actual document.
+                </Typography>
+                <Box
+                  component="button"
+                  type="button"
+                  onClick={() => setCheckActual?.(!checkActual)}
+                  sx={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 1,
+                    py: 1.1,
+                    px: 2,
+                    borderRadius: 1.5,
+                    bgcolor: checkActual ? colors.blueSurface : colors.btnBg,
+                    border: `1px solid ${checkActual ? colors.blueBorder : colors.btnBorder}`,
+                    color: checkActual ? colors.blueTextStrong : colors.textPrimary,
+                    fontWeight: 600,
+                    fontSize: "0.8rem",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    "&:hover": {
+                      bgcolor: checkActual ? colors.blueBgSoft : colors.btnHoverBg,
+                    },
+                    "&:active": { opacity: 0.8 },
+                  }}
+                >
+                  {checkActual ? (
+                    <VisibilityOffOutlined sx={{ fontSize: 18 }} />
+                  ) : (
+                    <VisibilityOutlined sx={{ fontSize: 18 }} />
+                  )}
+                  {checkActual ? "Hide Actual" : "Check Actual"}
+                </Box>
+              </Box>
+            </Box>
+          )}
 
           {/* SECTION: PRINT */}
           <Box sx={{ display: "flex", flexDirection: "column" }}>

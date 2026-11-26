@@ -5,6 +5,7 @@ namespace App\Services\Purchasing;
 use App\Events\InventoryUpdated;
 use App\Models\Inventory;
 use App\Models\PurchaseOptions;
+use App\Models\Transactions;
 use App\Services\CrudService;
 use Illuminate\Support\Collection;
 
@@ -299,7 +300,9 @@ class InventoryService extends CrudService
     /**
      * Next receipt number for the deliver form of ONE card (one transaction).
      *
-     *   L = most recent delivered receipt anywhere that carries a number
+     *   L = most recent delivered receipt that carries a number, within the
+     *       SAME COMPANY as this card (company1 at 002, company2 at 006 →
+     *       a company2 card suggests 007)
      *   · L belongs to this card AND was written today → reuse L (same card,
      *     same day → the rest of the card's items share the number)
      *   · otherwise → L + 1 (prefix and zero padding preserved)
@@ -323,12 +326,42 @@ class InventoryService extends CrudService
             ? PurchaseOptions::where('nTransactionItemId', $transactionId)->pluck('nPurchaseItemId')
             : collect();
 
-        // L — latest delivered receipt that actually has a number on it.
-        $latest = $this->newQuery()
+        // The sequence is PER COMPANY: resolve the company of the card's
+        // purchase items (option → transaction item → transaction). Two
+        // companies can therefore be at 002 and 006 independently.
+        $companyId = null;
+        if (!empty($validated['nTransactionId'])) {
+            $companyId = Transactions::where('nTransactionId', $validated['nTransactionId'])
+                ->value('nCompanyId');
+        }
+        if ($companyId === null && !empty($validated['nPurchaseItemId'])) {
+            $companyId = PurchaseOptions::where('nPurchaseItemId', $validated['nPurchaseItemId'])
+                ->with('transactionItem.transaction')
+                ->first()?->transactionItem?->transaction?->nCompanyId;
+        }
+        if ($companyId === null && $cardItemIds->isNotEmpty()) {
+            $companyId = PurchaseOptions::whereIn('nPurchaseItemId', $cardItemIds)
+                ->with('transactionItem.transaction')
+                ->get()
+                ->pluck('transactionItem.transaction.nCompanyId')
+                ->filter()
+                ->first();
+        }
+
+        // L — latest delivered receipt that actually has a number on it,
+        // restricted to the SAME COMPANY when the card resolves to one.
+        $latestQuery = $this->newQuery()
             ->where('nQuantity', '<', 0)
             ->whereIn('cStatus', ['A', 'P'])
             ->whereNotNull('strReceiptNumber')
-            ->where('strReceiptNumber', '!=', '')
+            ->where('strReceiptNumber', '!=', '');
+        if ($companyId !== null) {
+            $latestQuery->whereHas(
+                'purchaseOption.transactionItem.transaction',
+                fn($q) => $q->where('nCompanyId', $companyId)
+            );
+        }
+        $latest = $latestQuery
             ->orderByDesc('dtLog')
             ->orderByDesc('nInventoryId')
             ->first();

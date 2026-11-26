@@ -60,6 +60,24 @@ export default function usePreviewDR() {
         .replace(/\s+/g, " ")
         .trim();
 
+    // Company that owns the transaction — used to pick the matching blank
+    // form template (`<id>-DR.*`) for the preview-only overlay.
+    const companyId =
+      company.nCompanyId ??
+      company.id ??
+      transaction?.nCompanyId ??
+      transaction?.nCompanyID ??
+      null;
+
+    // HiRams' own DR form (company 1) differs from the other companies': it
+    // has no "Business Style" line and lists ADDRESS above TIN. Match by
+    // company name (nickname or full name), with the known ID as a fallback
+    // in case the name fields are missing.
+    const companyLabel =
+      `${company.strCompanyNickName || ""} ${company.strCompanyName || ""}`.trim();
+    const isHirams =
+      /hiram/i.test(companyLabel) || String(companyId ?? "") === "1";
+
     const items = deliveredOptions.map((item) => ({
       itemQty: item.itemQty ?? 0,
       itemUOM: item.itemUOM || "Unit",
@@ -79,10 +97,12 @@ export default function usePreviewDR() {
       clientTIN: client.strTIN || "",
       clientAddress: client.strAddress || "",
       clientBusinessStyle: client.strBusinessStyle || "",
+      isHirams,
       contactPerson: assignedAOName || "",
       contactNumber: assignedAONo || client.strContactNumber || "",
       code,
       items,
+      companyId,
 
       // Save-as-PDF file name: CODE(SupplierNick)-DeliveryReceipt(CompanyNick)
       pdfFileName,

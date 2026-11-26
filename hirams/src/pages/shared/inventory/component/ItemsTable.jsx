@@ -82,6 +82,7 @@ const makeColors = (c) => ({
     textMuted: c.gray.textMuted,
   },
   purple: { bg: c.purple.bg, border: c.purple.border, text: c.purple.text },
+  green: { bg: c.green.bg, border: c.green.border, text: c.green.text },
   blue: { text: c.blue.text },
   orange: { text: c.orange.text },
   // foreground for the count badge that sits on gray.textSecondary
@@ -804,59 +805,92 @@ export default function ItemsTable({
                       the header card no longer carries (it shows the
                       transaction codes now). It stays a LINK: it opens
                       that PO in Item Purchasing. */}
-                    {row.strPurchaseOrderNo &&
-                      row.strPurchaseOrderNo !== "—" && (
-                        <Typography
-                          component="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openPurchaseOrder(row.nPurchaseOrderId);
-                          }}
-                          title={
-                            poNavigable && row.nPurchaseOrderId
-                              ? "Open this PO in Item Purchasing"
-                              : undefined
-                          }
-                          sx={{
-                            // Block + fit-content: hugs the text like an
-                            // inline-block would, but without the anonymous
-                            // line-box strut (the row container's inherited
-                            // ~1rem/1.43 line) that used to open up a big
-                            // gap between the PO code and the brand · model.
-                            display: "block",
-                            width: "fit-content",
-                            maxWidth: "100%",
-                            textAlign: "left",
-                            p: 0,
-                            border: "none",
-                            background: "transparent",
-                            fontSize: "0.55rem",
-                            fontWeight: 700,
-                            // Blue — it is a link, like every other PO code. A
-                            // non-navigable host (finance on the JEV viewer)
-                            // reads it as plain muted text.
-                            color:
-                              poNavigable && row.nPurchaseOrderId
-                                ? colors.blue.text
-                                : colors.gray.textSecondary,
-                            textTransform: "uppercase",
-                            lineHeight: 1,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            cursor:
-                              poNavigable && row.nPurchaseOrderId
-                                ? "pointer"
-                                : "default",
-                            "&:hover":
-                              poNavigable && row.nPurchaseOrderId
-                                ? { textDecoration: "underline" }
-                                : undefined,
-                          }}
-                        >
-                          {row.strPurchaseOrderNo}
-                        </Typography>
-                      )}
+                    {/* The ADD-ONS badge rides on the PO code line so an
+                        add-on line is identifiable in every inventory tab,
+                        including the Pending JEV drill-down. */}
+                    {(row.strPurchaseOrderNo &&
+                      row.strPurchaseOrderNo !== "—") ||
+                    row.isAddOn ? (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 0.5,
+                          minWidth: 0,
+                        }}
+                      >
+                        {row.strPurchaseOrderNo &&
+                          row.strPurchaseOrderNo !== "—" && (
+                            <Typography
+                              component="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openPurchaseOrder(row.nPurchaseOrderId);
+                              }}
+                              title={
+                                poNavigable && row.nPurchaseOrderId
+                                  ? "Open this PO in Item Purchasing"
+                                  : undefined
+                              }
+                              sx={{
+                                // Block + fit-content: hugs the text like an
+                                // inline-block would, but without the
+                                // anonymous line-box strut (the row
+                                // container's inherited ~1rem/1.43 line) that
+                                // used to open up a big gap under the code.
+                                display: "block",
+                                width: "fit-content",
+                                maxWidth: "100%",
+                                textAlign: "left",
+                                p: 0,
+                                border: "none",
+                                background: "transparent",
+                                fontSize: "0.55rem",
+                                fontWeight: 700,
+                                color:
+                                  poNavigable && row.nPurchaseOrderId
+                                    ? colors.blue.text
+                                    : colors.gray.textSecondary,
+                                textTransform: "uppercase",
+                                lineHeight: 1,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                cursor:
+                                  poNavigable && row.nPurchaseOrderId
+                                    ? "pointer"
+                                    : "default",
+                                "&:hover":
+                                  poNavigable && row.nPurchaseOrderId
+                                    ? { textDecoration: "underline" }
+                                    : undefined,
+                              }}
+                            >
+                              {row.strPurchaseOrderNo}
+                            </Typography>
+                          )}
+                        {row.isAddOn && (
+                          <Box
+                            component="span"
+                            sx={{
+                              flexShrink: 0,
+                              px: 0.45,
+                              py: 0.05,
+                              borderRadius: "4px",
+                              fontSize: "0.5rem",
+                              fontWeight: 700,
+                              lineHeight: 1.2,
+                              whiteSpace: "nowrap",
+                              color: colors.green.text,
+                              background: colors.green.bg,
+                              border: `0.5px solid ${colors.green.border ?? colors.green.text}`,
+                            }}
+                          >
+                            ADD-ONS
+                          </Box>
+                        )}
+                      </Box>
+                    ) : null}
                     <Typography
                       onClick={
                         onBrandClick ? () => onBrandClick(row) : undefined
@@ -873,7 +907,6 @@ export default function ItemsTable({
                         color: onBrandClick
                           ? colors.blue.text
                           : colors.gray.textPrimary,
-                        fontStyle: "italic",
                         lineHeight: 1,
                         // Same spacing as the header card: the gap between
                         // the code line and the big text lives on the BIG

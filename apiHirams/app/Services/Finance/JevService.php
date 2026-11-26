@@ -2,7 +2,9 @@
 
 namespace App\Services\Finance;
 
+use App\Events\InventoryUpdated;
 use App\Events\JevUpdated;
+use App\Models\Inventory;
 use App\Models\Jev;
 use App\Models\JevEntries;
 use App\Models\PurchaseOrderOption;
@@ -188,12 +190,70 @@ class JevService
             $payload['cStatus'] = $jev->cStatus;
         }
 
-        $jev->update($payload);
+        $previousStatus = (string) $jev->cStatus;
+        $nextStatus = (string) ($payload['cStatus'] ?? $previousStatus);
+
+        // Undo Finalize on a Received Purchases / Delivered / CSI journal must
+        // also put its inventory batches back to Pending. Finalizing those
+        // JEVs (from the Pending JEV screen) flips the batches the journal is
+        // stamped on from Pending to Active, so leaving only the JEV at Draft
+        // would still count the goods as stock / delivered — the journal and
+        // its batches must move together.
+        $undoFinalize =
+            $previousStatus === $this->statusCode('Active', 'A') &&
+            $nextStatus === $this->statusCode('Draft', 'P') &&
+            in_array((string) $jev->cJEVLinkType, $this->inventoryJevTypes(), true);
+
+        DB::transaction(function () use ($jev, $payload, $undoFinalize) {
+            $jev->update($payload);
+            if ($undoFinalize) {
+                $this->rollbackInventoryToPending($jev);
+            }
+        });
 
         // cJEVLinkType can move here — two badges can change at once.
         broadcast(new JevUpdated('updated', (int) $id, (string) $jev->cJEVLinkType))->toOthers();
 
         return Jev::with('entries.journal_account')->find($id);
+    }
+
+    /**
+     * JEV link types whose journal is backed by inventory batches. Those are
+     * the only ones that flip their batches Pending → Active on Finalize,
+     * and so the only ones Undo Finalize has to roll back.
+     *
+     * @return array<int, string>
+     */
+    private function inventoryJevTypes(): array
+    {
+        $types = config('mappings.jev_types', []);
+
+        return array_values(array_filter([
+            (string) (array_search('Received Purchases', $types, true) ?: 'R'),
+            (string) (array_search('Delivered / CSI', $types, true) ?: 'D'),
+        ]));
+    }
+
+    /**
+     * Undo Finalize: return the batches stamped with this JEV to Pending.
+     *
+     * Only rows still Active are touched — a Cancelled batch must stay
+     * Cancelled even though it carries the journal's id. Broadcast so other
+     * open inventory screens refresh their stock / delivered totals.
+     */
+    private function rollbackInventoryToPending(Jev $jev): void
+    {
+        $ids = Inventory::where('nJEVId', $jev->nJEVId)
+            ->where('cStatus', 'A')
+            ->pluck('nInventoryId');
+
+        if ($ids->isEmpty()) {
+            return;
+        }
+
+        Inventory::whereIn('nInventoryId', $ids)->update(['cStatus' => 'P']);
+
+        broadcast(new InventoryUpdated('jev_undo_finalize', (int) $ids->first()))->toOthers();
     }
 
     /**

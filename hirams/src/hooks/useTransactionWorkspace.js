@@ -858,6 +858,15 @@ export default function useTransactionWorkspace() {
     try {
       await JevAPI.update(jev.nJEVId, { cStatus: nextStatus });
       await fetchJev();
+      // Undo Finalize on a Received / Delivered JEV also returns its
+      // inventory batches to Pending (server-side in JevService). Refresh
+      // this tab's item panels; the realtime broadcast only reaches others.
+      if (
+        nextStatus === draftStatus &&
+        ["R", "D"].includes(String(jev.cJEVLinkType ?? "").toUpperCase())
+      ) {
+        window.dispatchEvent(new CustomEvent("inventory_data_updated"));
+      }
       return true;
     } catch (err) {
       console.error("Failed to update JEV status:", err);

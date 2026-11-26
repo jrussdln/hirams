@@ -25,6 +25,8 @@ const useColors = (c) => ({
   textSecondary: c.gray.textSecondary,
   // inline company badge on the Item column
   blue: { bg: c.blue.bg, text: c.blue.text },
+  // inline ADD-ONS badge — sits next to the company badge
+  green: { bg: c.green.bg, text: c.green.text, border: c.green.border },
   // colour only — geometry stays at the usage site
   shadowColor: c.shadow.hairline,
   rounded: "0.5rem",
@@ -222,8 +224,20 @@ export default function InventoryView({
                         {row.strCompanyNickName}
                       </span>
                     )}
+                    {row.isAddOn && (
+                      <span
+                        className="shrink-0 px-1 py-px text-[0.5rem] font-semibold uppercase leading-none rounded"
+                        style={{
+                          backgroundColor: colors.green.bg,
+                          color: colors.green.text,
+                          border: `1px solid ${colors.green.border ?? colors.green.text}`,
+                        }}
+                      >
+                        ADD-ONS
+                      </span>
+                    )}
                   </div>
-                  <span className="block truncate italic tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
+                  <span className="block truncate tracking-wide text-[0.8125rem] font-medium leading-tight -mt-0.5">
                     {val}
                   </span>
                   {/* The ITEM NAME the batch was bought as — uppercase, under

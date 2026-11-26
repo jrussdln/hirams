@@ -678,6 +678,13 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
           await JevAPI.update(jevId, { cStatus: nextStatus });
           await fetchJev();
           window.dispatchEvent(new CustomEvent("jev_data_updated"));
+          // Undo Finalize on a Received / Delivered JEV also returns its
+          // inventory batches to Pending (server-side in JevService). Refresh
+          // this tab's inventory panels — the realtime broadcast only reaches
+          // the OTHER tabs.
+          if (nextStatus === draftStatus && ["R", "D"].includes(linkType)) {
+            window.dispatchEvent(new CustomEvent("inventory_data_updated"));
+          }
         });
         await showSwal(
           "SUCCESS",
@@ -707,6 +714,7 @@ export default function useJEVUpdate({ jevId: jevIdOverride } = {}) {
       draftStatus,
       pendingClearanceStatus,
       activeStatus,
+      linkType,
       fetchJev,
     ],
   );

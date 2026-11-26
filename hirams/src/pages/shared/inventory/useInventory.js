@@ -226,7 +226,11 @@ export default function useInventory() {
       return (
         inDirection &&
         (r[field] || "—") === groupView.name &&
-        (r.strCompanyNickName || "—") === company
+        (r.strCompanyNickName || "—") === company &&
+        // Only the batches of THIS group's JEV state: a new delivery to a
+        // client whose other batches already have a JEV must not join them.
+        (r.nJEVId != null ? "with-jev" : "no-jev") ===
+          (groupView.jevBucket ?? "with-jev")
       );
     });
   }, [filteredItems, groupView]);
@@ -591,11 +595,18 @@ export default function useInventory() {
   }, []);
 
   // Open the item list of one supplier / client group (within its company)
-  const openGroupView = useCallback((scope, name, company) => {
+  const openGroupView = useCallback((scope, name, company, jevBucket) => {
     setDetailsOpen(false);
     setSelectedItemId(null);
     setGroupListPage(0);
-    setGroupView({ scope, name, company: company ?? "—" });
+    setGroupView({
+      scope,
+      name,
+      company: company ?? "—",
+      // Old callers (deep links without the bucket) keep the historic
+      // behaviour: show the booked batches of that group.
+      jevBucket: jevBucket ?? "with-jev",
+    });
   }, []);
   const closeGroupView = useCallback(() => {
     setGroupView(null);
@@ -651,6 +662,7 @@ export default function useInventory() {
           ? first.strSupplierNickName
           : first.strClientNickName) || "—",
         first.strCompanyNickName || "—",
+        first.nJEVId != null ? "with-jev" : "no-jev",
       );
     }
     // Consume the request from BOTH carriers either way — opened, or

@@ -6,6 +6,7 @@ import icons from "../../../../../utils/style/iconFormatStyles.jsx";
 import { fmtPHP, fmtQty } from "../../../../../utils/formatters/formatter.js";
 import { numberToWords } from "../../../../../utils/helpers/numberToWords.js";
 import PrintAreaStructure from "../../../../../components/ui/print-preview/PrintPreview.jsx";
+import { getPrintLayoutProps } from "../../../../../constants/defaultPrintLayout.js";
 import PrintPreviewPageFooter from "../../../../../components/ui/print-preview/PrintPreviewPageFooter.jsx";
 import EditableCell from "../../../../../components/ui/print-preview/EditableCell.jsx";
 import MediaRoute from "../../../../../routes/MediaRoute.jsx";
@@ -914,6 +915,7 @@ export default function PreviewPOView({
       footerRActions={<PrintPreviewPageFooter printControls={printControls} />}
     >
       <PrintAreaStructure
+        {...getPrintLayoutProps("PO")}
         onExport={() => console.log("wire up export")}
         onControlsReady={setPrintControls}
         hideHeaderControls={true}

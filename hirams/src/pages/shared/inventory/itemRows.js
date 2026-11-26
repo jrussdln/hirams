@@ -20,6 +20,14 @@ const txnItemOf = (r) => {
   return opt?.transactionItem ?? opt?.transaction_item ?? null;
 };
 
+// Add-on lines are their own item line and carry the ADD-ONS badge. The API
+// ships the full purchaseOption on every inventory row, so this needs no
+// extra request.
+export const isAddOnRow = (r) => {
+  const opt = (r?._raw ?? r)?.purchaseOption ?? (r?._raw ?? r)?.purchase_option;
+  return Number(opt?.bAddOn) === 1 || opt?.bAddOn === true;
+};
+
 export const mapInventoryItems = (items = []) =>
   (items ?? []).map((i) => ({
     _raw: i,
@@ -46,6 +54,10 @@ export const mapInventoryItems = (items = []) =>
       { minimumFractionDigits: 2 },
     ),
     nQuantity: Math.abs(i.nQuantity),
+    isAddOn: isAddOnRow(i),
+    // The JEV stamped on the batch — the Pending JEV group split and the
+    // group's JEV section both read this from the mapped row.
+    nJEVId: i.nJEVId ?? null,
     cStatus: i.cStatus,
     dtLog: fmtDateTime(i.dtLog),
     strSupplierNickName: i.strSupplierNickName ?? "—",
